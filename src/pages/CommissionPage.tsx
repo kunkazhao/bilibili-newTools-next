@@ -1,9 +1,25 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import * as XLSX from "xlsx"
 import CommissionPageView from "@/components/commission/CommissionPageView"
 import CommissionArchiveModal from "@/components/commission/CommissionArchiveModal"
 import { useToast } from "@/components/Toast"
 import { apiRequest } from "@/lib/api"
 import { fetchCategories } from "@/components/archive/archiveApi"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
+  extractLinksFromComment,
+  getPinnedComments,
+  isBilibiliInput,
+} from "@/lib/bilibili"
 
 interface CommissionItem {
   id: string
@@ -33,33 +49,31 @@ const META_KEYS = {
 const TEMP_STORAGE_KEY = "commission_temp_items_v1"
 const CATEGORY_CACHE_KEY = "sourcing_category_cache_v1"
 const CATEGORY_CACHE_TTL = 5 * 60 * 1000
-
-const demoVideos = [
-  {
-    id: "v1",
-    title: "2026 无线降噪耳机测评｜开箱/体验/参数/音质/HIFI推荐",
-    source: "B站",
-    tag: "数码",
-  },
-  {
-    id: "v2",
-    title: "2026 游戏耳机横评｜耳机/麦克风/听声辨位/HIFI",
-    source: "B站",
-    tag: "游戏",
-  },
-  {
-    id: "v3",
-    title: "26 款键盘横评合集｜红轴/茶轴/青轴/静音轴推荐",
-    source: "B站",
-    tag: "外设",
-  },
-]
+const BENCHMARK_PICK_CACHE_KEY = "benchmark_pick_cache_v1"
+const BENCHMARK_PICK_CACHE_TTL = 5 * 60 * 1000
 
 interface ArchiveCategory {
   id: string
   name: string
   sortOrder: number
 }
+
+interface BenchmarkCategory {
+  id: string
+  name: string
+}
+
+interface BenchmarkVideo {
+  id: string
+  title?: string | null
+  link?: string | null
+  bvid?: string | null
+  category_id?: string | null
+  category?: string | null
+  author?: string | null
+}
+
+type CommissionProduct = Awaited<ReturnType<typeof fetchCommissionProduct>>
 
 type CachePayload<T> = { timestamp: number; data?: T; items?: T }
 
@@ -116,7 +130,8 @@ const saveLocalItems = (next: CommissionItem[]) => {
 
 const API_BASE = import.meta.env.VITE_API_BASE?.replace(/\/$/, "") ?? ""
 
-const isBiliLink = (link: string) => /bilibili\.com|b23\.tv/i.test(link)
+const isBiliLink = (link: string) =>
+  /bilibili\.com|b23\.tv|^BV[a-zA-Z0-9]+$|^av\d+$/i.test(link)
 
 const getSourceDisplay = (spec: Record<string, string>) => {
   const link = spec[META_KEYS.sourceLink] || ""
@@ -153,6 +168,174 @@ const fetchBiliAuthor = async (link: string) => {
   return author ? String(author).trim() : ""
 }
 
+const isJdLink = (link: string) =>
+  /jd\.com|jingfen\.jd|union-click\.jd|jdc\.jd/i.test(link)
+
+const isTaobaoLink = (link: string) =>
+  /taobao\.com|tmall\.com|tmall\.hk|click\.taobao|uland\.taobao/i.test(link)
+
+const parseLines = (raw: string) =>
+  raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+const extractDigitsFromLink = (link: string) => {
+  if (!link) return ""
+  const cleaned = link.trim()
+  const exactMatch = cleaned.match(/item\.jd\.com\/(\d+)\.html/i)
+  if (exactMatch) return exactMatch[1]
+  const paramMatch = cleaned.match(/(?:skuId|sku|productId|wareId|id)[=\/](\d{6,})/i)
+  if (paramMatch) return paramMatch[1]
+  const htmlMatch = cleaned.match(/\/(\d{6,})\.html/i)
+  if (htmlMatch) return htmlMatch[1]
+  const allDigits = cleaned.match(/(\d{6,})/g)
+  if (allDigits?.length) {
+    return allDigits.sort((a, b) => b.length - a.length)[0]
+  }
+  return ""
+}
+
+const createId = () => {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID()
+  }
+  return `comm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+const parseMaybeJson = (value: unknown) => {
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value) as unknown
+    } catch {
+      return null
+    }
+  }
+  return value ?? null
+}
+
+const extractQueryResult = (payload: Record<string, any>) => {
+  const direct = parseMaybeJson(payload?.queryResult)
+  if (direct) return direct as Record<string, any>
+  const msgPayload = parseMaybeJson(payload?.msg) as Record<string, any> | null
+  const nested = msgPayload?.jd_union_open_goods_query_responce as Record<string, any> | undefined
+  const queryResult = nested?.queryResult ?? msgPayload?.queryResult
+  return parseMaybeJson(queryResult) as Record<string, any> | null
+}
+
+const normalizeNumber = (value: unknown) => {
+  if (value === null || value === undefined) return undefined
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : undefined
+}
+
+const ensureHttp = (value: string) => {
+  if (!value) return ""
+  if (value.startsWith("http://") || value.startsWith("https://")) return value
+  return `https://${value}`
+}
+
+const pickImageUrl = (product: Record<string, any>) => {
+  const imageInfo = product?.imageInfo
+  const list = imageInfo?.imageList ?? product?.imageList ?? product?.imageUrls ?? []
+  if (Array.isArray(list) && list.length > 0) {
+    const first = list[0]
+    if (typeof first === "string") return first
+    if (first?.url) return first.url as string
+  }
+  if (typeof product?.image === "string") return product.image as string
+  if (typeof product?.imgUrl === "string") return product.imgUrl as string
+  return ""
+}
+
+const extractJdKeyword = (url: string) => {
+  if (!url) return ""
+  if (url.includes("union-click.jd.com") || url.includes("jdc.jd.com")) return url
+  if (url.includes("jingfen.jd.com")) return url
+  const itemMatch = url.match(/item\.jd\.com\/(\d+)\.html/i)
+  if (itemMatch) return itemMatch[1]
+  const productMatch = url.match(/product\/(\d+)/i)
+  if (productMatch) return productMatch[1]
+  const paramMatch = url.match(/[?&](?:skuId|sku|productId|wareId|id)=(\d{6,})/i)
+  if (paramMatch) return paramMatch[1]
+  return url
+}
+
+const resolveJdUrl = async (url: string) => {
+  if (!url || url.includes("item.jd.com")) return url
+  try {
+    const data = await apiRequest<{ resolvedUrl?: string }>("/api/jd/resolve", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    })
+    return data.resolvedUrl || url
+  } catch {
+    return url
+  }
+}
+
+const fetchJdProduct = async (keyword: string, originalLink: string) => {
+  const data = await apiRequest<Record<string, any>>("/api/jd/product", {
+    method: "POST",
+    body: JSON.stringify({ keyword }),
+  })
+  const queryResult = extractQueryResult(data as Record<string, any>)
+  const product = queryResult?.data?.[0] as Record<string, any> | undefined
+  if (!product) {
+    throw new Error("未获取到商品信息")
+  }
+  const materialUrl = ensureHttp(product?.materialUrl || originalLink)
+  return {
+    title: (product?.skuName as string) || "未知商品",
+    price: normalizeNumber(product?.priceInfo?.price),
+    commission: normalizeNumber(product?.commissionInfo?.commission),
+    commissionRate: normalizeNumber(product?.commissionInfo?.commissionShare),
+    sales30Days: normalizeNumber(product?.inOrderCount30Days),
+    comments: normalizeNumber(product?.comments),
+    image: pickImageUrl(product),
+    shopName: (product?.shopInfo?.shopName as string) || "",
+    materialUrl,
+  }
+}
+
+const getTimestamp = () => {
+  const now = new Date()
+  return (
+    now.getFullYear() +
+    String(now.getMonth() + 1).padStart(2, "0") +
+    String(now.getDate()).padStart(2, "0") +
+    "_" +
+    String(now.getHours()).padStart(2, "0") +
+    String(now.getMinutes()).padStart(2, "0") +
+    String(now.getSeconds()).padStart(2, "0")
+  )
+}
+
+const formatPrice = (value: number) => {
+  if (!Number.isFinite(value)) return ""
+  return value.toFixed(2)
+}
+
+const formatPercent = (value: number) => {
+  if (!Number.isFinite(value)) return ""
+  return value % 1 === 0 ? `${value}%` : `${value.toFixed(2)}%`
+}
+
+const fetchCommissionProduct = async (link: string) => {
+  const keyword = extractJdKeyword(link)
+  const product = await fetchJdProduct(keyword, link)
+  const materialUrl = product.materialUrl || link
+  const standardUrl = materialUrl.includes("item.jd.com")
+    ? materialUrl
+    : await resolveJdUrl(materialUrl)
+  return {
+    ...product,
+    materialUrl,
+    standardUrl,
+    originalLink: link,
+  }
+}
+
 export default function CommissionPage() {
   const { showToast } = useToast()
   const [items, setItems] = useState<CommissionItem[]>([])
@@ -170,15 +353,26 @@ export default function CommissionPage() {
     sort: "price_asc",
   })
   const [processingOpen, setProcessingOpen] = useState(false)
+  const [progress, setProgress] = useState({ current: 0, total: 0 })
+  const [progressMessage, setProgressMessage] = useState("正在解析链接...")
   const [resultOpen, setResultOpen] = useState(false)
+  const [resultItems, setResultItems] = useState<{ label: string; value: string }[]>([])
+  const [resultHighlight, setResultHighlight] = useState({ label: "成功", value: "0 条" })
   const [selectVideoOpen, setSelectVideoOpen] = useState(false)
+  const [benchmarkVideos, setBenchmarkVideos] = useState<BenchmarkVideo[]>([])
+  const [benchmarkCategories, setBenchmarkCategories] = useState<BenchmarkCategory[]>([])
+  const [benchmarkFilter, setBenchmarkFilter] = useState("all")
   const [selectedVideos, setSelectedVideos] = useState<string[]>([])
   const [editTargetId, setEditTargetId] = useState<string | null>(null)
   const [archiveOpen, setArchiveOpen] = useState(false)
   const [archiveCategoryId, setArchiveCategoryId] = useState("")
   const [archiveTargetIds, setArchiveTargetIds] = useState<string[]>([])
   const [archiveSubmitting, setArchiveSubmitting] = useState(false)
+  const [clearOpen, setClearOpen] = useState(false)
+  const [lastExtractedIds, setLastExtractedIds] = useState<string[]>([])
+  const [lastNewIds, setLastNewIds] = useState<string[]>([])
   const authorRequestedRef = useRef<Set<string>>(new Set())
+  const processingRef = useRef(false)
 
   useEffect(() => {
     const localItems = getLocalItems()
@@ -305,6 +499,82 @@ export default function CommissionPage() {
     })
   }, [])
 
+  const getDedupeKey = useCallback((link: string, title: string) => {
+    const digits = extractDigitsFromLink(link)
+    if (digits) return digits
+    if (link) return link.trim().toLowerCase()
+    return title.trim().toLowerCase()
+  }, [])
+
+  const buildCommissionItem = useCallback(
+    (product: CommissionProduct, context: { sourceLink?: string; sourceAuthor?: string }) => {
+      const promoLink = product.standardUrl || product.materialUrl || product.originalLink || ""
+      const spec: Record<string, string> = {}
+      if (promoLink) spec[META_KEYS.promoLink] = promoLink
+      if (context.sourceLink) spec[META_KEYS.sourceLink] = context.sourceLink
+      if (context.sourceAuthor) spec[META_KEYS.sourceAuthor] = context.sourceAuthor
+      if (product.shopName) spec[META_KEYS.shopName] = product.shopName
+      if (product.sales30Days !== undefined && product.sales30Days !== null) {
+        spec[META_KEYS.sales30] = String(product.sales30Days)
+      }
+      if (product.comments !== undefined && product.comments !== null) {
+        spec[META_KEYS.comments] = String(product.comments)
+      }
+
+      return {
+        id: createId(),
+        title: product.title || "未命名商品",
+        price: Number(product.price || 0),
+        commissionRate: Number(product.commissionRate || 0),
+        image: product.image || "",
+        shopName: product.shopName || "",
+        source: context.sourceLink || "",
+        sales30: Number(product.sales30Days || 0),
+        comments: Number(product.comments || 0),
+        isFocused: false,
+        spec,
+      } as CommissionItem
+    },
+    []
+  )
+
+  const loadBenchmarkPickList = useCallback(
+    async (force = false) => {
+      const cache = getCache<{ categories: BenchmarkCategory[]; videos: BenchmarkVideo[] }>(
+        BENCHMARK_PICK_CACHE_KEY
+      )
+      const cached = getCacheData(cache)
+      if (cached?.videos?.length) {
+        setBenchmarkCategories(cached.categories || [])
+        setBenchmarkVideos(cached.videos || [])
+        if (!force && isFresh(cache, BENCHMARK_PICK_CACHE_TTL)) {
+          return cached.videos || []
+        }
+      }
+      try {
+        const data = await apiRequest<{ categories: BenchmarkCategory[]; entries: BenchmarkVideo[] }>(
+          "/api/benchmark/state?mode=pick"
+        )
+        const categoryList = Array.isArray(data.categories) ? data.categories : []
+        const entryList = Array.isArray(data.entries) ? data.entries : []
+        const categoryMap = new Map(categoryList.map((item) => [String(item.id), item.name]))
+        const videos = entryList.map((entry) => ({
+          ...entry,
+          category: categoryMap.get(String(entry.category_id || "")) || "未分类",
+        }))
+        setBenchmarkCategories(categoryList)
+        setBenchmarkVideos(videos)
+        setCache(BENCHMARK_PICK_CACHE_KEY, { categories: categoryList, videos })
+        return videos
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "加载对标视频失败"
+        showToast(message, "error")
+        return cached?.videos || []
+      }
+    },
+    [showToast]
+  )
+
   const buildArchiveSpec = useCallback((item: CommissionItem) => {
     const spec: Record<string, string> = { ...(item.spec || {}) }
     if (item.isFocused) {
@@ -359,6 +629,311 @@ export default function CommissionPage() {
     [buildArchiveSpec]
   )
 
+  const startProcessing = (message: string) => {
+    processingRef.current = true
+    setProcessingOpen(true)
+    setProgress({ current: 0, total: 0 })
+    setProgressMessage(message)
+    setResultOpen(false)
+  }
+
+  const finishProcessing = () => {
+    processingRef.current = false
+    setProcessingOpen(false)
+  }
+
+  const applyExtractionResult = (
+    summary: {
+      totalLinks: number
+      jdLinks: number
+      taobaoLinks: number
+      newCount: number
+      duplicateCount: number
+      failedLinks: { link: string; reason: string }[]
+    },
+    addedItems: CommissionItem[],
+    duplicateIds: string[]
+  ) => {
+    if (addedItems.length) {
+      updateLocalItems((prev) => [...addedItems, ...prev])
+    }
+    setLastNewIds(addedItems.map((item) => item.id))
+    setLastExtractedIds(
+      Array.from(new Set([...duplicateIds, ...addedItems.map((item) => item.id)]))
+    )
+    setResultItems([
+      { label: "总链接", value: `${summary.totalLinks} 条` },
+      { label: "京东链接", value: `${summary.jdLinks} 条` },
+      { label: "淘宝链接", value: `${summary.taobaoLinks} 条` },
+      { label: "重复", value: `${summary.duplicateCount} 条` },
+      { label: "失败", value: `${summary.failedLinks.length} 条` },
+    ])
+    setResultHighlight({ label: "新增商品", value: `${summary.newCount} 条` })
+    setResultOpen(true)
+  }
+
+  const extractFromBiliLinks = async (videoLinks: string[]) => {
+    const uniqueVideos = Array.from(new Set(videoLinks.map((link) => link.trim()).filter(Boolean)))
+    if (!uniqueVideos.length) {
+      showToast("请输入有效的B站链接", "info")
+      return
+    }
+    if (processingRef.current) {
+      showToast("正在解析中，请稍后", "info")
+      return
+    }
+    startProcessing("正在获取视频评论...")
+    const summary = {
+      totalLinks: 0,
+      jdLinks: 0,
+      taobaoLinks: 0,
+      newCount: 0,
+      duplicateCount: 0,
+      failedLinks: [] as { link: string; reason: string }[],
+    }
+    const addedItems: CommissionItem[] = []
+    const duplicateIds: string[] = []
+    const dedupeMap = new Map<string, CommissionItem>()
+    items.forEach((item) => {
+      const key = getDedupeKey(
+        item.spec?.[META_KEYS.promoLink] || item.spec?.[META_KEYS.sourceLink] || "",
+        item.title
+      )
+      if (key) dedupeMap.set(key, item)
+    })
+    const tracker = { total: 0, processed: 0 }
+
+    const addJdLinks = async (
+      links: string[],
+      context: { sourceLink?: string; sourceAuthor?: string }
+    ) => {
+      if (!links.length) return
+      tracker.total += links.length
+      setProgress({ current: tracker.processed, total: tracker.total })
+      setProgressMessage("正在获取商品信息...")
+      for (const link of links) {
+        try {
+          const product = await fetchCommissionProduct(link)
+          const promoLink = product.standardUrl || product.materialUrl || product.originalLink || link
+          const key = getDedupeKey(promoLink, product.title || "")
+          const existing = key ? dedupeMap.get(key) : undefined
+          if (existing) {
+            summary.duplicateCount += 1
+            duplicateIds.push(existing.id)
+          } else {
+            const item = buildCommissionItem(
+              { ...product, standardUrl: promoLink, originalLink: link },
+              context
+            )
+            if (key) {
+              dedupeMap.set(key, item)
+            }
+            addedItems.push(item)
+            summary.newCount += 1
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "解析失败"
+          summary.failedLinks.push({ link, reason: message })
+        } finally {
+          tracker.processed += 1
+          setProgress({ current: tracker.processed, total: tracker.total })
+        }
+      }
+    }
+
+    for (let i = 0; i < uniqueVideos.length; i += 1) {
+      const link = uniqueVideos[i]
+      try {
+        setProgressMessage(`正在获取评论 (${i + 1}/${uniqueVideos.length})`)
+        const commentData = await getPinnedComments(link)
+        const sourceAuthor = commentData.videoInfo?.author || ""
+        const linkObjects: string[] = []
+        commentData.pinnedComments.forEach((comment) => {
+          const items = extractLinksFromComment(comment, {
+            allowUnionClick: true,
+            allowTaobaoPromo: true,
+          })
+          items.forEach((item) => linkObjects.push(item.url))
+        })
+        commentData.subReplies.forEach((comment) => {
+          const items = extractLinksFromComment(comment, {
+            allowUnionClick: true,
+            allowTaobaoPromo: true,
+          })
+          items.forEach((item) => linkObjects.push(item.url))
+        })
+        const uniqueLinks = Array.from(new Set(linkObjects))
+        summary.totalLinks += uniqueLinks.length
+        const jdLinks = uniqueLinks.filter((item) => isJdLink(item))
+        const taobaoLinks = uniqueLinks.filter((item) => isTaobaoLink(item))
+        summary.jdLinks += jdLinks.length
+        summary.taobaoLinks += taobaoLinks.length
+        await addJdLinks(jdLinks, { sourceLink: link, sourceAuthor })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "解析视频失败"
+        summary.failedLinks.push({ link, reason: message })
+      }
+    }
+
+    finishProcessing()
+    if (summary.totalLinks === 0) {
+      showToast("未解析到可用商品链接", "info")
+      return
+    }
+    applyExtractionResult(summary, addedItems, duplicateIds)
+  }
+
+  const handleParsePromo = async () => {
+    if (processingRef.current) {
+      showToast("正在解析中，请稍后", "info")
+      return
+    }
+    const lines = parseLines(inputValue)
+    const jdLinks = lines.filter((line) => isJdLink(line))
+    if (!jdLinks.length) {
+      showToast("请粘贴有效的京东推广链接", "error")
+      return
+    }
+    startProcessing("正在解析推广链接...")
+    setProgressMessage("正在获取商品信息...")
+    const summary = {
+      totalLinks: jdLinks.length,
+      jdLinks: jdLinks.length,
+      taobaoLinks: 0,
+      newCount: 0,
+      duplicateCount: 0,
+      failedLinks: [] as { link: string; reason: string }[],
+    }
+    const addedItems: CommissionItem[] = []
+    const duplicateIds: string[] = []
+    const dedupeMap = new Map<string, CommissionItem>()
+    items.forEach((item) => {
+      const key = getDedupeKey(
+        item.spec?.[META_KEYS.promoLink] || item.spec?.[META_KEYS.sourceLink] || "",
+        item.title
+      )
+      if (key) dedupeMap.set(key, item)
+    })
+    const tracker = { total: jdLinks.length, processed: 0 }
+    setProgress({ current: 0, total: tracker.total })
+    for (const link of jdLinks) {
+      try {
+        const product = await fetchCommissionProduct(link)
+        const promoLink = product.standardUrl || product.materialUrl || product.originalLink || link
+        const key = getDedupeKey(promoLink, product.title || "")
+        const existing = key ? dedupeMap.get(key) : undefined
+        if (existing) {
+          summary.duplicateCount += 1
+          duplicateIds.push(existing.id)
+        } else {
+          const item = buildCommissionItem(
+            { ...product, standardUrl: promoLink, originalLink: link },
+            { sourceLink: link }
+          )
+          if (key) dedupeMap.set(key, item)
+          addedItems.push(item)
+          summary.newCount += 1
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "解析失败"
+        summary.failedLinks.push({ link, reason: message })
+      } finally {
+        tracker.processed += 1
+        setProgress({ current: tracker.processed, total: tracker.total })
+      }
+    }
+    finishProcessing()
+    applyExtractionResult(summary, addedItems, duplicateIds)
+  }
+
+  const handleClearAll = () => {
+    if (!items.length) {
+      showToast("暂无可清空的商品", "info")
+      return
+    }
+    setClearOpen(true)
+  }
+
+  const handleExport = () => {
+    if (!filteredItems.length) {
+      showToast("没有可导出的商品数据", "info")
+      return
+    }
+    const headers = [
+      "重点标记",
+      "商品名称",
+      "价格(元)",
+      "佣金(元)",
+      "佣金比例",
+      "30天销量",
+      "评价数",
+      "店铺名称",
+      "商品链接",
+      "来源",
+    ]
+    const rows = filteredItems.map((item) => {
+      const promoLink = item.spec?.[META_KEYS.promoLink] || item.spec?.[META_KEYS.sourceLink] || ""
+      const commission = (item.price * item.commissionRate) / 100
+      return [
+        item.isFocused ? "是" : "",
+        item.title || "",
+        formatPrice(item.price),
+        formatPrice(commission),
+        formatPercent(item.commissionRate),
+        item.sales30 || "",
+        item.comments || "",
+        item.shopName || "",
+        promoLink,
+        getSourceDisplay(item.spec),
+      ]
+    })
+    const workbook = XLSX.utils.book_new()
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows])
+    worksheet["!cols"] = [
+      { wch: 10 },
+      { wch: 40 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 10 },
+      { wch: 18 },
+      { wch: 60 },
+      { wch: 20 },
+    ]
+    XLSX.utils.book_append_sheet(workbook, worksheet, "商品佣金")
+    const filename = `带货商品_${getTimestamp()}.xlsx`
+    XLSX.writeFile(workbook, filename)
+  }
+
+  const handleOpenBenchmark = async () => {
+    const videos = await loadBenchmarkPickList()
+    if (!videos.length) {
+      showToast("还没有可用的对标视频记录", "info")
+      return
+    }
+    setBenchmarkFilter("all")
+    setSelectedVideos([])
+    setSelectVideoOpen(true)
+  }
+
+  const handleBenchmarkExtract = async () => {
+    const selected = benchmarkVideos.filter((item) => selectedVideos.includes(item.id))
+    if (!selected.length) {
+      showToast("请选择对标视频", "info")
+      return
+    }
+    const links = selected
+      .map((entry) => entry.link || (entry.bvid ? `https://www.bilibili.com/video/${entry.bvid}` : ""))
+      .filter(Boolean)
+    if (!links.length) {
+      showToast("所选视频无可用链接", "error")
+      return
+    }
+    setSelectVideoOpen(false)
+    await extractFromBiliLinks(links)
+  }
+
   const openArchive = (ids: string[]) => {
     if (!ids.length) {
       showToast("暂无可归档商品", "info")
@@ -412,121 +987,179 @@ export default function CommissionPage() {
     return items.filter((item) => targetSet.has(item.id) && !isItemArchived(item)).length
   }, [archiveTargetIds, items])
 
+  const moveItemsToTop = useCallback(
+    (ids: string[]) => {
+      if (!ids.length) return
+      const idSet = new Set(ids)
+      updateLocalItems((prev) => {
+        const top = prev.filter((item) => idSet.has(item.id))
+        const rest = prev.filter((item) => !idSet.has(item.id))
+        return [...top, ...rest]
+      })
+    },
+    [updateLocalItems]
+  )
+
   const sortedCategories = useMemo(
     () => categories.slice().sort((a, b) => a.sortOrder - b.sortOrder),
     [categories]
   )
 
+  const filteredBenchmarkVideos = useMemo(() => {
+    if (benchmarkFilter === "all") return benchmarkVideos
+    return benchmarkVideos.filter(
+      (item) => String(item.category_id || "") === benchmarkFilter
+    )
+  }, [benchmarkFilter, benchmarkVideos])
+
+  const benchmarkVideoItems = useMemo(
+    () =>
+      filteredBenchmarkVideos.map((item) => ({
+        id: item.id,
+        title: item.title || "未命名视频",
+        source: "B站",
+        tag: item.category || "未分类",
+      })),
+    [filteredBenchmarkVideos]
+  )
+
   return (
     <>
       <CommissionPageView
-      inputValue={inputValue}
-      onInputChange={setInputValue}
-      items={itemsView}
-      isProcessing={processingOpen}
-      progress={{ current: 0, total: 1 }}
-      resultOpen={resultOpen}
-      resultItems={[
-        { label: "总商品", value: "41 条" },
-        { label: "成功", value: "37 条" },
-        { label: "失败", value: "4 条" },
-        { label: "跳过", value: "0 条" },
-        { label: "无效", value: "0 条" },
-      ]}
-      resultHighlight={{ label: "成功", value: "37 条" }}
-      selectVideoOpen={selectVideoOpen}
-      videoItems={demoVideos}
-      selectedVideos={selectedVideos}
-      editTarget={
-        editTarget
-          ? {
-              id: editTarget.id,
-              title: editTarget.title,
-              price: editTarget.price,
-              commissionRate: editTarget.commissionRate,
-            }
-          : undefined
-      }
-      filters={filters}
-      onFilterChange={(key, value) =>
-        setFilters((prev) => ({ ...prev, [key]: value }))
-      }
-      onToggleFocus={(id) =>
-        updateLocalItems((prev) =>
-          prev.map((item) =>
-            item.id === id
-              ? {
-                  ...item,
-                  isFocused: !item.isFocused,
-                  spec: {
-                    ...(item.spec || {}),
-                    [META_KEYS.featured]: (!item.isFocused).toString(),
-                  },
-                }
-              : item
-          )
-        )
-      }
-      onEdit={(id) => setEditTargetId(id)}
-      onArchive={(id) => openArchive([id])}
-      onDelete={(id) => {
-        updateLocalItems((prev) => prev.filter((item) => item.id !== id))
-        showToast("删除成功", "success")
-      }}
-      onParseBili={() => {
-        if (!inputValue.trim()) {
-          showToast("请输入链接", "info")
-          return
+        inputValue={inputValue}
+        onInputChange={setInputValue}
+        items={itemsView}
+        isProcessing={processingOpen}
+        progress={progress}
+        progressMessage={progressMessage}
+        resultOpen={resultOpen}
+        resultItems={resultItems}
+        resultHighlight={resultHighlight}
+        selectVideoOpen={selectVideoOpen}
+        videoItems={benchmarkVideoItems}
+        videoCategories={benchmarkCategories}
+        videoCategoryFilter={benchmarkFilter}
+        onVideoCategoryChange={setBenchmarkFilter}
+        selectedVideos={selectedVideos}
+        editTarget={
+          editTarget
+            ? {
+                id: editTarget.id,
+                title: editTarget.title,
+                price: editTarget.price,
+                commissionRate: editTarget.commissionRate,
+              }
+            : undefined
         }
-        setProcessingOpen(true)
-      }}
-      onParsePromo={() => {
-        if (!inputValue.trim()) {
-          showToast("请输入链接", "info")
-          return
+        filters={filters}
+        onFilterChange={(key, value) =>
+          setFilters((prev) => ({ ...prev, [key]: value }))
         }
-        setProcessingOpen(true)
-      }}
-      onParseBenchmark={() => setSelectVideoOpen(true)}
-      onCloseProgress={() => setProcessingOpen(false)}
-      onCloseResult={() => setResultOpen(false)}
-      onSortAll={() => {
-        setResultOpen(false)
-        showToast("已将全部商品置顶", "success")
-      }}
-      onSortNew={() => {
-        setResultOpen(false)
-        showToast("已将新增商品置顶", "success")
-      }}
-      onToggleVideo={(id) =>
-        setSelectedVideos((prev) =>
-          prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-        )
-      }
-      onStartExtract={() => {
-        setSelectVideoOpen(false)
-        setProcessingOpen(true)
-      }}
-      onCloseSelectVideo={() => setSelectVideoOpen(false)}
-      onSaveEdit={(payload) => {
-        if (!editTarget) return
-        updateLocalItems((prev) =>
-          prev.map((item) =>
-            item.id === editTarget.id
-              ? {
-                  ...item,
-                  title: payload.title,
-                  price: payload.price,
-                  commissionRate: payload.commissionRate,
-                }
-              : item
+        onToggleFocus={(id) =>
+          updateLocalItems((prev) =>
+            prev.map((item) =>
+              item.id === id
+                ? {
+                    ...item,
+                    isFocused: !item.isFocused,
+                    spec: {
+                      ...(item.spec || {}),
+                      [META_KEYS.featured]: (!item.isFocused).toString(),
+                    },
+                  }
+                : item
+            )
           )
-        )
-        showToast("保存成功", "success")
-      }}
-      onCloseEdit={() => setEditTargetId(null)}
-      onArchiveAll={() => openArchive(filteredItems.map((item) => item.id))}
-    />
+        }
+        onEdit={(id) => setEditTargetId(id)}
+        onArchive={(id) => openArchive([id])}
+        onDelete={(id) => {
+          updateLocalItems((prev) => prev.filter((item) => item.id !== id))
+          showToast("删除成功", "success")
+        }}
+        onClearAll={handleClearAll}
+        onExport={handleExport}
+        onDownloadImages={() => showToast("下载图片功能待迁移", "info")}
+        onParseBili={() => {
+          const urls = parseLines(inputValue).filter((line) => isBilibiliInput(line))
+          void extractFromBiliLinks(urls)
+        }}
+        onParsePromo={() => {
+          void handleParsePromo()
+        }}
+        onParseBenchmark={() => {
+          void handleOpenBenchmark()
+        }}
+        onCloseProgress={() => setProcessingOpen(false)}
+        onCloseResult={() => setResultOpen(false)}
+        onSortAll={() => {
+          if (!lastExtractedIds.length) {
+            showToast("暂无可置顶的商品", "info")
+            return
+          }
+          moveItemsToTop(lastExtractedIds)
+          setResultOpen(false)
+          showToast("已将提取商品置顶", "success")
+        }}
+        onSortNew={() => {
+          if (!lastNewIds.length) {
+            showToast("暂无新增商品", "info")
+            return
+          }
+          moveItemsToTop(lastNewIds)
+          setResultOpen(false)
+          showToast("已将新增商品置顶", "success")
+        }}
+        onToggleVideo={(id) =>
+          setSelectedVideos((prev) =>
+            prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+          )
+        }
+        onStartExtract={() => {
+          void handleBenchmarkExtract()
+        }}
+        onCloseSelectVideo={() => setSelectVideoOpen(false)}
+        onSaveEdit={(payload) => {
+          if (!editTarget) return
+          updateLocalItems((prev) =>
+            prev.map((item) =>
+              item.id === editTarget.id
+                ? {
+                    ...item,
+                    title: payload.title,
+                    price: payload.price,
+                    commissionRate: payload.commissionRate,
+                  }
+                : item
+            )
+          )
+          showToast("保存成功", "success")
+        }}
+        onCloseEdit={() => setEditTargetId(null)}
+        onArchiveAll={() => openArchive(filteredItems.map((item) => item.id))}
+      />
+      <AlertDialog open={clearOpen} onOpenChange={setClearOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认清空列表？</AlertDialogTitle>
+            <AlertDialogDescription>清空后将移除当前列表的全部商品。</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                updateLocalItems(() => [])
+                setClearOpen(false)
+                setLastExtractedIds([])
+                setLastNewIds([])
+                showToast("已清空列表", "success")
+              }}
+            >
+              确认清空
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <CommissionArchiveModal
         isOpen={archiveOpen}
         categories={sortedCategories}

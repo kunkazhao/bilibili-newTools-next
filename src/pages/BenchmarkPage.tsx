@@ -34,10 +34,8 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   Field,
   FieldContent,
-  FieldDescription,
   FieldLabel,
   FieldSet,
-  FieldTitle,
 } from "@/components/ui/field"
 import { apiRequest } from "@/lib/api"
 
@@ -152,6 +150,7 @@ export default function BenchmarkPage() {
   const [categoryOpen, setCategoryOpen] = useState(false)
   const [categoryInput, setCategoryInput] = useState("")
   const [categorySubmitting, setCategorySubmitting] = useState(false)
+  const [categoryUpdatingId, setCategoryUpdatingId] = useState<string | null>(null)
 
   const [entryToDelete, setEntryToDelete] = useState<BenchmarkEntry | null>(null)
   const [categoryToDelete, setCategoryToDelete] = useState<BenchmarkCategory | null>(null)
@@ -159,16 +158,6 @@ export default function BenchmarkPage() {
   const categoryMap = useMemo(() => {
     return new Map(categories.map((item) => [String(item.id), item]))
   }, [categories])
-
-  const categoryCounts = useMemo(() => {
-    const map = new Map<string, number>()
-    entries.forEach((entry) => {
-      const id = entry.category_id ? String(entry.category_id) : ""
-      if (!id) return
-      map.set(id, (map.get(id) ?? 0) + 1)
-    })
-    return map
-  }, [entries])
 
   const filteredEntries = useMemo(() => {
     const keyword = searchValue.trim()
@@ -387,6 +376,53 @@ export default function BenchmarkPage() {
       showToast(message, "error")
     } finally {
       setCategoryToDelete(null)
+    }
+  }
+
+  const updateCategoryName = async (category: BenchmarkCategory, nextValue: string) => {
+    const trimmed = nextValue.trim()
+    if (!trimmed) {
+      showToast("分类名称不能为空", "error")
+      return
+    }
+    if (trimmed === category.name) return
+    const exists = categories.some(
+      (item) => String(item.id) !== String(category.id) && item.name.trim() === trimmed
+    )
+    if (exists) {
+      showToast("分类名称重复", "error")
+      return
+    }
+    if (categoryUpdatingId) return
+    const keepFilter = filter === String(category.id)
+    setCategoryUpdatingId(String(category.id))
+    try {
+      const color = category.color || pickCategoryColor(trimmed, category.id)
+      const data = await apiRequest<{ category?: BenchmarkCategory }>("/api/benchmark/categories", {
+        method: "POST",
+        body: JSON.stringify({ name: trimmed, color }),
+      })
+      const created = data?.category
+      if (!created?.id) {
+        throw new Error("分类更新失败")
+      }
+      const targetEntries = entries.filter((entry) => String(entry.category_id || "") === String(category.id))
+      for (const entry of targetEntries) {
+        await apiRequest(`/api/benchmark/entries/${entry.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ category_id: created.id }),
+        })
+      }
+      await apiRequest(`/api/benchmark/categories/${category.id}`, { method: "DELETE" })
+      await loadState()
+      if (keepFilter) setFilter(String(created.id))
+      showToast("分类已更新", "success")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "分类更新失败"
+      showToast(message, "error")
+      await loadState()
+    } finally {
+      setCategoryUpdatingId(null)
     }
   }
 
@@ -662,56 +698,45 @@ export default function BenchmarkPage() {
             <DialogTitle>分类管理</DialogTitle>
             <DialogDescription>支持空格分隔一次新增多个分类。</DialogDescription>
           </DialogHeader>
-          <FieldSet>
-            <Field>
-              <FieldLabel>新增分类</FieldLabel>
-              <FieldContent>
-                <div className="flex flex-wrap gap-2">
-                  <Input
-                    value={categoryInput}
-                    onChange={(event) => setCategoryInput(event.target.value)}
-                    placeholder="例如：键盘 鼠标 耳机"
-                  />
-                  <Button type="button" onClick={handleCreateCategory} disabled={categorySubmitting}>
-                    {categorySubmitting ? "新增中..." : "新增"}
-                  </Button>
-                </div>
-              </FieldContent>
-              <FieldDescription>同一行可输入多个名称，系统自动拆分。</FieldDescription>
-            </Field>
-          </FieldSet>
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                className="min-w-[220px] flex-1"
+                value={categoryInput}
+                onChange={(event) => setCategoryInput(event.target.value)}
+                placeholder="例如：键盘 鼠标 耳机"
+              />
+              <Button type="button" onClick={handleCreateCategory} disabled={categorySubmitting}>
+                {categorySubmitting ? "新增中..." : "新增"}
+              </Button>
+            </div>
 
-          <div className="space-y-2">
-            <FieldTitle>已有分类</FieldTitle>
             {categories.length === 0 ? (
               <Empty title="暂无分类" description="先新增分类再添加对标视频。" />
             ) : (
-              categories.map((category) => {
-                const count = categoryCounts.get(String(category.id)) ?? 0
-                return (
-                  <div
-                    key={category.id}
-                    className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span
-                        className="h-2.5 w-2.5 rounded-full"
-                        style={{ backgroundColor: category.color || pickCategoryColor(category.name, category.id) }}
+              <div className="space-y-2">
+                {categories.map((category) => {
+                  return (
+                    <div key={category.id} className="modal-list-row">
+                      <Input
+                        className="flex-1"
+                        key={`${category.id}-${category.name}`}
+                        defaultValue={category.name}
+                        disabled={categoryUpdatingId === String(category.id)}
+                        onBlur={(event) => updateCategoryName(category, event.target.value)}
                       />
-                      <span className="text-sm text-slate-700">{category.name}</span>
-                      <span className="text-xs text-slate-400">{count} 个视频</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                        onClick={() => setCategoryToDelete(category)}
+                      >
+                        删除
+                      </Button>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 px-3 text-rose-500 hover:text-rose-600"
-                      onClick={() => setCategoryToDelete(category)}
-                    >
-                      删除
-                    </Button>
-                  </div>
-                )
-              })
+                  )
+                })}
+              </div>
             )}
           </div>
         </DialogContent>

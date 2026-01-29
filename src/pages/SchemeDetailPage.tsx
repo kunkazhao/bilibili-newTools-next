@@ -867,6 +867,12 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     } as Record<string, string>
   }
 
+  const getMissingPresetFields = (item: SchemeItem) => {
+    if (!presetFields.length) return []
+    const params = stripMetaSpec(item.spec || {})
+    return presetFields.filter((field) => !String(params[field] ?? "").trim())
+  }
+
   const computeTemplateMissingText = () => {
     const template = imageTemplates.find((item) => item.id === activeTemplateId)
     if (!template?.html) return "缺失字段：暂无模板"
@@ -915,6 +921,10 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       .join("、")
     return `缺失字段：${list}`
   }
+
+  useEffect(() => {
+    setTemplateMissing(computeTemplateMissingText())
+  }, [activeTemplateId, imageTemplates, presetFields, items])
 
   const applyTemplateFields = (
     root: HTMLElement,
@@ -1389,6 +1399,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
               <div className="mt-4 space-y-4">
                 {filteredItems.map((item) => {
                   const meta = getMeta(item.spec)
+                  const missingFields = getMissingPresetFields(item)
                   return (
                     <div
                       key={item.id}
@@ -1442,6 +1453,11 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
                           </p>
                         </div>
                       </div>
+                      {missingFields.length ? (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                          缺失：{missingFields.join("、")}
+                        </div>
+                      ) : null}
                       <div className="text-xs text-slate-500">总结：{item.remark || ""}</div>
                     </div>
                   )

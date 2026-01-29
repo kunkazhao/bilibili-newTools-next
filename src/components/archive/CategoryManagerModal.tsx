@@ -1,6 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from "react"
 import ModalForm from "@/components/ModalForm"
-import PrimaryButton from "@/components/PrimaryButton"
 import { Button } from "@/components/ui/button"
 import type { CategoryItem } from "@/components/archive/types"
 
@@ -109,9 +108,9 @@ export default function CategoryManagerModal({
           value={newName}
           onChange={(event) => setNewName(event.target.value)}
         />
-        <PrimaryButton type="button" onClick={handleAdd}>
+        <Button type="button" onClick={handleAdd}>
           新增
-        </PrimaryButton>
+        </Button>
       </div>
 
       {errorMessage ? <div className="text-xs text-rose-500">{errorMessage}</div> : null}
@@ -120,7 +119,7 @@ export default function CategoryManagerModal({
         {drafts.map((item) => (
           <div
             key={item.id}
-            className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2"
+            className="modal-list-row"
             draggable
             onDragStart={() => setDragId(item.id)}
             onDragOver={(event) => event.preventDefault()}
@@ -128,17 +127,18 @@ export default function CategoryManagerModal({
           >
             <span className="cursor-grab text-xs text-slate-400">拖拽</span>
             <input
-              className="flex-1 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
+              className="modal-list-field bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
               value={item.name}
               onChange={(event) => handleUpdate(item.id, event.target.value)}
             />
             <Button
               type="button"
-              variant="ghost"
-              className="h-9 w-9 rounded-md border border-slate-200 text-slate-500"
+              variant="outline"
+              size="sm"
+              className="border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
               onClick={() => handleRemove(item.id)}
             >
-              ×
+              删除
             </Button>
           </div>
         ))}

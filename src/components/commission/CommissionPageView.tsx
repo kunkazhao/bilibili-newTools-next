@@ -22,11 +22,15 @@ interface CommissionPageViewProps {
   items: CommissionItemView[]
   isProcessing: boolean
   progress: { current: number; total: number }
+  progressMessage: string
   resultOpen: boolean
   resultItems: { label: string; value: string }[]
   resultHighlight: { label: string; value: string }
   selectVideoOpen: boolean
   videoItems: VideoItem[]
+  videoCategories: { id: string; name: string }[]
+  videoCategoryFilter: string
+  onVideoCategoryChange: (value: string) => void
   selectedVideos: string[]
   editTarget?: { id: string; title: string; price: number; commissionRate: number }
   filters: {
@@ -45,6 +49,9 @@ interface CommissionPageViewProps {
   onArchive: (id: string) => void
   onArchiveAll: () => void
   onDelete: (id: string) => void
+  onClearAll: () => void
+  onExport: () => void
+  onDownloadImages: () => void
   onParseBili: () => void
   onParsePromo: () => void
   onParseBenchmark: () => void
@@ -98,11 +105,15 @@ export default function CommissionPageView({
   items,
   isProcessing,
   progress,
+  progressMessage,
   resultOpen,
   resultItems,
   resultHighlight,
   selectVideoOpen,
   videoItems,
+  videoCategories,
+  videoCategoryFilter,
+  onVideoCategoryChange,
   selectedVideos,
   editTarget,
   filters,
@@ -112,6 +123,9 @@ export default function CommissionPageView({
   onArchive,
   onArchiveAll,
   onDelete,
+  onClearAll,
+  onExport,
+  onDownloadImages,
   onParseBili,
   onParsePromo,
   onParseBenchmark,
@@ -148,11 +162,24 @@ export default function CommissionPageView({
               {items.length}
             </span>
             <div className="flex items-center gap-3 text-xs text-slate-400">
-              <button className="text-rose-500" type="button">
+              <button
+                className="text-rose-500 disabled:text-slate-300"
+                type="button"
+                onClick={onClearAll}
+                disabled={items.length === 0}
+              >
                 清空列表
               </button>
-              <button type="button">下载图片</button>
-              <button type="button">导出表格</button>
+              <button
+                type="button"
+                onClick={onDownloadImages}
+                disabled={items.length === 0}
+              >
+                下载图片
+              </button>
+              <button type="button" onClick={onExport} disabled={items.length === 0}>
+                导出表格
+              </button>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -227,7 +254,7 @@ export default function CommissionPageView({
       <CommissionProgressModal
         isOpen={isProcessing}
         title="解析进度"
-        message="正在解析链接..."
+        message={progressMessage}
         current={progress.current}
         total={progress.total}
         onClose={onCloseProgress}
@@ -246,6 +273,9 @@ export default function CommissionPageView({
       <CommissionSelectVideoModal
         isOpen={selectVideoOpen}
         items={videoItems}
+        categories={videoCategories}
+        activeCategory={videoCategoryFilter}
+        onCategoryChange={onVideoCategoryChange}
         selected={selectedVideos}
         onToggle={onToggleVideo}
         onStart={onStartExtract}

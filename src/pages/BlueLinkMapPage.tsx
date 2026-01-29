@@ -1,6 +1,16 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -199,6 +209,11 @@ export default function BlueLinkMapPage() {
   const [progressFailures, setProgressFailures] = useState<ProgressFailure[]>([])
   const [progressCancelled, setProgressCancelled] = useState(false)
   const [progressRunning, setProgressRunning] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [confirmTitle, setConfirmTitle] = useState("")
+  const [confirmDescription, setConfirmDescription] = useState("")
+  const [confirmActionLabel, setConfirmActionLabel] = useState("确认")
+  const confirmActionRef = useRef<null | (() => Promise<void> | void)>(null)
 
   const itemsAllRef = useRef<SourcingItem[]>([])
   const itemsByIdRef = useRef<Map<string, SourcingItem>>(new Map())
@@ -214,8 +229,11 @@ export default function BlueLinkMapPage() {
       const categoryMatch = !activeCategoryId || entry.category_id === activeCategoryId
       if (!accountMatch || !categoryMatch) return false
       if (!searchValue.trim()) return true
-      const keyword = searchValue.trim()
-      return entry.product_title?.includes(keyword) || entry.source_link?.includes(keyword)
+      const keyword = searchValue.trim().toLowerCase()
+      const matchedItem = entry.product_id ? itemsByIdRef.current.get(entry.product_id) : null
+      const title = String(matchedItem?.title || entry.product_title || "").toLowerCase()
+      const link = String(entry.source_link || "").toLowerCase()
+      return title.includes(keyword) || link.includes(keyword)
     })
   }, [entries, activeAccountId, activeCategoryId, searchValue])
 
@@ -382,7 +400,7 @@ export default function BlueLinkMapPage() {
     if (!editingEntry) return
     const link = editLink.trim()
     if (!link) {
-      showToast("请输入蓝链", "error")
+      showToast("蓝链链接不能为空", "error")
       return
     }
     try {
@@ -411,6 +429,28 @@ export default function BlueLinkMapPage() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "删除失败"
       showToast(message, "error")
+    }
+  }
+
+  const openConfirm = (options: {
+    title: string
+    description?: string
+    actionLabel?: string
+    onConfirm: () => Promise<void> | void
+  }) => {
+    setConfirmTitle(options.title)
+    setConfirmDescription(options.description || "")
+    setConfirmActionLabel(options.actionLabel || "确认")
+    confirmActionRef.current = options.onConfirm
+    setConfirmOpen(true)
+  }
+
+  const handleConfirmAction = async () => {
+    const action = confirmActionRef.current
+    confirmActionRef.current = null
+    setConfirmOpen(false)
+    if (action) {
+      await action()
     }
   }
 
@@ -453,20 +493,30 @@ export default function BlueLinkMapPage() {
   }
 
   const deleteAccount = async (accountId: string) => {
-    const confirmed = window.confirm("确认删除该账号吗？该账号的蓝链映射都会被移除。")
-    if (!confirmed) return
-    try {
-      await apiRequest(`/api/comment/accounts/${accountId}`, { method: "DELETE" })
-      await refreshState()
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "删除失败"
-      showToast(message, "error")
-    }
+    const name = accounts.find((account) => account.id === accountId)?.name || "该账号"
+    openConfirm({
+      title: "删除账号",
+      description: `确认删除【${name}】吗？该账号的蓝链映射都会被移除。`,
+      actionLabel: "确认删除",
+      onConfirm: async () => {
+        try {
+          await apiRequest(`/api/comment/accounts/${accountId}`, { method: "DELETE" })
+          await refreshState()
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "删除失败"
+          showToast(message, "error")
+        }
+      },
+    })
   }
 
   const addCategoryByName = async () => {
-    if (!activeAccountId || activeAccountId === ALL_ACCOUNTS_ID) {
+    if (!activeAccountId) {
       setCategoryError("请先选择账号")
+      return
+    }
+    if (activeAccountId === ALL_ACCOUNTS_ID) {
+      setCategoryError("全部账号不支持分类管理")
       return
     }
     const trimmed = categoryNameInput.trim()
@@ -496,15 +546,21 @@ export default function BlueLinkMapPage() {
   }
 
   const deleteCategory = async (categoryId: string) => {
-    const confirmed = window.confirm("确认删除该分类吗？")
-    if (!confirmed) return
-    try {
-      await apiRequest(`/api/blue-link-map/categories/${categoryId}`, { method: "DELETE" })
-      setCategories((prev) => prev.filter((item) => item.id !== categoryId))
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "删除分类失败"
-      showToast(message, "error")
-    }
+    const name = categories.find((category) => category.id === categoryId)?.name || "该分类"
+    openConfirm({
+      title: "删除分类",
+      description: `删除后分类【${name}】下的映射都会被移除，确认删除？`,
+      actionLabel: "确认删除",
+      onConfirm: async () => {
+        try {
+          await apiRequest(`/api/blue-link-map/categories/${categoryId}`, { method: "DELETE" })
+          setCategories((prev) => prev.filter((item) => item.id !== categoryId))
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "删除分类失败"
+          showToast(message, "error")
+        }
+      },
+    })
   }
 
   const loadPickerItems = async (reset = false) => {
@@ -657,7 +713,7 @@ export default function BlueLinkMapPage() {
     if (progressRunning) return
     const targetEntries = filteredEntries.filter((entry) => !entry.product_id)
     if (!targetEntries.length) {
-      showToast("当前没有未映射蓝链", "info")
+      showToast("当前页没有未映射蓝链", "info")
       return
     }
     showProgressModal(targetEntries.length, "映射")
@@ -803,7 +859,8 @@ export default function BlueLinkMapPage() {
             type="button"
             onClick={() => setActiveAccountId(ALL_ACCOUNTS_ID)}
           >
-            <span>全部账号</span>
+            <span>全部</span>
+            <span className="text-xs text-slate-400">{entries.length}</span>
           </button>
           {accounts.map((account) => (
             <button
@@ -841,7 +898,15 @@ export default function BlueLinkMapPage() {
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex flex-wrap gap-2">
-              {activeAccountId && activeAccountId !== ALL_ACCOUNTS_ID ? (
+              {!activeAccountId ? (
+                <span className="text-xs text-slate-400">请先选择账号。</span>
+              ) : activeAccountId === ALL_ACCOUNTS_ID ? (
+                <span className="rounded-full border border-brand bg-brand/10 px-3 py-1 text-xs text-brand">
+                  全部账号
+                </span>
+              ) : categories.filter((category) => category.account_id === activeAccountId).length === 0 ? (
+                <span className="text-xs text-slate-400">暂无分类，请在分类管理中添加。</span>
+              ) : (
                 categories
                   .filter((category) => category.account_id === activeAccountId)
                   .map((category) => (
@@ -858,8 +923,6 @@ export default function BlueLinkMapPage() {
                       {category.name}
                     </button>
                   ))
-              ) : (
-                <span className="text-xs text-slate-400">全部账号不支持分类筛选</span>
               )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1002,7 +1065,7 @@ export default function BlueLinkMapPage() {
             </div>
             <div className="max-h-[320px] space-y-2 overflow-auto">
               {accounts.map((account) => (
-                <div key={account.id} className="flex items-center gap-2 rounded-lg border border-slate-200 p-2">
+                <div key={account.id} className="modal-list-row">
                   <Input
                     defaultValue={account.name}
                     onBlur={(event) => updateAccountName(account.id, event.target.value)}
@@ -1041,26 +1104,35 @@ export default function BlueLinkMapPage() {
                   setCategoryNameInput(event.target.value)
                   setCategoryError("")
                 }}
+                disabled={!activeAccountId || activeAccountId === ALL_ACCOUNTS_ID}
               />
-              <Button onClick={addCategoryByName}>新增</Button>
+              <Button onClick={addCategoryByName} disabled={!activeAccountId || activeAccountId === ALL_ACCOUNTS_ID}>
+                新增
+              </Button>
             </div>
             {categoryError ? <p className="text-xs text-rose-500">{categoryError}</p> : null}
-            <div className="max-h-[320px] space-y-2 overflow-auto">
-              {categories
-                .filter((category) => category.account_id === activeAccountId)
-                .map((category) => (
-                  <div key={category.id} className="flex items-center justify-between rounded-lg border border-slate-200 p-2">
-                    <span className="text-sm text-slate-700">{category.name}</span>
-                    <Button
-                      variant="outline"
-                      className="border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-                      onClick={() => deleteCategory(category.id)}
-                    >
-                      删除
-                    </Button>
-                  </div>
-                ))}
-            </div>
+            {!activeAccountId ? (
+              <p className="text-xs text-slate-400">请先选择账号。</p>
+            ) : activeAccountId === ALL_ACCOUNTS_ID ? (
+              <p className="text-xs text-slate-400">全部账号不支持分类管理。</p>
+            ) : (
+              <div className="max-h-[320px] space-y-2 overflow-auto">
+                {categories
+                  .filter((category) => category.account_id === activeAccountId)
+                  .map((category) => (
+                    <div key={category.id} className="modal-list-row">
+                      <div className="modal-list-field">{category.name}</div>
+                      <Button
+                        variant="outline"
+                        className="border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                        onClick={() => deleteCategory(category.id)}
+                      >
+                        删除
+                      </Button>
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setCategoryModalOpen(false)}>
@@ -1178,6 +1250,21 @@ export default function BlueLinkMapPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmTitle}</AlertDialogTitle>
+            {confirmDescription ? (
+              <AlertDialogDescription>{confirmDescription}</AlertDialogDescription>
+            ) : null}
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmAction}>{confirmActionLabel}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

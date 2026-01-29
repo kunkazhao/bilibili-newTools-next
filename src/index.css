@@ -4,6 +4,16 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  .modal-list-row {
+    @apply flex items-center gap-2 rounded-lg p-2;
+  }
+
+  .modal-list-field {
+    @apply flex-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700;
+  }
+}
+
 :root {
   color-scheme: light;
 }

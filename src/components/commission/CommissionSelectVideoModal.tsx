@@ -26,6 +26,9 @@ export interface VideoItem {
 interface CommissionSelectVideoModalProps {
   isOpen: boolean
   items: VideoItem[]
+  categories: { id: string; name: string }[]
+  activeCategory: string
+  onCategoryChange: (value: string) => void
   selected: string[]
   onToggle: (id: string) => void
   onStart: () => void
@@ -35,6 +38,9 @@ interface CommissionSelectVideoModalProps {
 export default function CommissionSelectVideoModal({
   isOpen,
   items,
+  categories,
+  activeCategory,
+  onCategoryChange,
   selected,
   onToggle,
   onStart,
@@ -47,12 +53,17 @@ export default function CommissionSelectVideoModal({
           <div className="space-y-2">
             <DialogTitle>选择对标视频</DialogTitle>
             <div className="w-32">
-              <Select defaultValue="all">
+              <Select value={activeCategory} onValueChange={onCategoryChange}>
                 <SelectTrigger>
                   <SelectValue placeholder="全部" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">全部</SelectItem>
+                  {categories.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
