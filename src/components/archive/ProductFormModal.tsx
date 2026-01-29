@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import ModalForm from "@/components/ModalForm"
 import {
   Select,
@@ -10,12 +10,8 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-import {
-  Toast,
-  ToastDescription,
-  ToastProvider,
-  ToastViewport,
-} from "@/components/ui/toast"
+import { useToast } from "@/components/Toast"
+import { apiRequest } from "@/lib/api"
 
 interface CategoryOption {
   label: string
@@ -46,9 +42,6 @@ interface ProductFormModalProps {
   initialValues?: ProductFormValues
   onClose: () => void
   onSubmit: (values: ProductFormValues) => void
-  onParsePromo?: (link: string) => void
-  toast?: { message: string; variant?: "default" | "success" | "error" | "info" }
-  onToastDismiss?: () => void
 }
 
 const emptyValues: ProductFormValues = {
@@ -68,6 +61,126 @@ const emptyValues: ProductFormValues = {
   params: {},
 }
 
+type JdProductInfo = {
+  title: string
+  price?: number
+  commission?: number
+  commissionRate?: number
+  sales30Days?: number
+  comments?: number
+  image?: string
+  shopName?: string
+  materialUrl?: string
+  standardUrl?: string
+}
+
+const parseMaybeJson = (value: unknown) => {
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value) as unknown
+    } catch {
+      return null
+    }
+  }
+  return value ?? null
+}
+
+const extractQueryResult = (payload: Record<string, any>) => {
+  const direct = parseMaybeJson(payload?.queryResult)
+  if (direct) return direct as Record<string, any>
+  const msgPayload = parseMaybeJson(payload?.msg) as Record<string, any> | null
+  const nested = msgPayload?.jd_union_open_goods_query_responce as Record<string, any> | undefined
+  const queryResult = nested?.queryResult ?? msgPayload?.queryResult
+  return parseMaybeJson(queryResult) as Record<string, any> | null
+}
+
+const normalizeNumber = (value: unknown) => {
+  if (value === null || value === undefined) return undefined
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : undefined
+}
+
+const ensureHttp = (value: string) => {
+  if (!value) return ""
+  if (value.startsWith("http://") || value.startsWith("https://")) return value
+  return `https://${value}`
+}
+
+const pickImageUrl = (product: Record<string, any>) => {
+  const imageInfo = product?.imageInfo
+  const list = imageInfo?.imageList ?? product?.imageList ?? product?.imageUrls ?? []
+  if (Array.isArray(list) && list.length > 0) {
+    const first = list[0]
+    if (typeof first === "string") return first
+    if (first?.url) return first.url as string
+  }
+  if (typeof product?.image === "string") return product.image as string
+  if (typeof product?.imgUrl === "string") return product.imgUrl as string
+  return ""
+}
+
+const extractJdKeyword = (url: string) => {
+  if (!url) return url
+  const itemMatch = url.match(/item\.jd\.com\/(\d+)\.html/i)
+  if (itemMatch) return itemMatch[1]
+  if (url.includes("union-click.jd.com") || url.includes("jdc.jd.com")) return url
+  if (url.includes("jingfen.jd.com")) return url
+  const skuMatch = url.match(/sku\/(\d+)/i)
+  if (skuMatch) return skuMatch[1]
+  const productMatch = url.match(/product\/(\d+)/i)
+  if (productMatch) return productMatch[1]
+  const paramMatch = url.match(/[?&](?:skuId|sku|productId|wareId|id)=(\d{6,})/i)
+  if (paramMatch) return paramMatch[1]
+  return url
+}
+
+const resolveJdUrl = async (url: string) => {
+  if (!url || url.includes("item.jd.com")) return url
+  try {
+    const data = await apiRequest<{ resolvedUrl?: string }>("/api/jd/resolve", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    })
+    return data.resolvedUrl || url
+  } catch {
+    return url
+  }
+}
+
+const fetchJdProduct = async (keyword: string, originalLink: string) => {
+  const data = await apiRequest<Record<string, any>>("/api/jd/product", {
+    method: "POST",
+    body: JSON.stringify({ keyword }),
+  })
+
+  const code = data?.code
+  if (code !== undefined && code !== "0" && code !== 0) {
+    throw new Error(data?.msg || "商品解析失败")
+  }
+
+  const queryResult = extractQueryResult(data)
+  if (!queryResult || queryResult?.code !== 200 || !Array.isArray(queryResult?.data)) {
+    throw new Error("未找到商品信息")
+  }
+  const product = queryResult.data[0] as Record<string, any> | undefined
+  if (!product) {
+    throw new Error("未找到商品信息")
+  }
+
+  const materialUrl = ensureHttp(product?.materialUrl || originalLink)
+  return {
+    title: (product?.skuName as string) || "未知商品",
+    price: normalizeNumber(product?.priceInfo?.price),
+    commission: normalizeNumber(product?.commissionInfo?.commission),
+    commissionRate: normalizeNumber(product?.commissionInfo?.commissionShare),
+    sales30Days: normalizeNumber(product?.inOrderCount30Days),
+    comments: normalizeNumber(product?.comments),
+    image: pickImageUrl(product),
+    shopName: (product?.shopInfo?.shopName as string) || "",
+    materialUrl,
+  } as JdProductInfo
+}
+
 export default function ProductFormModal({
   isOpen,
   categories,
@@ -75,17 +188,25 @@ export default function ProductFormModal({
   initialValues,
   onClose,
   onSubmit,
-  onParsePromo,
-  toast,
-  onToastDismiss,
 }: ProductFormModalProps) {
+  const { showToast } = useToast()
   const [values, setValues] = useState<ProductFormValues>(emptyValues)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [isParsing, setIsParsing] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
+  const coverInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     setValues(initialValues ?? emptyValues)
     setErrors({})
   }, [initialValues, isOpen])
+
+  const computedCommission = useMemo(() => {
+    const price = Number(values.price || 0)
+    const rate = Number(values.commissionRate || 0)
+    if (!Number.isFinite(price) || !Number.isFinite(rate)) return ""
+    return ((price * rate) / 100).toFixed(2)
+  }, [values.price, values.commissionRate])
 
   const update = (key: keyof ProductFormValues, value: string) => {
     setValues((prev) => ({ ...prev, [key]: value }))
@@ -98,7 +219,7 @@ export default function ProductFormModal({
     }
   }
 
-  const handleParsePromo = () => {
+  const handleParsePromo = async () => {
     const trimmed = values.promoLink.trim()
     if (!trimmed) {
       setErrors((prev) => ({ ...prev, promoLink: "不能为空" }))
@@ -120,10 +241,56 @@ export default function ProductFormModal({
         return next
       })
     }
-    onParsePromo?.(trimmed)
+    if (isParsing) return
+    setIsParsing(true)
+    update("promoLink", trimmed)
+    try {
+      const product = await fetchJdProduct(extractJdKeyword(trimmed), trimmed)
+      const materialUrl = product.materialUrl || trimmed
+      const standardUrl = materialUrl.includes("item.jd.com")
+        ? materialUrl
+        : await resolveJdUrl(materialUrl)
+      setValues((prev) => ({
+        ...prev,
+        title: product.title || prev.title,
+        blueLink: standardUrl || prev.blueLink,
+        price:
+          product.price !== undefined ? String(product.price) : prev.price,
+        commission:
+          product.commission !== undefined
+            ? String(product.commission)
+            : prev.commission,
+        commissionRate:
+          product.commissionRate !== undefined
+            ? String(product.commissionRate)
+            : prev.commissionRate,
+        sales30:
+          product.sales30Days !== undefined
+            ? String(product.sales30Days)
+            : prev.sales30,
+        comments:
+          product.comments !== undefined
+            ? String(product.comments)
+            : prev.comments,
+        shopName: product.shopName || prev.shopName,
+        image: product.image || prev.image,
+      }))
+      showToast("推广链接解析成功", "success")
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : "推广链接解析失败",
+        "error"
+      )
+    } finally {
+      setIsParsing(false)
+    }
   }
 
   const handleSubmit = () => {
+    if (isUploading) {
+      showToast("封面上传中，请稍候", "info")
+      return
+    }
     const nextErrors: Record<string, string> = {}
     if (!values.title.trim()) nextErrors.title = "必填"
     if (!values.price.trim()) nextErrors.price = "必填"
@@ -131,8 +298,53 @@ export default function ProductFormModal({
     if (!values.blueLink.trim()) nextErrors.blueLink = "必填"
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length > 0) return
-    onSubmit(values)
+    onSubmit({ ...values, commission: computedCommission })
     onClose()
+  }
+
+  const handleCoverUpload = async (file: File) => {
+    if (!file) return
+    if (isUploading) return
+    const previous = values.image
+    const previewUrl = URL.createObjectURL(file)
+    setValues((prev) => ({ ...prev, image: previewUrl }))
+    setIsUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      const response = await fetch("/api/sourcing/covers", {
+        method: "POST",
+        body: formData,
+      })
+      if (!response.ok) {
+        let message = "封面上传失败"
+        try {
+          const detail = (await response.json()) as { detail?: string; message?: string }
+          message = detail?.detail || detail?.message || message
+        } catch {
+          // ignore
+        }
+        throw new Error(message)
+      }
+      const data = (await response.json()) as { url?: string }
+      if (!data?.url) {
+        throw new Error("封面上传失败")
+      }
+      setValues((prev) => ({ ...prev, image: data.url || "" }))
+      showToast("封面已上传", "success")
+    } catch (error) {
+      setValues((prev) => ({ ...prev, image: previous }))
+      showToast(
+        error instanceof Error ? error.message : "封面上传失败",
+        "error"
+      )
+    } finally {
+      URL.revokeObjectURL(previewUrl)
+      if (coverInputRef.current) {
+        coverInputRef.current.value = ""
+      }
+      setIsUploading(false)
+    }
   }
 
   return (
@@ -145,176 +357,219 @@ export default function ProductFormModal({
       onSubmit={handleSubmit}
       confirmLabel="保存"
     >
-      <ToastProvider duration={2400}>
-        <div className="space-y-5">
-          <div className="space-y-2">
-            <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <Label htmlFor="promo-link" className="w-20">
-                推广链接
-              </Label>
-              <Input
-                id="promo-link"
-                className="flex-1"
-                placeholder="粘贴京东推广链接"
-                value={values.promoLink}
-                onChange={(event) => update("promoLink", event.target.value)}
-              />
-              <Button type="button" variant="outline" onClick={handleParsePromo}>
-                解析
-              </Button>
-            </div>
-            <span className="min-h-[18px] text-xs text-rose-500">
-              {errors.promoLink}
-            </span>
+      <div className="space-y-5">
+        <div className="space-y-2">
+          <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <Label htmlFor="promo-link" className="w-20">
+              推广链接
+            </Label>
+            <Input
+              id="promo-link"
+              className="flex-1"
+              placeholder="粘贴京东推广链接"
+              value={values.promoLink}
+              onChange={(event) => update("promoLink", event.target.value)}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleParsePromo}
+              disabled={isParsing}
+            >
+              {isParsing ? "解析中..." : "解析"}
+            </Button>
           </div>
+          <span className="min-h-[18px] text-xs text-rose-500">
+            {errors.promoLink}
+          </span>
+        </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <div className="grid gap-4 md:grid-cols-[120px_1fr]">
-              <div className="space-y-3">
-                <Label>封面图片</Label>
-                <div className="flex h-[110px] w-[110px] items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-slate-400">
-                  +
-                </div>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>归属分类</Label>
-                  <Select
-                    value={values.categoryId}
-                    onValueChange={(value) => update("categoryId", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="请选择" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((item) => (
-                        <SelectItem key={item.value} value={item.value}>
-                          {item.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <span className="min-h-[18px] text-xs text-rose-500">
-                    {errors.categoryId}
-                  </span>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="product-title">商品标题</Label>
-                  <Input
-                    id="product-title"
-                    value={values.title}
-                    onChange={(event) => update("title", event.target.value)}
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="grid gap-4 md:grid-cols-[120px_1fr]">
+            <div className="space-y-3">
+              <Label>封面图片</Label>
+              <div className="relative h-[110px] w-[110px] overflow-hidden rounded-xl border border-dashed border-slate-200 bg-slate-50">
+                {values.image ? (
+                  <img
+                    src={values.image}
+                    alt={values.title || "封面"}
+                    className="h-full w-full object-cover"
                   />
-                  <span className="min-h-[18px] text-xs text-rose-500">
-                    {errors.title}
-                  </span>
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="product-link">商品链接</Label>
-                  <Input
-                    id="product-link"
-                    value={values.blueLink}
-                    onChange={(event) => update("blueLink", event.target.value)}
-                  />
-                  <span className="min-h-[18px] text-xs text-rose-500">
-                    {errors.blueLink}
-                  </span>
-                </div>
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-slate-400">
+                    +
+                  </div>
+                )}
               </div>
-            </div>
-          </div>
-
-          <div className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-3">
-            <div className="space-y-2">
-              <Label htmlFor="product-price">价格（元）</Label>
-              <Input
-                id="product-price"
-                value={values.price}
-                onChange={(event) => update("price", event.target.value)}
-              />
-              <span className="min-h-[18px] text-xs text-rose-500">
-                {errors.price}
-              </span>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="product-commission">佣金（元）</Label>
-              <Input
-                id="product-commission"
-                value={values.commission}
-                onChange={(event) => update("commission", event.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="product-rate">佣金比例（%）</Label>
-              <Input
-                id="product-rate"
-                value={values.commissionRate}
-                onChange={(event) => update("commissionRate", event.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="product-sales">30天销量</Label>
-              <Input
-                id="product-sales"
-                value={values.sales30}
-                onChange={(event) => update("sales30", event.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="product-comments">评价数</Label>
-              <Input
-                id="product-comments"
-                value={values.comments}
-                onChange={(event) => update("comments", event.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="product-shop">店铺</Label>
-              <Input
-                id="product-shop"
-                value={values.shopName}
-                onChange={(event) => update("shopName", event.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <div className="mb-3 text-sm font-semibold text-slate-700">参数信息</div>
-            <div className="grid gap-3 md:grid-cols-2">
-              {presetFields.map((field) => (
-                <div key={field.key} className="grid gap-2 md:grid-cols-2">
-                  <Input value={field.key} readOnly />
-                  <Input
-                    placeholder="参数值"
-                    value={values.params[field.key] ?? ""}
-                    onChange={(event) =>
-                      setValues((prev) => ({
-                        ...prev,
-                        params: {
-                          ...prev.params,
-                          [field.key]: event.target.value,
-                        },
-                      }))
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  ref={coverInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    if (file) {
+                      void handleCoverUpload(file)
                     }
-                  />
-                </div>
-              ))}
+                  }}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => coverInputRef.current?.click()}
+                  disabled={isUploading}
+                >
+                  {isUploading
+                    ? "上传中..."
+                    : values.image
+                    ? "更换封面"
+                    : "上传封面"}
+                </Button>
+                {values.image ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => update("image", "")}
+                  >
+                    移除
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>归属分类</Label>
+                <Select
+                  value={values.categoryId}
+                  onValueChange={(value) => update("categoryId", value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="请选择" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="min-h-[18px] text-xs text-rose-500">
+                  {errors.categoryId}
+                </span>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="product-title">商品标题</Label>
+                <Input
+                  id="product-title"
+                  value={values.title}
+                  onChange={(event) => update("title", event.target.value)}
+                />
+                <span className="min-h-[18px] text-xs text-rose-500">
+                  {errors.title}
+                </span>
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="product-link">商品链接</Label>
+                <Input
+                  id="product-link"
+                  value={values.blueLink}
+                  onChange={(event) => update("blueLink", event.target.value)}
+                />
+                <span className="min-h-[18px] text-xs text-rose-500">
+                  {errors.blueLink}
+                </span>
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="product-remark">总结</Label>
+                <Input
+                  id="product-remark"
+                  placeholder="请输入总结"
+                  value={values.remark}
+                  onChange={(event) => update("remark", event.target.value)}
+                />
+              </div>
             </div>
           </div>
         </div>
 
-        <Toast
-          open={Boolean(toast?.message)}
-          onOpenChange={(open) => {
-            if (!open) onToastDismiss?.()
-          }}
-          variant={toast?.variant ?? "default"}
-          className="absolute right-6 top-6 w-[280px]"
-        >
-          <ToastDescription>{toast?.message}</ToastDescription>
-        </Toast>
-        <ToastViewport className="absolute right-6 top-6" />
-      </ToastProvider>
+        <div className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-3">
+          <div className="space-y-2">
+            <Label htmlFor="product-price">价格（元）</Label>
+            <Input
+              id="product-price"
+              value={values.price}
+              onChange={(event) => update("price", event.target.value)}
+            />
+            <span className="min-h-[18px] text-xs text-rose-500">
+              {errors.price}
+            </span>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="product-commission">佣金（元）</Label>
+            <Input id="product-commission" value={computedCommission} disabled />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="product-rate">佣金比例（%）</Label>
+            <Input
+              id="product-rate"
+              value={values.commissionRate}
+              onChange={(event) => update("commissionRate", event.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="product-sales">30天销量</Label>
+            <Input
+              id="product-sales"
+              value={values.sales30}
+              onChange={(event) => update("sales30", event.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="product-comments">评价数</Label>
+            <Input
+              id="product-comments"
+              value={values.comments}
+              onChange={(event) => update("comments", event.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="product-shop">店铺</Label>
+            <Input
+              id="product-shop"
+              value={values.shopName}
+              onChange={(event) => update("shopName", event.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="mb-3 text-sm font-semibold text-slate-700">参数信息</div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {presetFields.map((field) => (
+              <div key={field.key} className="grid gap-2 md:grid-cols-2">
+                <Input value={field.key} readOnly />
+                <Input
+                  placeholder="参数值"
+                  value={values.params[field.key] ?? ""}
+                  onChange={(event) =>
+                    setValues((prev) => ({
+                      ...prev,
+                      params: {
+                        ...prev.params,
+                        [field.key]: event.target.value,
+                      },
+                    }))
+                  }
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </ModalForm>
   )
 }

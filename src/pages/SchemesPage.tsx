@@ -8,6 +8,15 @@ import { Field, FieldContent, FieldLabel } from "@/components/ui/field"
 import { apiRequest } from "@/lib/api"
 import { useToast } from "@/components/Toast"
 import Empty from "@/components/Empty"
+import Skeleton from "@/components/Skeleton"
+import CategoryManagerModal from "@/components/archive/CategoryManagerModal"
+import type { CategoryItem } from "@/components/archive/types"
+import {
+  createCategory,
+  deleteCategory,
+  fetchCategories,
+  updateCategory,
+} from "@/components/archive/archiveApi"
 
 const ARCHIVE_CATEGORY_CACHE_KEY = "sourcing_category_cache_v1"
 const ARCHIVE_CATEGORY_CACHE_TTL = 5 * 60 * 1000
@@ -29,10 +38,6 @@ interface Scheme {
   items?: SchemeItem[]
 }
 
-interface Category {
-  id: string
-  name: string
-}
 
 interface SchemesPageProps {
   onEnterScheme: (schemeId: string) => void
@@ -47,69 +52,83 @@ function formatDate(value?: string) {
   return `${date.getFullYear()}-${month}-${day}`
 }
 
-function getCategoryCache() {
+const CategorySkeleton = () => (
+  <div className="space-y-3">
+    {Array.from({ length: 6 }).map((_, index) => (
+      <div
+        key={index}
+        className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-2"
+      >
+        <Skeleton className="h-4 w-20" />
+        <Skeleton className="h-3 w-10" />
+      </div>
+    ))}
+  </div>
+)
+
+const SchemeSkeleton = () => (
+  <div className="space-y-4">
+    {Array.from({ length: 4 }).map((_, index) => (
+      <div
+        key={index}
+        className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card"
+      >
+        <div className="space-y-3">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-6 w-1/2" />
+          <Skeleton className="h-4 w-2/3" />
+          <div className="flex gap-4">
+            <Skeleton className="h-3 w-28" />
+            <Skeleton className="h-3 w-24" />
+          </div>
+        </div>
+      </div>
+    ))}
+  </div>
+)
+
+type CachePayload<T> = { timestamp: number; data?: T; items?: T }
+
+function getCache<T>(key: string) {
   try {
-    const raw = localStorage.getItem(ARCHIVE_CATEGORY_CACHE_KEY)
+    const raw = localStorage.getItem(key)
     if (!raw) return null
-    const parsed = JSON.parse(raw)
-    if (!parsed || !Array.isArray(parsed.items)) return null
-    return parsed
+    return JSON.parse(raw) as CachePayload<T>
   } catch {
     return null
   }
 }
 
-function isCategoryCacheFresh(cache: { timestamp?: number } | null) {
-  if (!cache?.timestamp) return false
-  return Date.now() - cache.timestamp < ARCHIVE_CATEGORY_CACHE_TTL
+function getCacheData<T>(cache: CachePayload<T> | null) {
+  if (!cache) return null
+  return (cache.data ?? cache.items ?? null) as T | null
 }
 
-function saveCategoryCache(categories: Category[]) {
+function isCacheFresh(cache: CachePayload<unknown> | null, ttl: number) {
+  if (!cache?.timestamp) return false
+  return Date.now() - cache.timestamp < ttl
+}
+
+function saveCache<T>(key: string, data: T) {
   try {
-    localStorage.setItem(
-      ARCHIVE_CATEGORY_CACHE_KEY,
-      JSON.stringify({ timestamp: Date.now(), items: categories })
-    )
+    localStorage.setItem(key, JSON.stringify({ timestamp: Date.now(), data }))
   } catch {
     // ignore cache failure
   }
 }
 
-function getSchemeCache() {
-  try {
-    const raw = localStorage.getItem(SCHEME_CACHE_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw)
-    if (!parsed || !Array.isArray(parsed.items)) return null
-    return parsed
-  } catch {
-    return null
-  }
-}
-
-function isSchemeCacheFresh(cache: { timestamp?: number } | null) {
-  if (!cache?.timestamp) return false
-  return Date.now() - cache.timestamp < SCHEME_CACHE_TTL
-}
-
-function saveSchemeCache(schemes: Scheme[]) {
-  try {
-    localStorage.setItem(
-      SCHEME_CACHE_KEY,
-      JSON.stringify({ timestamp: Date.now(), items: schemes })
-    )
-  } catch {
-    // ignore cache failure
-  }
-}
+const getCategoryCache = () => getCache<CategoryItem[]>(ARCHIVE_CATEGORY_CACHE_KEY)
+const getSchemeCache = () => getCache<Scheme[]>(SCHEME_CACHE_KEY)
 
 export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
   const { showToast } = useToast()
   const [schemes, setSchemes] = useState<Scheme[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
+  const [categories, setCategories] = useState<CategoryItem[]>([])
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [isCategoryLoading, setIsCategoryLoading] = useState(true)
+  const [isSchemeLoading, setIsSchemeLoading] = useState(true)
   const [statusMessage, setStatusMessage] = useState("")
+  const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false)
 
   const [formOpen, setFormOpen] = useState(false)
   const [formMode, setFormMode] = useState<"create" | "edit">("create")
@@ -133,64 +152,112 @@ export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
   }, [schemes, activeCategoryId])
 
   useEffect(() => {
-    const cache = getSchemeCache()
-    if (isSchemeCacheFresh(cache)) {
-      setSchemes(Array.isArray(cache?.items) ? cache?.items ?? [] : [])
-      setLoading(false)
+    const schemeCache = getSchemeCache()
+    const categoryCache = getCategoryCache()
+    const cachedSchemes = getCacheData(schemeCache) ?? []
+    const cachedCategories = getCacheData(categoryCache) ?? []
+
+    if (cachedSchemes.length) {
+      setSchemes(cachedSchemes)
+    }
+    if (cachedCategories.length) {
+      setCategories(cachedCategories)
     }
 
+    setIsSchemeLoading(cachedSchemes.length === 0)
+    setIsCategoryLoading(cachedCategories.length === 0)
+
     const init = async () => {
-      if (!isSchemeCacheFresh(cache)) {
-        setLoading(true)
+      setStatusMessage("")
+      const [schemeResult, categoryResult] = await Promise.allSettled([
+        apiRequest<{ schemes: Scheme[] }>("/api/schemes"),
+        loadCategories(),
+      ])
+
+      if (schemeResult.status === "fulfilled") {
+        const schemeList = Array.isArray(schemeResult.value.schemes)
+          ? schemeResult.value.schemes
+          : []
+        setSchemes(schemeList)
+        saveCache(SCHEME_CACHE_KEY, schemeList)
+      } else if (!cachedSchemes.length) {
+        setStatusMessage("加载方案失败")
       }
-      try {
-        const [schemeResult, categoryResult] = await Promise.allSettled([
-          apiRequest<{ schemes: Scheme[] }>("/api/schemes"),
-          loadCategories(),
-        ])
-        const schemeList =
-          schemeResult.status === "fulfilled" ? schemeResult.value.schemes : []
-        const categoryData =
-          categoryResult.status === "fulfilled" ? categoryResult.value : categories
-        setSchemes(Array.isArray(schemeList) ? schemeList : [])
-        saveSchemeCache(Array.isArray(schemeList) ? schemeList : [])
-        setCategories(categoryData)
-        if (categoryData.length) {
-          setActiveCategoryId((prev) => {
-            if (prev && categoryData.some((cat: Category) => cat.id === prev)) return prev
-            return categoryData[0].id
-          })
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "加载方案失败"
-        setStatusMessage(message)
-      } finally {
-        setLoading(false)
+
+      if (categoryResult.status === "fulfilled") {
+        const categoryList = Array.isArray(categoryResult.value)
+          ? categoryResult.value
+          : []
+        setCategories(categoryList)
+        saveCache(ARCHIVE_CATEGORY_CACHE_KEY, categoryList)
+      } else if (!cachedCategories.length) {
+        setStatusMessage("加载分类失败")
       }
+
+      setIsSchemeLoading(false)
+      setIsCategoryLoading(false)
     }
 
     init().catch(() => {})
   }, [])
 
-  const loadCategories = async (force = false): Promise<Category[]> => {
-    const cache = getCategoryCache()
-    if (cache?.items?.length) {
-      setCategories(cache.items)
-    }
-    if (!force && isCategoryCacheFresh(cache)) {
-      return cache.items
-    }
+  useEffect(() => {
+    if (!categories.length) return
+    setActiveCategoryId((prev) => {
+      if (prev && categories.some((cat) => cat.id === prev)) return prev
+      return categories[0].id
+    })
+  }, [categories])
+
+  const loadCategories = async (): Promise<CategoryItem[]> => {
     try {
-      const response = await apiRequest<{ categories: Category[] }>(
-        "/api/sourcing/categories?include_counts=false"
-      )
-      const list = Array.isArray(response.categories) ? response.categories : []
-      setCategories(list)
-      saveCategoryCache(list)
-      return list
+      const response = await fetchCategories({ includeCounts: false })
+      const list = (response.categories ?? []).map((category) => ({
+        id: category.id,
+        name: category.name,
+        sortOrder: category.sort_order ?? 0,
+        specFields: category.spec_fields ?? [],
+        count: category.item_count ?? 0,
+      }))
+      return Array.isArray(list) ? list : []
     } catch {
-      return cache?.items ?? []
+      const cache = getCategoryCache()
+      return getCacheData(cache) ?? []
     }
+  }
+
+  const handleSaveCategories = (next: CategoryItem[]) => {
+    const existingIds = new Set(categories.map((item) => item.id))
+    const nextIds = new Set(next.map((item) => item.id))
+    const updates = next.map((item, index) => ({
+      ...item,
+      sortOrder: (index + 1) * 10,
+    }))
+    const tasks: Promise<unknown>[] = []
+    updates.forEach((item) => {
+      if (existingIds.has(item.id)) {
+        tasks.push(
+          updateCategory(item.id, {
+            name: item.name,
+            sort_order: item.sortOrder,
+          })
+        )
+      } else {
+        tasks.push(createCategory({ name: item.name, sort_order: item.sortOrder }))
+      }
+    })
+    categories.forEach((item) => {
+      if (!nextIds.has(item.id)) {
+        tasks.push(deleteCategory(item.id))
+      }
+    })
+    Promise.all(tasks)
+      .then(() => {
+        setCategories(updates)
+        saveCache(ARCHIVE_CATEGORY_CACHE_KEY, updates)
+        showToast("分类已保存", "success")
+      })
+      .catch(() => showToast("分类保存失败", "error"))
   }
 
   const openCreate = () => {
@@ -239,9 +306,11 @@ export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
           }
         )
         const updated = response.scheme
-        setSchemes((prev) =>
-          prev.map((item) => (item.id === updated.id ? updated : item))
-        )
+        setSchemes((prev) => {
+          const next = prev.map((item) => (item.id === updated.id ? updated : item))
+          saveCache(SCHEME_CACHE_KEY, next)
+          return next
+        })
         showToast("方案已更新", "success")
       } else {
         const response = await apiRequest<{ scheme: Scheme }>("/api/schemes", {
@@ -249,7 +318,11 @@ export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
           body: JSON.stringify({ ...payload, items: [] }),
         })
         const created = response.scheme
-        setSchemes((prev) => [created, ...prev])
+        setSchemes((prev) => {
+          const next = [created, ...prev]
+          saveCache(SCHEME_CACHE_KEY, next)
+          return next
+        })
         if (!activeCategoryId) {
           setActiveCategoryId(created.category_id)
         }
@@ -272,12 +345,17 @@ export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
     const targetId = pendingDeleteId
     setDeleteOpen(false)
     const snapshot = schemes
-    setSchemes((prev) => prev.filter((item) => item.id !== targetId))
+    setSchemes((prev) => {
+      const next = prev.filter((item) => item.id !== targetId)
+      saveCache(SCHEME_CACHE_KEY, next)
+      return next
+    })
     try {
       await apiRequest(`/api/schemes/${targetId}`, { method: "DELETE" })
       showToast("方案已删除", "success")
     } catch (error) {
       setSchemes(snapshot)
+      saveCache(SCHEME_CACHE_KEY, snapshot)
       const message = error instanceof Error ? error.message : "删除失败"
       showToast(message, "error")
     } finally {
@@ -285,13 +363,8 @@ export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
-        <p className="text-sm text-slate-500">加载中...</p>
-      </div>
-    )
-  }
+  const showCategorySkeleton = isCategoryLoading && categories.length === 0
+  const showSchemeSkeleton = isSchemeLoading && schemes.length === 0
 
   return (
     <div className="space-y-6">
@@ -303,13 +376,27 @@ export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
           <div className="flex items-center justify-between">
             <h3 className="text-base font-semibold text-slate-900">方案分类</h3>
-            <span className="text-xs text-slate-400">共 {categories.length} 类</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400">共 {categories.length} 类</span>
+              <button
+                className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-500"
+                type="button"
+                onClick={() => setIsCategoryManagerOpen(true)}
+              >
+                管理
+              </button>
+            </div>
           </div>
           <div className="mt-4 space-y-2">
-            {categories.length === 0 ? (
+            {showCategorySkeleton ? (
+              <CategorySkeleton />
+            ) : categories.length === 0 ? (
               <Empty title="暂无分类" description="请先在选品库中新建分类" />
             ) : (
-              categories.map((category) => {
+              categories
+                .slice()
+                .sort((a, b) => a.sortOrder - b.sortOrder)
+                .map((category) => {
                 const count = schemes.filter(
                   (scheme) => scheme.category_id === category.id
                 ).length
@@ -340,7 +427,9 @@ export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
               {statusMessage}
             </div>
           ) : null}
-          {activeCategoryId && filteredSchemes.length === 0 ? (
+          {showSchemeSkeleton ? (
+            <SchemeSkeleton />
+          ) : activeCategoryId && filteredSchemes.length === 0 ? (
             <Empty title="暂无方案" description="点击右上角新建方案" />
           ) : (
             <div className="space-y-4">
@@ -396,6 +485,15 @@ export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
         </section>
       </div>
 
+      {isCategoryManagerOpen ? (
+        <CategoryManagerModal
+          isOpen={isCategoryManagerOpen}
+          categories={categories}
+          onClose={() => setIsCategoryManagerOpen(false)}
+          onSave={handleSaveCategories}
+        />
+      ) : null}
+
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
@@ -421,11 +519,14 @@ export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
                     <SelectValue placeholder="请选择分类" />
                   </SelectTrigger>
                   <SelectContent>
-                    {categories.map((category) => (
-                      <SelectItem key={category.id} value={category.id}>
-                        {category.name}
-                      </SelectItem>
-                    ))}
+                    {categories
+                      .slice()
+                      .sort((a, b) => a.sortOrder - b.sortOrder)
+                      .map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.name}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </FieldContent>

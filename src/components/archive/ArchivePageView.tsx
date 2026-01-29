@@ -60,7 +60,6 @@ interface ImportProgressState {
 interface ArchivePageViewProps {
   items: ArchiveItemView[]
   categories: CategoryItem[]
-  isLoading: boolean
   isCategoryLoading: boolean
   isListLoading: boolean
   isRefreshing: boolean
@@ -132,9 +131,6 @@ interface ArchivePageViewProps {
     params: Record<string, string>
   }
   presetFields: { key: string }[]
-  onParsePromo: (link: string) => void
-  toast?: { message: string; variant?: "default" | "success" | "error" | "info" }
-  onToastDismiss?: () => void
   importProgressState: ImportProgressState
   isImportOpen: boolean
   onCloseImport: () => void
@@ -186,7 +182,6 @@ const ListSkeleton = () => (
 export default function ArchivePageView({
   items,
   categories,
-  isLoading,
   isCategoryLoading,
   isListLoading,
   isRefreshing,
@@ -228,9 +223,6 @@ export default function ArchivePageView({
   onSubmitProductForm,
   productFormInitialValues,
   presetFields,
-  onParsePromo,
-  toast,
-  onToastDismiss,
   importProgressState,
   isImportOpen,
   onCloseImport,
@@ -502,9 +494,6 @@ export default function ArchivePageView({
           initialValues={productFormInitialValues}
           onClose={onCloseProductForm}
           onSubmit={onSubmitProductForm}
-          onParsePromo={onParsePromo}
-          toast={toast}
-          onToastDismiss={onToastDismiss}
         />
       ) : null}
 

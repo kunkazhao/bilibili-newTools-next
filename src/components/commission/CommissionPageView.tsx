@@ -43,6 +43,7 @@ interface CommissionPageViewProps {
   onToggleFocus: (id: string) => void
   onEdit: (id: string) => void
   onArchive: (id: string) => void
+  onArchiveAll: () => void
   onDelete: (id: string) => void
   onParseBili: () => void
   onParsePromo: () => void
@@ -109,6 +110,7 @@ export default function CommissionPageView({
   onToggleFocus,
   onEdit,
   onArchive,
+  onArchiveAll,
   onDelete,
   onParseBili,
   onParsePromo,
@@ -158,6 +160,9 @@ export default function CommissionPageView({
               批量导入
             </Button>
             <Button>新增商品</Button>
+            <Button variant="outline" onClick={onArchiveAll}>
+              归档
+            </Button>
           </div>
         </div>
 

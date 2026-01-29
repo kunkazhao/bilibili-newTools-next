@@ -2,6 +2,17 @@
 import ArchivePageView from "@/components/archive/ArchivePageView"
 import { useToast } from "@/components/Toast"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import * as XLSX from "xlsx"
+import {
   createCategory,
   createItem,
   deleteCategory,
@@ -88,6 +99,53 @@ const isFresh = (cache: CachePayload<unknown> | null, ttl: number) => {
   return Date.now() - cache.timestamp < ttl
 }
 
+const sanitizeFilename = (value: string) => {
+  const base = String(value || "导出").trim() || "导出"
+  return base.replace(/[\\/:*?"<>|]+/g, "_").slice(0, 60)
+}
+
+const getTimestamp = () => {
+  const now = new Date()
+  return (
+    now.getFullYear() +
+    String(now.getMonth() + 1).padStart(2, "0") +
+    String(now.getDate()).padStart(2, "0") +
+    "_" +
+    String(now.getHours()).padStart(2, "0") +
+    String(now.getMinutes()).padStart(2, "0") +
+    String(now.getSeconds()).padStart(2, "0")
+  )
+}
+
+const buildSpecDetailText = (
+  params: Record<string, string>,
+  separator = " / ",
+  limit = 8
+) => {
+  if (!params || typeof params !== "object") return ""
+  return Object.entries(params)
+    .filter(([key, value]) => key && value !== undefined && value !== null && value !== "")
+    .slice(0, limit)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join(separator)
+}
+
+const extractDigitsFromLink = (link: string) => {
+  if (!link) return ""
+  const cleaned = link.trim()
+  const exactMatch = cleaned.match(/item\.jd\.com\/(\d+)\.html/i)
+  if (exactMatch) return exactMatch[1]
+  const paramMatch = cleaned.match(/(?:skuId|sku|productId|wareId|id)[=\/](\d{6,})/i)
+  if (paramMatch) return paramMatch[1]
+  const htmlMatch = cleaned.match(/\/(\d{6,})\.html/i)
+  if (htmlMatch) return htmlMatch[1]
+  const allDigits = cleaned.match(/(\d{6,})/g)
+  if (allDigits && allDigits.length > 0) {
+    return allDigits.sort((a, b) => b.length - a.length)[0]
+  }
+  return ""
+}
+
 export default function ArchivePage() {
   const { showToast } = useToast()
   const [items, setItems] = useState<ArchiveItem[]>([])
@@ -113,10 +171,8 @@ export default function ArchivePage() {
   const [isPresetFieldsOpen, setIsPresetFieldsOpen] = useState(false)
   const [isProductFormOpen, setIsProductFormOpen] = useState(false)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
-  const [modalToast, setModalToast] = useState<{
-    message: string
-    variant?: "default" | "success" | "error" | "info"
-  } | null>(null)
+  const [isClearOpen, setIsClearOpen] = useState(false)
+  const [isClearing, setIsClearing] = useState(false)
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [importState, setImportState] = useState({
     status: "idle" as "idle" | "running" | "done",
@@ -185,6 +241,12 @@ export default function ArchivePage() {
       return matchesSearch && matchesCategory && matchesMin && matchesMax
     })
   }, [orderedItems, searchValue, categoryValue, safePriceRange])
+
+  const selectedCategoryName = useMemo(() => {
+    if (categoryValue === "all") return "全部"
+    const category = categories.find((item) => item.id === categoryValue)
+    return category?.name || "分类"
+  }, [categoryValue, categories])
 
   useEffect(() => {
     if (chunkTimerRef.current) {
@@ -529,7 +591,7 @@ export default function ArchivePage() {
         manualOrder: manualIds,
         categoryId: categoryValue,
       })
-    } catch (error) {
+    } catch {
       showToast("加载失败", "error")
     } finally {
       setIsLoadingMore(false)
@@ -590,6 +652,127 @@ export default function ArchivePage() {
     })
   }
 
+  const handleClearList = async () => {
+    if (!filteredItems.length) {
+      showToast("当前没有可清空的商品", "info")
+      return
+    }
+    if (isClearing) return
+    setIsClearing(true)
+    const deleteIds = new Set(filteredItems.map((item) => item.id))
+    const snapshotItems = items
+    const snapshotOrder = manualOrder
+    setItems((prev) => prev.filter((item) => !deleteIds.has(item.id)))
+    setManualOrder((prev) => prev.filter((id) => !deleteIds.has(id)))
+    try {
+      const results = await Promise.allSettled(
+        Array.from(deleteIds).map((id) => deleteItem(id))
+      )
+      const failures = results.filter((result) => result.status === "rejected")
+      if (failures.length) {
+        showToast(`清空完成，失败 ${failures.length} 条`, "error")
+        loadItems()
+      } else {
+        showToast(`已清空 ${deleteIds.size} 个商品`, "success")
+      }
+    } catch {
+      setItems(snapshotItems)
+      setManualOrder(snapshotOrder)
+      showToast("清空失败", "error")
+    } finally {
+      setIsClearing(false)
+      setIsClearOpen(false)
+    }
+  }
+
+  const handleExport = () => {
+    if (!filteredItems.length) {
+      showToast("没有可导出的商品", "info")
+      return
+    }
+    try {
+      const formatPrice = (value: number | string) => {
+        if (value === null || value === undefined || value === "") return ""
+        const num = Number(value)
+        if (Number.isNaN(num)) return String(value)
+        return num.toFixed(2)
+      }
+      const formatPercent = (value: number | string) => {
+        if (value === null || value === undefined || value === "") return ""
+        const num = Number(value)
+        if (Number.isNaN(num)) return String(value)
+        return num % 1 === 0 ? `${num}%` : `${num.toFixed(2)}%`
+      }
+
+      const headers = [
+        "重点标记",
+        "商品内部编号",
+        "产品ID",
+        "商品名称",
+        "价格(元)",
+        "佣金(元)",
+        "佣金比例",
+        "30天销量",
+        "店铺名称",
+        "商品链接",
+        "评价数",
+        "参数摘要",
+        "参数详情",
+      ]
+
+      const rows = filteredItems.map((item) => {
+        const specParams = Object.fromEntries(
+          Object.entries(item.spec || {}).filter(([key]) => !key.startsWith("_"))
+        )
+        const link =
+          item.spec[META_KEYS.promoLink] ||
+          item.blueLink ||
+          item.spec[META_KEYS.sourceLink] ||
+          ""
+        const productId = extractDigitsFromLink(link) || item.uid || item.id
+        return [
+          item.isFocused ? "是" : "",
+          item.uid || item.id || "",
+          productId,
+          item.title || "",
+          formatPrice(item.price),
+          formatPrice(item.commission),
+          formatPercent(item.commissionRate),
+          item.spec[META_KEYS.sales30] || "",
+          item.spec[META_KEYS.shopName] || "",
+          link,
+          item.spec[META_KEYS.comments] || "",
+          buildSpecDetailText(specParams, " / ", 3),
+          buildSpecDetailText(specParams, "\n"),
+        ]
+      })
+
+      const workbook = XLSX.utils.book_new()
+      const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows])
+      worksheet["!cols"] = [
+        { wch: 10 },
+        { wch: 16 },
+        { wch: 18 },
+        { wch: 48 },
+        { wch: 12 },
+        { wch: 12 },
+        { wch: 14 },
+        { wch: 14 },
+        { wch: 24 },
+        { wch: 64 },
+        { wch: 12 },
+        { wch: 28 },
+        { wch: 40 },
+      ]
+      XLSX.utils.book_append_sheet(workbook, worksheet, "商品列表")
+      const filename = `${sanitizeFilename(selectedCategoryName)}-${getTimestamp()}.xlsx`
+      XLSX.writeFile(workbook, filename)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "导出失败"
+      showToast(message, "error")
+    }
+  }
+
   const openEdit = (id: string) => {
     setEditingItemId(id)
     setIsProductFormOpen(true)
@@ -636,8 +819,11 @@ export default function ArchivePage() {
     params: Record<string, string>
   }) => {
     const priceValue = Number(values.price)
-    const commissionValue = Number(values.commission || 0)
     const commissionRateValue = Number(values.commissionRate || 0)
+    const commissionValue =
+      Number.isFinite(priceValue) && Number.isFinite(commissionRateValue)
+        ? (priceValue * commissionRateValue) / 100
+        : 0
     if (editingItemId) {
       const target = items.find((item) => item.id === editingItemId)
       if (!target) return
@@ -661,10 +847,10 @@ export default function ArchivePage() {
         spec: nextSpec,
       })
         .then(() => {
-          setModalToast({ message: "商品已更新", variant: "success" })
+          showToast("商品已更新", "success")
           loadItems()
         })
-        .catch(() => setModalToast({ message: "更新失败", variant: "error" }))
+        .catch(() => showToast("更新失败", "error"))
     } else {
       const specPayload = {
         [META_KEYS.blueLink]: values.blueLink,
@@ -686,10 +872,10 @@ export default function ArchivePage() {
         spec: specPayload,
       })
         .then(() => {
-          setModalToast({ message: "商品已新增", variant: "success" })
+          showToast("商品已新增", "success")
           loadItems()
         })
-        .catch(() => setModalToast({ message: "新增失败", variant: "error" }))
+        .catch(() => showToast("新增失败", "error"))
     }
     setEditingItemId(null)
   }
@@ -778,10 +964,10 @@ export default function ArchivePage() {
   })
 
   return (
-    <ArchivePageView
+    <>
+      <ArchivePageView
       items={itemsView}
       categories={categories}
-      isLoading={isLoading}
       isCategoryLoading={isCategoryLoading}
       isListLoading={isListLoading}
       isRefreshing={isRefreshing}
@@ -808,7 +994,7 @@ export default function ArchivePage() {
         deleteItem(id)
           .then(() => {
             showToast("删除成功", "success")
-            loadUnderstanding()
+            loadItems()
           })
           .catch(() => showToast("删除失败", "error"))
       }}
@@ -816,9 +1002,15 @@ export default function ArchivePage() {
       onDragStart={handleDragStart}
       onDrop={handleDrop}
       onSelectCategory={(id) => setCategoryValue(id)}
-      onClearList={() => showToast("清空列表待实现", "info")}
+      onClearList={() => {
+        if (!filteredItems.length) {
+          showToast("当前没有可清空的商品", "info")
+          return
+        }
+        setIsClearOpen(true)
+      }}
       onDownloadImages={() => showToast("下载图片待实现", "info")}
-      onExport={() => showToast("导出表格待实现", "info")}
+      onExport={handleExport}
       onSyncFeishu={() => showToast("写入飞书待实现", "info")}
       onOpenCategoryManager={() => setIsCategoryManagerOpen(true)}
       onCloseCategoryManager={() => setIsCategoryManagerOpen(false)}
@@ -837,15 +1029,6 @@ export default function ArchivePage() {
         categories[0]?.specFields ??
         []
       }
-      onParsePromo={(link) => {
-        if (!link.trim()) {
-          setModalToast({ message: "请先填写推广链接", variant: "default" })
-          return
-        }
-        setModalToast({ message: "推广链接解析待接入", variant: "default" })
-      }}
-      toast={modalToast ?? undefined}
-      onToastDismiss={() => setModalToast(null)}
       importProgressState={importState}
       isImportOpen={isImportOpen}
       onCloseImport={() => {
@@ -854,5 +1037,24 @@ export default function ArchivePage() {
       }}
       onCancelImport={handleCancelImport}
     />
+      <AlertDialog open={isClearOpen} onOpenChange={setIsClearOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>清空列表</AlertDialogTitle>
+            <AlertDialogDescription>
+              确认清空当前筛选条件下的 {filteredItems.length} 个商品吗？该操作无法撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setIsClearOpen(false)}>
+              取消
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleClearList} disabled={isClearing}>
+              {isClearing ? "清空中..." : "确认清空"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }

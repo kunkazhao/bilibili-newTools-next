@@ -14,6 +14,7 @@ export interface CommissionItemView {
   shopName: string
   source: string
   isFocused: boolean
+  isArchived: boolean
 }
 
 interface CommissionListCardProps {
@@ -129,11 +130,16 @@ export default function CommissionListCard({
               <Button
                 type="button"
                 variant="outline"
-                className="min-w-[90px] border-violet-200 text-violet-600 hover:text-violet-700"
+                className={
+                  item.isArchived
+                    ? "min-w-[90px] border-slate-200 text-slate-400"
+                    : "min-w-[90px] border-violet-200 text-violet-600 hover:text-violet-700"
+                }
                 onClick={() => onArchive(item.id)}
+                disabled={item.isArchived}
               >
                 <Archive className="mr-2 h-4 w-4" />
-                归档
+                {item.isArchived ? "已归档" : "归档"}
               </Button>
               <Button
                 type="button"

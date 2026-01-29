@@ -1,6 +1,9 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import CommissionPageView from "@/components/commission/CommissionPageView"
+import CommissionArchiveModal from "@/components/commission/CommissionArchiveModal"
 import { useToast } from "@/components/Toast"
+import { apiRequest } from "@/lib/api"
+import { fetchCategories } from "@/components/archive/archiveApi"
 
 interface CommissionItem {
   id: string
@@ -23,9 +26,13 @@ const META_KEYS = {
   sourceLink: "_source_link",
   sourceAuthor: "_source_author",
   featured: "_featured",
+  promoLink: "_promo_link",
+  archived: "_archived",
 }
 
 const TEMP_STORAGE_KEY = "commission_temp_items_v1"
+const CATEGORY_CACHE_KEY = "sourcing_category_cache_v1"
+const CATEGORY_CACHE_TTL = 5 * 60 * 1000
 
 const demoVideos = [
   {
@@ -47,6 +54,45 @@ const demoVideos = [
     tag: "外设",
   },
 ]
+
+interface ArchiveCategory {
+  id: string
+  name: string
+  sortOrder: number
+}
+
+type CachePayload<T> = { timestamp: number; data?: T; items?: T }
+
+const getCache = <T,>(key: string): CachePayload<T> | null => {
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return null
+    return JSON.parse(raw) as CachePayload<T>
+  } catch {
+    return null
+  }
+}
+
+const getCacheData = <T,>(cache: CachePayload<T> | null) => {
+  if (!cache) return null
+  return (cache.data ?? cache.items ?? null) as T | null
+}
+
+const setCache = <T,>(key: string, payload: T) => {
+  try {
+    localStorage.setItem(
+      key,
+      JSON.stringify({ timestamp: Date.now(), data: payload })
+    )
+  } catch {
+    // ignore
+  }
+}
+
+const isFresh = (cache: CachePayload<unknown> | null, ttl: number) => {
+  if (!cache?.timestamp) return false
+  return Date.now() - cache.timestamp < ttl
+}
 
 const getLocalItems = () => {
   try {
@@ -88,6 +134,11 @@ const getSourceDisplay = (spec: Record<string, string>) => {
   return link
 }
 
+const isItemArchived = (item: CommissionItem) => {
+  const value = item.spec?.[META_KEYS.archived]
+  return value === "true" || value === "1" || value === "yes" || value === "已归档"
+}
+
 const fetchBiliAuthor = async (link: string) => {
   if (!API_BASE) return ""
   const response = await fetch(`${API_BASE}/api/bilibili/video-info`, {
@@ -105,6 +156,8 @@ const fetchBiliAuthor = async (link: string) => {
 export default function CommissionPage() {
   const { showToast } = useToast()
   const [items, setItems] = useState<CommissionItem[]>([])
+  const [categories, setCategories] = useState<ArchiveCategory[]>([])
+  const [isCategoryLoading, setIsCategoryLoading] = useState(false)
   const [inputValue, setInputValue] = useState("")
   const [filters, setFilters] = useState({
     keyword: "",
@@ -121,12 +174,57 @@ export default function CommissionPage() {
   const [selectVideoOpen, setSelectVideoOpen] = useState(false)
   const [selectedVideos, setSelectedVideos] = useState<string[]>([])
   const [editTargetId, setEditTargetId] = useState<string | null>(null)
+  const [archiveOpen, setArchiveOpen] = useState(false)
+  const [archiveCategoryId, setArchiveCategoryId] = useState("")
+  const [archiveTargetIds, setArchiveTargetIds] = useState<string[]>([])
+  const [archiveSubmitting, setArchiveSubmitting] = useState(false)
   const authorRequestedRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     const localItems = getLocalItems()
     setItems(localItems)
   }, [])
+
+  const loadCategories = useCallback(async () => {
+    const cache = getCache<ArchiveCategory[]>(CATEGORY_CACHE_KEY)
+    const cached = getCacheData(cache) ?? []
+    if (cached.length) {
+      setCategories(cached)
+    }
+    if (isFresh(cache, CATEGORY_CACHE_TTL)) {
+      setIsCategoryLoading(false)
+      return
+    }
+    if (!cached.length) {
+      setIsCategoryLoading(true)
+    }
+    try {
+      const response = await fetchCategories({ includeCounts: false })
+      const normalized = (response.categories ?? []).map((category) => ({
+        id: category.id,
+        name: category.name,
+        sortOrder: category.sort_order ?? 0,
+      }))
+      setCategories(normalized)
+      setCache(CATEGORY_CACHE_KEY, normalized)
+    } catch {
+      // ignore
+    } finally {
+      setIsCategoryLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadCategories()
+  }, [loadCategories])
+
+  useEffect(() => {
+    if (!categories.length) return
+    setArchiveCategoryId((prev) => {
+      if (prev && categories.some((item) => item.id === prev)) return prev
+      return categories[0].id
+    })
+  }, [categories])
 
   useEffect(() => {
     if (!items.length) return
@@ -193,6 +291,7 @@ export default function CommissionPage() {
       shopName: item.shopName,
       source: getSourceDisplay(item.spec),
       isFocused: item.isFocused,
+      isArchived: isItemArchived(item),
     }
   })
 
@@ -206,8 +305,121 @@ export default function CommissionPage() {
     })
   }, [])
 
+  const buildArchiveSpec = useCallback((item: CommissionItem) => {
+    const spec: Record<string, string> = { ...(item.spec || {}) }
+    if (item.isFocused) {
+      spec[META_KEYS.featured] = "true"
+    } else if (spec[META_KEYS.featured]) {
+      spec[META_KEYS.featured] = "false"
+    }
+    if (item.shopName) spec[META_KEYS.shopName] = item.shopName
+    if (item.sales30 !== undefined && item.sales30 !== null) {
+      spec[META_KEYS.sales30] = String(item.sales30)
+    }
+    if (item.comments !== undefined && item.comments !== null) {
+      spec[META_KEYS.comments] = String(item.comments)
+    }
+    if (!spec[META_KEYS.promoLink]) {
+      const fallbackLink = spec[META_KEYS.sourceLink] || ""
+      if (fallbackLink) {
+        spec[META_KEYS.promoLink] = fallbackLink
+      }
+    }
+    if (!spec["_temp_id"]) {
+      spec["_temp_id"] = item.id
+    }
+    return spec
+  }, [])
+
+  const buildArchivePayload = useCallback(
+    (item: CommissionItem) => {
+      const spec = buildArchiveSpec(item)
+      const sourceLink = spec[META_KEYS.sourceLink] || ""
+      const sourceAuthor = spec[META_KEYS.sourceAuthor] || ""
+      const sourceType = sourceLink ? "video" : "manual"
+      const sourceRef = sourceAuthor || sourceLink || item.title || ""
+      const price = Number(item.price || 0)
+      const rate = Number(item.commissionRate || 0)
+      const commission =
+        Number.isFinite(price) && Number.isFinite(rate) ? (price * rate) / 100 : 0
+      const link = spec[META_KEYS.promoLink] || spec[META_KEYS.sourceLink] || ""
+      return {
+        title: item.title || "未命名商品",
+        link: link || null,
+        price,
+        commission,
+        commission_rate: rate,
+        source_type: sourceType,
+        source_ref: sourceRef || null,
+        cover_url: item.image || null,
+        remark: null,
+        spec,
+      }
+    },
+    [buildArchiveSpec]
+  )
+
+  const openArchive = (ids: string[]) => {
+    if (!ids.length) {
+      showToast("暂无可归档商品", "info")
+      return
+    }
+    setArchiveTargetIds(ids)
+    setArchiveOpen(true)
+  }
+
+  const handleArchiveConfirm = async () => {
+    if (!archiveCategoryId) {
+      showToast("请选择归档分类", "error")
+      return
+    }
+    const idSet = new Set(archiveTargetIds)
+    const targetItems = items.filter((item) => idSet.has(item.id))
+    const pending = targetItems.filter((item) => !isItemArchived(item))
+    if (!pending.length) {
+      showToast("已归档的商品将被跳过", "info")
+      setArchiveOpen(false)
+      return
+    }
+    setArchiveSubmitting(true)
+    try {
+      const payload = pending.map(buildArchivePayload)
+      await apiRequest("/api/sourcing/items/batch", {
+        method: "POST",
+        body: JSON.stringify({ category_id: archiveCategoryId, items: payload }),
+      })
+      const archivedIds = new Set(pending.map((item) => item.id))
+      updateLocalItems((prev) =>
+        prev.map((item) => {
+          if (!archivedIds.has(item.id)) return item
+          const spec = { ...(item.spec || {}), [META_KEYS.archived]: "true" }
+          return { ...item, spec }
+        })
+      )
+      showToast(`归档成功（${pending.length} 条）`, "success")
+      setArchiveOpen(false)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "归档失败"
+      showToast(message, "error")
+    } finally {
+      setArchiveSubmitting(false)
+    }
+  }
+
+  const archiveCount = useMemo(() => {
+    if (!archiveTargetIds.length) return 0
+    const targetSet = new Set(archiveTargetIds)
+    return items.filter((item) => targetSet.has(item.id) && !isItemArchived(item)).length
+  }, [archiveTargetIds, items])
+
+  const sortedCategories = useMemo(
+    () => categories.slice().sort((a, b) => a.sortOrder - b.sortOrder),
+    [categories]
+  )
+
   return (
-    <CommissionPageView
+    <>
+      <CommissionPageView
       inputValue={inputValue}
       onInputChange={setInputValue}
       items={itemsView}
@@ -242,12 +454,21 @@ export default function CommissionPage() {
       onToggleFocus={(id) =>
         updateLocalItems((prev) =>
           prev.map((item) =>
-            item.id === id ? { ...item, isFocused: !item.isFocused } : item
+            item.id === id
+              ? {
+                  ...item,
+                  isFocused: !item.isFocused,
+                  spec: {
+                    ...(item.spec || {}),
+                    [META_KEYS.featured]: (!item.isFocused).toString(),
+                  },
+                }
+              : item
           )
         )
       }
       onEdit={(id) => setEditTargetId(id)}
-      onArchive={() => showToast("归档功能待实现", "info")}
+      onArchive={(id) => openArchive([id])}
       onDelete={(id) => {
         updateLocalItems((prev) => prev.filter((item) => item.id !== id))
         showToast("删除成功", "success")
@@ -304,6 +525,22 @@ export default function CommissionPage() {
         showToast("保存成功", "success")
       }}
       onCloseEdit={() => setEditTargetId(null)}
+      onArchiveAll={() => openArchive(filteredItems.map((item) => item.id))}
     />
+      <CommissionArchiveModal
+        isOpen={archiveOpen}
+        categories={sortedCategories}
+        selectedCategoryId={archiveCategoryId}
+        itemCount={archiveCount}
+        isSubmitting={archiveSubmitting}
+        isLoading={isCategoryLoading}
+        onCategoryChange={setArchiveCategoryId}
+        onConfirm={handleArchiveConfirm}
+        onClose={() => {
+          setArchiveOpen(false)
+          setArchiveTargetIds([])
+        }}
+      />
+    </>
   )
 }
