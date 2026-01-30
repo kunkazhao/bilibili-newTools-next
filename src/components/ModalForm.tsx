@@ -4,6 +4,7 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -31,16 +32,17 @@ export default function ModalForm({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>Form details.</DialogDescription>
         </DialogHeader>
         <form
-          className="mt-4 space-y-4"
+          className="dialog-form"
           onSubmit={(event) => {
             event.preventDefault()
             onSubmit()
           }}
         >
           {children}
-          <DialogFooter className="mt-6">
+          <DialogFooter>
             <DialogClose asChild>
               <Button variant="outline" type="button">
                 取消

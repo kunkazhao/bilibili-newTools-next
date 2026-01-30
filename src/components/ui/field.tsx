@@ -5,7 +5,7 @@ const FieldSet = React.forwardRef<
   HTMLFieldSetElement,
   React.FieldsetHTMLAttributes<HTMLFieldSetElement>
 >(({ className, ...props }, ref) => (
-  <fieldset ref={ref} className={cn("space-y-4", className)} {...props} />
+  <fieldset ref={ref} className={cn("dialog-fieldset", className)} {...props} />
 ))
 FieldSet.displayName = "FieldSet"
 

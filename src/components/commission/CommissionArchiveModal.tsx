@@ -58,7 +58,7 @@ export default function CommissionArchiveModal({
             onValueChange={onCategoryChange}
             disabled={isLoading || categories.length === 0}
           >
-            <SelectTrigger>
+            <SelectTrigger aria-label="Archive category">
               <SelectValue placeholder={emptyHint} />
             </SelectTrigger>
             <SelectContent>
@@ -88,4 +88,3 @@ export default function CommissionArchiveModal({
     </Dialog>
   )
 }
-

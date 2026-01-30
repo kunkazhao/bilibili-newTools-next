@@ -77,7 +77,7 @@ export default function DemoContent({
             <div className="grid items-center gap-2 md:grid-cols-[120px_1fr]">
               <span className="text-sm text-slate-600">所属分类</span>
               <Select value={categoryValue} onValueChange={setCategoryValue}>
-                <SelectTrigger>
+                <SelectTrigger aria-label="Category">
                   <SelectValue placeholder="请选择分类" />
                 </SelectTrigger>
                 <SelectContent>
@@ -201,7 +201,7 @@ export default function DemoContent({
         <div className="grid items-center gap-2 md:grid-cols-[120px_1fr]">
           <span className="text-sm text-slate-600">展示状态</span>
           <Select defaultValue="active">
-            <SelectTrigger>
+            <SelectTrigger aria-label="Display status">
               <SelectValue placeholder="请选择" />
             </SelectTrigger>
             <SelectContent>

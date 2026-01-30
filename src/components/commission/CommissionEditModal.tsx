@@ -1,7 +1,8 @@
-﻿import { useEffect, useMemo, useState } from "react"
+﻿import { useEffect, useMemo, useState, useId } from "react"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogClose,
@@ -28,6 +29,11 @@ export default function CommissionEditModal({
   onSave,
   onClose,
 }: CommissionEditModalProps) {
+  const baseId = useId()
+  const titleId = `${baseId}-title`
+  const priceId = `${baseId}-price`
+  const commissionId = `${baseId}-commission`
+  const rateId = `${baseId}-rate`
   const [localTitle, setLocalTitle] = useState(title)
   const [localPrice, setLocalPrice] = useState(String(price || ""))
   const [localRate, setLocalRate] = useState(String(commissionRate || ""))
@@ -50,6 +56,7 @@ export default function CommissionEditModal({
       <DialogContent className="max-w-sm">
         <DialogHeader className="flex items-start justify-between">
           <DialogTitle>编辑商品</DialogTitle>
+          <DialogDescription>Edit product details.</DialogDescription>
           <DialogClose asChild>
             <button type="button" className="text-slate-400 hover:text-slate-600">
               <X className="h-4 w-4" />
@@ -59,20 +66,20 @@ export default function CommissionEditModal({
 
         <div className="mt-4 space-y-4">
           <Field orientation="horizontal">
-            <FieldLabel className="w-16">标题</FieldLabel>
-            <Input value={localTitle} onChange={(e) => setLocalTitle(e.target.value)} />
+            <FieldLabel className="w-16" htmlFor={titleId}>标题</FieldLabel>
+            <Input id={titleId} value={localTitle} onChange={(e) => setLocalTitle(e.target.value)} />
           </Field>
           <Field orientation="horizontal">
-            <FieldLabel className="w-16">价格</FieldLabel>
-            <Input value={localPrice} onChange={(e) => setLocalPrice(e.target.value)} />
+            <FieldLabel className="w-16" htmlFor={priceId}>价格</FieldLabel>
+            <Input id={priceId} value={localPrice} onChange={(e) => setLocalPrice(e.target.value)} />
           </Field>
           <Field orientation="horizontal">
-            <FieldLabel className="w-16">佣金</FieldLabel>
-            <Input value={computedCommission.toFixed(2)} disabled />
+            <FieldLabel className="w-16" htmlFor={commissionId}>佣金</FieldLabel>
+            <Input id={commissionId} value={computedCommission.toFixed(2)} disabled />
           </Field>
           <Field orientation="horizontal">
-            <FieldLabel className="w-16">佣金比例</FieldLabel>
-            <Input value={localRate} onChange={(e) => setLocalRate(e.target.value)} />
+            <FieldLabel className="w-16" htmlFor={rateId}>佣金比例</FieldLabel>
+            <Input id={rateId} value={localRate} onChange={(e) => setLocalRate(e.target.value)} />
           </Field>
         </div>
 

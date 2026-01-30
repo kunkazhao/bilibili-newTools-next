@@ -12,10 +12,91 @@
   .modal-list-field {
     @apply flex-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700;
   }
+
+  .drag-handle {
+    @apply flex h-7 w-7 cursor-grab items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500;
+  }
+
+  .dialog-content {
+    padding: var(--dialog-content-padding);
+  }
+
+  .dialog-header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--dialog-header-gap);
+    margin-bottom: var(--dialog-header-margin);
+  }
+
+  .dialog-title {
+    font-size: var(--dialog-title-size);
+    font-weight: var(--dialog-title-weight);
+    line-height: 1.3;
+    color: #0f172a;
+  }
+
+  .dialog-description {
+    font-size: var(--dialog-description-size);
+    color: #64748b;
+  }
+
+  .dialog-footer {
+    margin-top: var(--dialog-footer-margin);
+    gap: var(--dialog-footer-gap);
+  }
+
+  .dialog-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--dialog-form-gap);
+    margin-top: var(--dialog-form-margin);
+  }
+
+  .dialog-fieldset {
+    display: flex;
+    flex-direction: column;
+    gap: var(--dialog-field-gap);
+  }
+
+  .dialog-list {
+    max-height: var(--dialog-list-max-height);
+    overflow: auto;
+  }
+
+  .dialog-action-delete {
+    @apply border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700;
+  }
+
+  .dialog-content .space-y-2 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: var(--dialog-space-2);
+  }
+
+  .dialog-content .space-y-3 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: var(--dialog-space-3);
+  }
+
+  .dialog-content .space-y-4 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: var(--dialog-space-4);
+  }
 }
 
 :root {
   color-scheme: light;
+  --dialog-title-size: 18px;
+  --dialog-title-weight: 600;
+  --dialog-description-size: 14px;
+  --dialog-content-padding: 24px;
+  --dialog-header-gap: 8px;
+  --dialog-header-margin: 16px;
+  --dialog-footer-gap: 12px;
+  --dialog-footer-margin: 24px;
+  --dialog-form-gap: 16px;
+  --dialog-form-margin: 16px;
+  --dialog-field-gap: 16px;
+  --dialog-space-2: 8px;
+  --dialog-space-3: 12px;
+  --dialog-space-4: 16px;
+  --dialog-list-max-height: 360px;
 }
 
 body {

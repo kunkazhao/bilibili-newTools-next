@@ -32,7 +32,7 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-1/2 top-1/2 z-50 w-[90vw] max-w-3xl -translate-x-1/2 -translate-y-1/2 rounded-xl border border-slate-200 bg-white p-6 shadow-[0_30px_60px_-40px_rgba(15,23,42,0.5)]",
+        "dialog-content fixed left-1/2 top-1/2 z-50 w-[90vw] max-w-3xl -translate-x-1/2 -translate-y-1/2 rounded-xl border border-slate-200 bg-white shadow-[0_30px_60px_-40px_rgba(15,23,42,0.5)]",
         className
       )}
       {...props}
@@ -45,7 +45,7 @@ const DialogHeader = ({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("mb-4 flex flex-col gap-2", className)} {...props} />
+  <div className={cn("dialog-header", className)} {...props} />
 )
 DialogHeader.displayName = "DialogHeader"
 
@@ -55,7 +55,7 @@ const DialogTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title
     ref={ref}
-    className={cn("text-lg font-semibold text-slate-900", className)}
+    className={cn("dialog-title", className)}
     {...props}
   />
 ))
@@ -67,7 +67,7 @@ const DialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
-    className={cn("sr-only text-sm text-slate-500", className)}
+    className={cn("dialog-description sr-only", className)}
     {...props}
   />
 ))
@@ -77,7 +77,7 @@ const DialogFooter = ({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("mt-6 flex items-center justify-end gap-3", className)} {...props} />
+  <div className={cn("dialog-footer flex items-center justify-end", className)} {...props} />
 )
 DialogFooter.displayName = "DialogFooter"
 

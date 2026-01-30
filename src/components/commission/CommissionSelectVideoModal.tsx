@@ -1,6 +1,7 @@
 ﻿import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogClose,
@@ -52,9 +53,10 @@ export default function CommissionSelectVideoModal({
         <DialogHeader className="flex items-start justify-between">
           <div className="space-y-2">
             <DialogTitle>选择对标视频</DialogTitle>
+            <DialogDescription>Select benchmark videos.</DialogDescription>
             <div className="w-32">
               <Select value={activeCategory} onValueChange={onCategoryChange}>
-                <SelectTrigger>
+                <SelectTrigger aria-label="Filter category">
                   <SelectValue placeholder="全部" />
                 </SelectTrigger>
                 <SelectContent>
@@ -82,6 +84,7 @@ export default function CommissionSelectVideoModal({
               className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm"
             >
               <Checkbox
+                aria-label={item.title || "Select video"}
                 checked={selected.includes(item.id)}
                 onCheckedChange={() => onToggle(item.id)}
               />

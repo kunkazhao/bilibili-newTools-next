@@ -44,7 +44,6 @@ interface CommissionPageViewProps {
     sort: string
   }
   onFilterChange: (key: string, value: string) => void
-  onToggleFocus: (id: string) => void
   onEdit: (id: string) => void
   onArchive: (id: string) => void
   onArchiveAll: () => void
@@ -83,6 +82,7 @@ const RangeInput = ({
     <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
       <span className="font-medium text-slate-600">{label}</span>
       <Input
+        aria-label={`${label} min`}
         value={minValue}
         onChange={(e) => onMinChange(e.target.value)}
         placeholder="最低"
@@ -90,6 +90,7 @@ const RangeInput = ({
       />
       <span className="text-slate-300">-</span>
       <Input
+        aria-label={`${label} max`}
         value={maxValue}
         onChange={(e) => onMaxChange(e.target.value)}
         placeholder="最高"
@@ -118,7 +119,6 @@ export default function CommissionPageView({
   editTarget,
   filters,
   onFilterChange,
-  onToggleFocus,
   onEdit,
   onArchive,
   onArchiveAll,
@@ -142,7 +142,7 @@ export default function CommissionPageView({
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
-        <Textarea
+        <Textarea aria-label="Link list"
           value={inputValue}
           onChange={(e) => onInputChange(e.target.value)}
           placeholder="粘贴 B 站链接/推广链接/对标视频链接，一行一个"
@@ -197,7 +197,7 @@ export default function CommissionPageView({
           <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
             <span className="font-medium text-slate-600">搜索</span>
             <Input
-              value={filters.keyword}
+              aria-label="Search products" value={filters.keyword}
               onChange={(e) => onFilterChange("keyword", e.target.value)}
               placeholder="搜索商品名称..."
               className="h-7 w-[220px] border-none bg-slate-50 text-xs"
@@ -226,7 +226,7 @@ export default function CommissionPageView({
           />
           <div className="min-w-[160px]">
             <Select value={filters.sort} onValueChange={(value) => onFilterChange("sort", value)}>
-              <SelectTrigger className="h-9">
+              <SelectTrigger className="h-9" aria-label="Sort">
                 <SelectValue placeholder="排序方式" />
               </SelectTrigger>
               <SelectContent>
@@ -242,7 +242,6 @@ export default function CommissionPageView({
             <CommissionListCard
               key={item.id}
               item={item}
-              onToggleFocus={onToggleFocus}
               onEdit={onEdit}
               onArchive={onArchive}
               onDelete={onDelete}

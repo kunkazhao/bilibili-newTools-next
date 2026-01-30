@@ -3,7 +3,6 @@ import AppLayout from "@/components/AppLayout"
 import CommissionPage from "@/pages/CommissionPage"
 import ArchivePage from "@/pages/ArchivePage"
 import SchemesPage from "@/pages/SchemesPage"
-import SchemeDetailPage from "@/pages/SchemeDetailPage"
 import CommentBlueLinkPage from "@/pages/CommentBlueLinkPage"
 import BlueLinkMapPage from "@/pages/BlueLinkMapPage"
 import RecognizePage from "@/pages/RecognizePage"
@@ -12,6 +11,7 @@ import ScriptPage from "@/pages/ScriptPage"
 import AutoCartPage from "@/pages/AutoCartPage"
 import Empty from "@/components/Empty"
 import { ToastProvider } from "@/components/Toast"
+import { openSchemeDetailPage } from "@/utils/standaloneRoutes"
 
 const Placeholder = ({ title }: { title: string }) => (
   <Empty title={title} description="该页面待迁移" />
@@ -19,28 +19,11 @@ const Placeholder = ({ title }: { title: string }) => (
 
 export default function App() {
   const [activeIndex, setActiveIndex] = useState(0)
-  const [activeSchemeId, setActiveSchemeId] = useState<string | null>(null)
-
-  const handleSelect = (index: number) => {
-    setActiveIndex(index)
-    if (index !== 0) {
-      setActiveSchemeId(null)
-    }
-  }
 
   const renderPage = () => {
-    if (activeIndex === 0 && activeSchemeId) {
-      return (
-        <SchemeDetailPage
-          schemeId={activeSchemeId}
-          onBack={() => setActiveSchemeId(null)}
-        />
-      )
-    }
-
     switch (activeIndex) {
       case 0:
-        return <SchemesPage onEnterScheme={setActiveSchemeId} />
+        return <SchemesPage onEnterScheme={openSchemeDetailPage} />
       case 1:
         return <ArchivePage />
       case 2:
@@ -64,7 +47,7 @@ export default function App() {
 
   return (
     <ToastProvider>
-      <AppLayout activeIndex={activeIndex} onSelect={handleSelect}>
+      <AppLayout activeIndex={activeIndex} onSelect={setActiveIndex}>
         {renderPage()}
       </AppLayout>
     </ToastProvider>

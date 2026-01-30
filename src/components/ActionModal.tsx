@@ -3,6 +3,7 @@ import PrimaryButton from "@/components/PrimaryButton"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -37,6 +38,7 @@ export default function ActionModal({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>Confirm action.</DialogDescription>
         </DialogHeader>
         <div className="mt-4 space-y-3 text-sm text-slate-600">{children}</div>
         <DialogFooter className="mt-6">

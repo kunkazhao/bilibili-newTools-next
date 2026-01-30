@@ -1,6 +1,7 @@
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogClose,
@@ -31,6 +32,7 @@ export default function CommissionProgressModal({
       <DialogContent className="max-w-md">
         <DialogHeader className="flex items-center justify-between">
           <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>Progress update.</DialogDescription>
           <DialogClose asChild>
             <button type="button" className="text-slate-400 hover:text-slate-600">
               <X className="h-4 w-4" />

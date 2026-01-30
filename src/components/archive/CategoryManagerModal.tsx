@@ -1,6 +1,7 @@
 ﻿import { useEffect, useMemo, useState } from "react"
 import ModalForm from "@/components/ModalForm"
 import { Button } from "@/components/ui/button"
+import { GripVertical, Trash2 } from "lucide-react"
 import type { CategoryItem } from "@/components/archive/types"
 
 interface CategoryManagerModalProps {
@@ -106,6 +107,8 @@ export default function CategoryManagerModal({
           className="h-10 flex-1 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
           placeholder="新增分类"
           value={newName}
+          name="new-category"
+          aria-label="New category"
           onChange={(event) => setNewName(event.target.value)}
         />
         <Button type="button" onClick={handleAdd}>
@@ -115,7 +118,7 @@ export default function CategoryManagerModal({
 
       {errorMessage ? <div className="text-xs text-rose-500">{errorMessage}</div> : null}
 
-      <div className="space-y-2">
+      <div className="dialog-list space-y-2">
         {drafts.map((item) => (
           <div
             key={item.id}
@@ -125,20 +128,25 @@ export default function CategoryManagerModal({
             onDragOver={(event) => event.preventDefault()}
             onDrop={() => handleReorder(item.id)}
           >
-            <span className="cursor-grab text-xs text-slate-400">拖拽</span>
+            <span className="drag-handle" role="img" aria-label="Drag handle">
+              <GripVertical className="h-4 w-4" aria-hidden="true" />
+            </span>
             <input
               className="modal-list-field bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
               value={item.name}
+              name={`category-${item.id}`}
+              aria-label="Category name"
               onChange={(event) => handleUpdate(item.id, event.target.value)}
             />
             <Button
               type="button"
               variant="outline"
-              size="sm"
-              className="border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+              size="icon"
+              className="dialog-action-delete"
+              aria-label="Delete category"
               onClick={() => handleRemove(item.id)}
             >
-              删除
+              <Trash2 className="h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
         ))}

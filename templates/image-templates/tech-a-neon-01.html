@@ -1,0 +1,266 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Layout A</title>
+<style>
+:root {
+  --tpl-card-bg: transparent;
+  --tpl-panel: rgba(18, 22, 30, 0.92);
+  --tpl-panel-alt: rgba(28, 34, 44, 0.9);
+  --tpl-text: #f3f6ff;
+  --tpl-muted: rgba(243, 246, 255, 0.7);
+  --tpl-accent: #34f0ff;
+  --tpl-accent-2: #ff4fd8;
+  --tpl-highlight: #ffe36e;
+  --tpl-border: rgba(255, 255, 255, 0.12);
+  --tpl-shadow: none;
+  --tpl-font: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif;
+  --tpl-title-font: "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --tpl-summary-font: "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --tpl-card-overlay: none;
+  --tpl-overlay-opacity: 0;
+  --tpl-cover-w: 260px;
+  --tpl-cover-h: 220px;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: transparent;
+  font-family: var(--tpl-font);
+  color: var(--tpl-text);
+}
+.card {
+  width: 970px;
+  height: 480px;
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 46%) minmax(0, 54%);
+  grid-template-rows: minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px;
+  background: var(--tpl-card-bg);
+  border-radius: 22px;
+  box-shadow: var(--tpl-shadow);
+  overflow: hidden;
+  font-family: var(--tpl-font);
+  color: var(--tpl-text);
+}
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--tpl-card-overlay);
+  opacity: var(--tpl-overlay-opacity);
+  pointer-events: none;
+}
+.panel {
+  position: relative;
+  border-radius: 18px;
+  border: 1px solid var(--tpl-border);
+  background: var(--tpl-panel);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+.cover-panel {
+  grid-column: 1;
+  grid-row: 1;
+  background: var(--tpl-panel-alt);
+}
+.cover-frame {
+  width: 100%;
+  height: 100%;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 10px;
+}
+.cover-box {
+  width: var(--tpl-cover-w);
+  height: var(--tpl-cover-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tpl-cover {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+.accent-panel {
+  grid-column: 1;
+  grid-row: 2;
+  background: var(--tpl-panel-alt);
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+.accent-title {
+  font-size: 14px;
+  letter-spacing: 2px;
+  color: var(--tpl-accent);
+  text-transform: uppercase;
+}
+.accent-line {
+  height: 2px;
+  width: 120px;
+  background: linear-gradient(90deg, var(--tpl-accent), transparent);
+  border-radius: 999px;
+}
+.accent-panel .title {
+  font-size: 28px;
+  line-height: 1.15;
+  letter-spacing: 0.8px;
+  text-align: center;
+  margin-top: 0;
+}
+.info-panel {
+  grid-column: 2;
+  grid-row: 1;
+  gap: 10px;
+  overflow: hidden;
+}
+.title {
+  font-family: var(--tpl-title-font);
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: 0.9px;
+  color: var(--tpl-text);
+  text-shadow:
+    0 2px 10px rgba(52, 240, 255, 0.2),
+    0 0 18px rgba(255, 79, 216, 0.12);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.price-row {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 4px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--tpl-border);
+}
+.price-value {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--tpl-highlight);
+}
+.params-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.param-item {
+  border-radius: 12px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  min-height: 42px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tpl-param-label {
+  font-size: 10px;
+  color: var(--tpl-muted);
+  letter-spacing: 1px;
+}
+.tpl-param-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--tpl-text);
+}
+.remark-panel {
+  grid-column: 2;
+  grid-row: 2;
+  background: var(--tpl-panel);
+  padding-top: 10px;
+  padding-bottom: 12px;
+}
+.remark-title {
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 8px;
+  text-transform: none;
+  color: var(--tpl-highlight);
+  text-shadow:
+    0 2px 12px rgba(255, 227, 110, 0.45),
+    0 0 18px rgba(52, 240, 255, 0.25);
+}
+.remark-text {
+  font-family: var(--tpl-summary-font);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.65;
+  color: var(--tpl-text);
+  letter-spacing: 0.6px;
+  text-shadow: 0 1px 12px rgba(52, 240, 255, 0.18);
+}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="panel cover-panel">
+      <div class="cover-frame">
+        <div class="cover-box">
+          <img class="tpl-cover" data-field="cover" alt="cover" src="test1.png" />
+        </div>
+      </div>
+    </div>
+    <div class="panel accent-panel">
+      <div class="title tpl-title" data-field="title">Vortex X1 无线电竞鼠标</div>
+      <div class="accent-title">置顶评论里直达商品链接</div>
+      <div class="accent-line"></div>
+    </div>
+    <div class="panel info-panel">
+      <div class="price-row">
+        <span class="price-value tpl-price" data-field="price">899元</span>
+      </div>
+      <div class="params-grid">
+        <div class="param-item tpl-param">
+          <span class="tpl-param-label">重量</span>
+          <span class="tpl-param-value">61g</span>
+        </div>
+        <div class="param-item tpl-param">
+          <span class="tpl-param-label">连接方式</span>
+          <span class="tpl-param-value">三模无线</span>
+        </div>
+        <div class="param-item tpl-param">
+          <span class="tpl-param-label">续航</span>
+          <span class="tpl-param-value">90小时</span>
+        </div>
+        <div class="param-item tpl-param">
+          <span class="tpl-param-label">传感器</span>
+          <span class="tpl-param-value">PAW3395</span>
+        </div>
+        <div class="param-item tpl-param">
+          <span class="tpl-param-label">回报率</span>
+          <span class="tpl-param-value">8000Hz</span>
+        </div>
+        <div class="param-item tpl-param">
+          <span class="tpl-param-label">材质</span>
+          <span class="tpl-param-value">PBT</span>
+        </div>
+      </div>
+    </div>
+    <div class="panel remark-panel">
+      <div class="remark-title">评价</div>
+      <div class="remark-text tpl-remark" data-field="remark">超轻61g+8K回报率，定位准确，适合高强度电竞对战。超轻61g+8K回报率，定位准确，适合高强度电竞对战。</div>
+    </div>
+  </div>
+</body>
+</html>

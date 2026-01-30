@@ -1,5 +1,5 @@
 ﻿import { Button } from "@/components/ui/button"
-import { Star, Pencil, Archive, Trash2 } from "lucide-react"
+import { Pencil, Archive, Trash2 } from "lucide-react"
 
 export interface CommissionItemView {
   id: string
@@ -19,7 +19,6 @@ export interface CommissionItemView {
 
 interface CommissionListCardProps {
   item: CommissionItemView
-  onToggleFocus: (id: string) => void
   onEdit: (id: string) => void
   onArchive: (id: string) => void
   onDelete: (id: string) => void
@@ -42,7 +41,6 @@ const formatYuan = (value: number) => {
 
 export default function CommissionListCard({
   item,
-  onToggleFocus,
   onEdit,
   onArchive,
   onDelete,
@@ -50,25 +48,6 @@ export default function CommissionListCard({
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
       <div className="flex gap-4">
-        <div className="flex flex-col items-center gap-3">
-          <Button
-            type="button"
-            variant={item.isFocused ? "default" : "outline"}
-            size="icon"
-            className={
-              item.isFocused
-                ? "h-8 w-8 rounded-full bg-brand text-white"
-                : "h-8 w-8 rounded-full bg-white text-slate-400"
-            }
-            onClick={() => onToggleFocus(item.id)}
-          >
-            <Star className="h-4 w-4" />
-          </Button>
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-sm font-semibold text-slate-600">
-            {item.index}
-          </span>
-        </div>
-
         <div className="relative h-[120px] w-[120px] overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
           {item.image ? (
             <img src={item.image} alt={item.title} className="h-full w-full object-cover" />

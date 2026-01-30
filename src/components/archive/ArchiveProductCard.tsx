@@ -1,3 +1,4 @@
+import { GripVertical } from "lucide-react"
 import Badge from "@/components/Badge"
 import PrimaryButton from "@/components/PrimaryButton"
 import Tooltip from "@/components/Tooltip"
@@ -70,9 +71,9 @@ export default function ArchiveProductCard({
 
       <div className="absolute right-4 top-4 flex items-center gap-2">
         <Badge label={categoryName} tone="primary" />
-        <Tooltip content="拖拽排序">
-          <span className="cursor-grab rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-500">
-            拖拽
+        <Tooltip content="排序">
+          <span className="drag-handle" role="img" aria-label="Drag handle">
+            <GripVertical className="h-4 w-4" aria-hidden="true" />
           </span>
         </Tooltip>
       </div>

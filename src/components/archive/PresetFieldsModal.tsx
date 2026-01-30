@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react"
+﻿import { useEffect, useMemo, useRef, useState } from "react"
 import ModalForm from "@/components/ModalForm"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -20,6 +20,11 @@ interface PresetFieldsModalProps {
   onSave: (categoryId: string, fields: { key: string }[]) => void
 }
 
+type DraftField = {
+  id: string
+  key: string
+}
+
 export default function PresetFieldsModal({
   isOpen,
   categories,
@@ -36,23 +41,30 @@ export default function PresetFieldsModal({
   }, [categories, selectedCategoryId])
 
   const [activeCategoryId, setActiveCategoryId] = useState(defaultCategoryId)
-  const [drafts, setDrafts] = useState<string[]>([])
+  const [drafts, setDrafts] = useState<DraftField[]>([])
   const [newField, setNewField] = useState("")
   const [errorMessage, setErrorMessage] = useState("")
-  const [dragKey, setDragKey] = useState<string | null>(null)
+  const [dragId, setDragId] = useState<string | null>(null)
+  const draftIdRef = useRef(0)
+
+  const createDraft = (value: string) => {
+    draftIdRef.current += 1
+    return { id: `preset-${draftIdRef.current}`, key: value }
+  }
 
   useEffect(() => {
     setActiveCategoryId(defaultCategoryId)
   }, [defaultCategoryId, isOpen])
 
   useEffect(() => {
+    if (!isOpen) return
     const target = categories.find((item) => item.id === activeCategoryId)
-    setDrafts(target?.specFields?.map((field) => field.key) ?? [])
+    setDrafts(target?.specFields?.map((field) => createDraft(field.key)) ?? [])
     setErrorMessage("")
-  }, [activeCategoryId, categories])
+  }, [activeCategoryId, isOpen])
 
   const trimmedSet = useMemo(
-    () => new Set(drafts.map((item) => item.trim()).filter(Boolean)),
+    () => new Set(drafts.map((item) => item.key.trim()).filter(Boolean)),
     [drafts]
   )
 
@@ -66,21 +78,23 @@ export default function PresetFieldsModal({
       setErrorMessage("参数名称重复")
       return
     }
-    setDrafts((prev) => [...prev, trimmed])
+    setDrafts((prev) => [...prev, createDraft(trimmed)])
     setNewField("")
     setErrorMessage("")
   }
 
-  const handleUpdate = (index: number, value: string) => {
-    setDrafts((prev) => prev.map((item, idx) => (idx === index ? value : item)))
+  const handleUpdate = (id: string, value: string) => {
+    setDrafts((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, key: value } : item))
+    )
   }
 
-  const handleRemove = (index: number) => {
-    setDrafts((prev) => prev.filter((_, idx) => idx !== index))
+  const handleRemove = (id: string) => {
+    setDrafts((prev) => prev.filter((item) => item.id !== id))
   }
 
   const handleSave = () => {
-    const trimmed = drafts.map((item) => item.trim())
+    const trimmed = drafts.map((item) => item.key.trim())
     if (trimmed.some((item) => item === "")) {
       setErrorMessage("参数名称不能为空")
       return
@@ -95,11 +109,11 @@ export default function PresetFieldsModal({
     onClose()
   }
 
-  const handleReorder = (targetKey: string) => {
-    if (!dragKey || dragKey === targetKey) return
+  const handleReorder = (targetId: string) => {
+    if (!dragId || dragId === targetId) return
     const current = [...drafts]
-    const fromIndex = current.indexOf(dragKey)
-    const toIndex = current.indexOf(targetKey)
+    const fromIndex = current.findIndex((item) => item.id === dragId)
+    const toIndex = current.findIndex((item) => item.id === targetId)
     if (fromIndex === -1 || toIndex === -1) return
     const [moved] = current.splice(fromIndex, 1)
     current.splice(toIndex, 0, moved)
@@ -119,11 +133,8 @@ export default function PresetFieldsModal({
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="min-w-[180px]">
-            <Select
-              value={activeCategoryId}
-              onValueChange={(value) => setActiveCategoryId(value)}
-            >
-              <SelectTrigger>
+            <Select value={activeCategoryId} onValueChange={setActiveCategoryId}>
+              <SelectTrigger aria-label="Category">
                 <SelectValue placeholder="选择分类" />
               </SelectTrigger>
               <SelectContent>
@@ -137,6 +148,7 @@ export default function PresetFieldsModal({
           </div>
           <div className="flex flex-1 items-center gap-2">
             <Input
+              aria-label="New field"
               placeholder="新增参数"
               value={newField}
               onChange={(event) => setNewField(event.target.value)}
@@ -147,33 +159,36 @@ export default function PresetFieldsModal({
           </div>
         </div>
 
-        {errorMessage ? (
-          <div className="text-xs text-rose-500">{errorMessage}</div>
-        ) : null}
+        {errorMessage ? <div className="text-xs text-rose-500">{errorMessage}</div> : null}
 
-        <div className="space-y-2">
-          {drafts.map((item, index) => (
+        <div className="dialog-list space-y-2">
+          {drafts.map((item) => (
             <div
-              key={`${item}-${index}`}
-              className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2"
+              key={item.id}
+              className="modal-list-row"
               draggable
-              onDragStart={() => setDragKey(item)}
+              onDragStart={() => setDragId(item.id)}
               onDragOver={(event) => event.preventDefault()}
-              onDrop={() => handleReorder(item)}
+              onDrop={() => handleReorder(item.id)}
             >
-              <GripVertical className="h-4 w-4 text-slate-400" />
+              <span className="drag-handle" role="img" aria-label="Drag handle">
+                <GripVertical className="h-4 w-4" aria-hidden="true" />
+              </span>
               <Input
-                value={item}
-                onChange={(event) => handleUpdate(index, event.target.value)}
+                aria-label="Preset field"
+                className="modal-list-field bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
+                value={item.key}
+                onChange={(event) => handleUpdate(item.id, event.target.value)}
               />
               <Button
                 type="button"
-                variant="ghost"
+                variant="outline"
                 size="icon"
-                className="text-slate-500"
-                onClick={() => handleRemove(index)}
+                className="dialog-action-delete"
+                aria-label="Delete field"
+                onClick={() => handleRemove(item.id)}
               >
-                <Trash2 className="h-4 w-4" />
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
               </Button>
             </div>
           ))}

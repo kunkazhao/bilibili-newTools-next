@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, useId } from "react"
 import ModalForm from "@/components/ModalForm"
 import {
   Select,
@@ -195,6 +195,9 @@ export default function ProductFormModal({
   const [isParsing, setIsParsing] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const coverInputRef = useRef<HTMLInputElement | null>(null)
+  const baseId = useId()
+  const coverInputId = `${baseId}-cover`
+  const categorySelectId = `${baseId}-category`
 
   useEffect(() => {
     setValues(initialValues ?? emptyValues)
@@ -403,7 +406,7 @@ export default function ProductFormModal({
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <input
-                  ref={coverInputRef}
+                  id={coverInputId} name="cover" aria-label="Cover image" ref={coverInputRef}
                   type="file"
                   accept="image/*"
                   className="hidden"
@@ -446,7 +449,7 @@ export default function ProductFormModal({
                   value={values.categoryId}
                   onValueChange={(value) => update("categoryId", value)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id={categorySelectId}>
                     <SelectValue placeholder="请选择" />
                   </SelectTrigger>
                   <SelectContent>
@@ -551,9 +554,9 @@ export default function ProductFormModal({
           <div className="grid gap-3 md:grid-cols-2">
             {presetFields.map((field) => (
               <div key={field.key} className="grid gap-2 md:grid-cols-2">
-                <Input value={field.key} readOnly />
+                <Input aria-label="Parameter name" value={field.key} readOnly />
                 <Input
-                  placeholder="参数值"
+                  aria-label="Parameter value" placeholder="参数值"
                   value={values.params[field.key] ?? ""}
                   onChange={(event) =>
                     setValues((prev) => ({

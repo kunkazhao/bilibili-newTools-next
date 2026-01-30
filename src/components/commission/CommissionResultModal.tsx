@@ -1,6 +1,7 @@
 ﻿import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogClose,
@@ -39,6 +40,7 @@ export default function CommissionResultModal({
           <div className="flex items-center gap-2">
             <CheckCircle2 className="h-5 w-5 text-emerald-500" />
             <DialogTitle>解析完成</DialogTitle>
+            <DialogDescription>Parsing summary.</DialogDescription>
           </div>
           <DialogClose asChild>
             <button type="button" className="text-slate-400 hover:text-slate-600">
