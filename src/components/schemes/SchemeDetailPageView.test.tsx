@@ -47,6 +47,7 @@ describe("SchemeDetailPageView", () => {
           items: [],
           totalCount: 0,
           onOpenPicker: () => {},
+          onGenerateImage: () => {},
           onEdit: () => {},
           onRemove: () => {},
           onDragStart: () => {},

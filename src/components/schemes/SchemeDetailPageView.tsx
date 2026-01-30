@@ -42,6 +42,7 @@ type SchemeDetailPageViewProps = {
     }[]
     totalCount: number
     onOpenPicker: () => void
+    onGenerateImage: (id: string) => void
     onEdit: (id: string) => void
     onRemove: (id: string) => void
     onDragStart: (id: string) => void
@@ -140,6 +141,7 @@ export default function SchemeDetailPageView({
             items={productList.items}
             totalCount={productList.totalCount}
             onOpenPicker={productList.onOpenPicker}
+            onGenerateImage={productList.onGenerateImage}
             onEdit={productList.onEdit}
             onRemove={productList.onRemove}
             onDragStart={productList.onDragStart}

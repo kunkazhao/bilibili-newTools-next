@@ -4,6 +4,7 @@ import { useToast } from "@/components/Toast"
 import Empty from "@/components/Empty"
 import SchemeDetailDialogs from "@/components/schemes/SchemeDetailDialogs"
 import SchemeDetailPageView from "@/components/schemes/SchemeDetailPageView"
+import { selectSingleImageTarget } from "@/components/schemes/schemeImageSingle"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -607,6 +608,10 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     current.splice(toIndex, 0, moved)
     setSortValue("manual")
     await persistItems(current)
+  }
+
+  const handleGenerateImage = (id: string) => {
+    void generateSingleImage(id)
   }
 
   const buildPromptItems = () =>
@@ -1226,6 +1231,74 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     }
   }
 
+  const generateSingleImage = async (itemId: string) => {
+    const target = selectSingleImageTarget(items, imageTemplates, activeTemplateId, itemId)
+    if (!target.ok) {
+      setImageStatus({ message: target.error, type: "error" })
+      return
+    }
+    if (!imageRenderRef.current) {
+      setImageStatus({ message: "图片渲染容器缺失", type: "error" })
+      return
+    }
+    setImageStatus({ message: "正在生成图片...", type: "info" })
+    refreshTemplateMissing()
+
+    const { item, template } = target
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(template.html ?? "", "text/html")
+    const headStyles = Array.from(doc.querySelectorAll("style"))
+      .map((style) => style.outerHTML)
+      .join("")
+    const bodyHtml = doc.body?.innerHTML || template.html
+    const paramSlotCount = getTemplateParamSlotCount(template.html ?? "")
+
+    try {
+      const renderRoot = imageRenderRef.current
+      renderRoot.innerHTML = ""
+      const wrapper = document.createElement("div")
+      wrapper.className = "template-render"
+      wrapper.innerHTML = `${headStyles}${bodyHtml}`
+      renderRoot.appendChild(wrapper)
+
+      const { slots } = buildTemplateParamSlots(item, template.html ?? "", paramSlotCount)
+      applyTemplateFields(wrapper, getItemFieldMap(item), slots)
+
+      const rect = wrapper.getBoundingClientRect()
+      if (!rect.width || !rect.height) {
+        setImageStatus({ message: "生成失败：模板尺寸为 0", type: "error" })
+        return
+      }
+
+      const canvas = await html2canvas(wrapper, {
+        useCORS: true,
+        backgroundColor: null,
+        scale: 2,
+      })
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, "image/png", 1)
+      )
+      if (!blob) {
+        setImageStatus({ message: "生成失败，请重试", type: "error" })
+        return
+      }
+
+      const name = sanitizeFilename(item.title || `商品_${Date.now()}`)
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement("a")
+      anchor.href = url
+      anchor.download = `${name}.png`
+      document.body.appendChild(anchor)
+      anchor.click()
+      document.body.removeChild(anchor)
+      URL.revokeObjectURL(url)
+
+      setImageStatus({ message: "图片已生成并开始下载", type: "success" })
+    } catch {
+      setImageStatus({ message: "生成失败，请重试", type: "error" })
+    }
+  }
+
   const buildExportProduct = (item: SchemeItem) => {
     const meta = getMeta(item.spec)
     const specParams = stripMetaSpec(item.spec || {})
@@ -1589,6 +1662,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
           items: productCards,
           totalCount: filteredItems.length,
           onOpenPicker: openPicker,
+          onGenerateImage: handleGenerateImage,
           onEdit: openEditItem,
           onRemove: (id) => {
             const target = items.find((item) => item.id === id) || { id }
