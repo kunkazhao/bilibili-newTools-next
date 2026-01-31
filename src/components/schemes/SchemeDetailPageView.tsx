@@ -73,11 +73,11 @@ type SchemeDetailPageViewProps = {
     }
     blueLink: {
       accounts: { id: string; name: string }[]
-      selectedAccountIds: Set<string>
+      selectedAccountId: string
       ranges: { min: number | null; max: number | null }[]
       groups: { label: string; lines: string[] }[]
       missingMessage: string
-      onToggleAccount: (id: string, checked: boolean) => void
+      onAccountChange: (id: string) => void
       onRangeChange: (index: number, field: "min" | "max", value: number | null) => void
       onAddRange: () => void
       onRemoveRange: (index: number) => void
@@ -154,3 +154,4 @@ export default function SchemeDetailPageView({
     </div>
   )
 }
+

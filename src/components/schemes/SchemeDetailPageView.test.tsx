@@ -1,4 +1,4 @@
-ï»¿// @vitest-environment jsdom
+// @vitest-environment jsdom
 import React from "react"
 import { describe, expect, it, vi } from "vitest"
 import { render } from "@testing-library/react"
@@ -25,8 +25,8 @@ describe("SchemeDetailPageView", () => {
     const { container } = render(
       <SchemeDetailPageView
         header={{
-          name: "æ–¹æ¡ˆ",
-          categoryName: "åˆ†ç±»",
+          name: "·½°¸",
+          categoryName: "·ÖÀà",
           itemCount: 0,
           createdAt: "2026-01-30",
           onBack: () => {},
@@ -78,11 +78,11 @@ describe("SchemeDetailPageView", () => {
           },
           blueLink: {
             accounts: [],
-            selectedAccountIds: new Set(),
+            selectedAccountId: "",
             ranges: [],
             groups: [],
             missingMessage: "",
-            onToggleAccount: () => {},
+            onAccountChange: () => {},
             onRangeChange: () => {},
             onAddRange: () => {},
             onRemoveRange: () => {},
@@ -112,3 +112,4 @@ describe("SchemeDetailPageView", () => {
     ).not.toBeNull()
   })
 })
+

@@ -1,6 +1,6 @@
 ﻿import { useId } from "react"
+import { Copy, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -44,11 +44,11 @@ type BlueLinkGroup = { label: string; lines: string[] }
 
 type BlueLinkProps = {
   accounts: BlueLinkAccount[]
-  selectedAccountIds: Set<string>
+  selectedAccountId: string
   ranges: BlueRange[]
   groups: BlueLinkGroup[]
   missingMessage: string
-  onToggleAccount: (id: string, checked: boolean) => void
+  onAccountChange: (id: string) => void
   onRangeChange: (index: number, field: "min" | "max", value: number | null) => void
   onAddRange: () => void
   onRemoveRange: (index: number) => void
@@ -90,15 +90,15 @@ export default function SchemeDetailSidebar({
 }: SchemeDetailSidebarProps) {
   const countId = useId()
   return (
-    <aside className="grid gap-4 lg:grid-cols-3">
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
+    <aside className="grid gap-3 lg:grid-cols-3">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="text-base font-semibold text-slate-900">生成商品图片</h3>
             <p className="mt-1 text-xs text-slate-500">选择模板后自动替换参数并生成图片包</p>
           </div>
         </div>
-        <div className="mt-4 space-y-3">
+        <div className="mt-3 space-y-2">
           <Select
             value={image.activeCategory || image.emptyValue}
             onValueChange={(value) =>
@@ -162,31 +162,31 @@ export default function SchemeDetailSidebar({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="text-base font-semibold text-slate-900">生成蓝链</h3>
             <p className="mt-1 text-xs text-slate-500">从蓝链商品映射中获取蓝链链接</p>
           </div>
         </div>
-        <div className="mt-4 space-y-3">
+        <div className="mt-3 space-y-2">
           <div className="space-y-2">
             <p className="text-xs text-slate-500">选择账号</p>
             {blueLink.accounts.length === 0 ? (
               <p className="text-xs text-slate-400">暂无账号</p>
             ) : (
-              <div className="space-y-2">
-                {blueLink.accounts.map((account) => (
-                  <label key={account.id} className="flex items-center gap-2 text-sm text-slate-600">
-                    <Checkbox
-                      aria-label={account.name}
-                      checked={blueLink.selectedAccountIds.has(account.id)}
-                      onCheckedChange={(value) => blueLink.onToggleAccount(account.id, Boolean(value))}
-                    />
-                    <span>{account.name}</span>
-                  </label>
-                ))}
-              </div>
+              <Select value={blueLink.selectedAccountId} onValueChange={blueLink.onAccountChange}>
+                <SelectTrigger aria-label="Blue link account">
+                  <SelectValue placeholder="选择账号" />
+                </SelectTrigger>
+                <SelectContent>
+                  {blueLink.accounts.map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
           </div>
 
@@ -218,23 +218,28 @@ export default function SchemeDetailSidebar({
                       blueLink.onRangeChange(index, "max", value === "" ? null : Number(value))
                     }}
                   />
-                  <Button variant="ghost" size="sm" onClick={() => blueLink.onRemoveRange(index)}>
-                    删除
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={"\u5220\u9664"}
+                    onClick={() => blueLink.onRemoveRange(index)}
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
                   </Button>
                 </div>
               ))}
             </div>
+          </div>
+
+          <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={blueLink.onAddRange}>
               新增区间
             </Button>
-          </div>
-
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={blueLink.onCopyAll}>
-              复制全部
-            </Button>
             <Button size="sm" onClick={blueLink.onGenerate}>
               生成蓝链
+            </Button>
+            <Button variant="ghost" size="icon" aria-label={"\u590d\u5236"} onClick={blueLink.onCopyAll}>
+              <Copy className="h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
           {blueLink.missingMessage ? (
@@ -263,7 +268,7 @@ export default function SchemeDetailSidebar({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="text-base font-semibold text-slate-900">生成评论回复</h3>
@@ -273,7 +278,7 @@ export default function SchemeDetailSidebar({
             修改提示词
           </Button>
         </div>
-        <div className="mt-4 space-y-3">
+        <div className="mt-3 space-y-2">
           <Field orientation="horizontal" className="items-center gap-2">
             <FieldLabel className="w-16" htmlFor={countId}>
               生成组数
@@ -293,7 +298,7 @@ export default function SchemeDetailSidebar({
           </Field>
           <Textarea
             aria-label="Comment prompt"
-            rows={3}
+            rows={2}
             placeholder="补充提示（可选）"
             value={commentReply.prompt}
             onChange={(event) => commentReply.onPromptChange(event.target.value)}
@@ -312,14 +317,14 @@ export default function SchemeDetailSidebar({
           </div>
           <Textarea
             aria-label="Comment output"
-            rows={5}
+            rows={4}
             value={commentReply.output}
             onChange={(event) => commentReply.onOutputChange(event.target.value)}
           />
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="text-base font-semibold text-slate-900">生成标题</h3>
@@ -329,7 +334,7 @@ export default function SchemeDetailSidebar({
             修改提示词
           </Button>
         </div>
-        <div className="mt-4 space-y-3">
+        <div className="mt-3 space-y-2">
           <div className="flex gap-2">
             <Button
               variant="outline"
@@ -344,14 +349,14 @@ export default function SchemeDetailSidebar({
           </div>
           <Textarea
             aria-label="Copywriting title"
-            rows={4}
+            rows={3}
             value={copywriting.title}
             onChange={(event) => copywriting.onTitleChange(event.target.value)}
           />
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="text-base font-semibold text-slate-900">生成简介</h3>
@@ -361,7 +366,7 @@ export default function SchemeDetailSidebar({
             修改提示词
           </Button>
         </div>
-        <div className="mt-4 space-y-3">
+        <div className="mt-3 space-y-2">
           <div className="flex gap-2">
             <Button
               variant="outline"
@@ -376,14 +381,14 @@ export default function SchemeDetailSidebar({
           </div>
           <Textarea
             aria-label="Copywriting intro"
-            rows={4}
+            rows={3}
             value={copywriting.intro}
             onChange={(event) => copywriting.onIntroChange(event.target.value)}
           />
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="text-base font-semibold text-slate-900">生成投票文案</h3>
@@ -393,7 +398,7 @@ export default function SchemeDetailSidebar({
             修改提示词
           </Button>
         </div>
-        <div className="mt-4 space-y-3">
+        <div className="mt-3 space-y-2">
           <div className="flex gap-2">
             <Button
               variant="outline"
@@ -408,7 +413,7 @@ export default function SchemeDetailSidebar({
           </div>
           <Textarea
             aria-label="Copywriting vote"
-            rows={4}
+            rows={3}
             value={copywriting.vote}
             onChange={(event) => copywriting.onVoteChange(event.target.value)}
           />
