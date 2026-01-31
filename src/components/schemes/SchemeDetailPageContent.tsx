@@ -1,10 +1,11 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { apiRequest } from "@/lib/api"
 import { useToast } from "@/components/Toast"
 import Empty from "@/components/Empty"
 import SchemeDetailDialogs from "@/components/schemes/SchemeDetailDialogs"
 import SchemeDetailPageView from "@/components/schemes/SchemeDetailPageView"
 import { selectSingleImageTarget } from "@/components/schemes/schemeImageSingle"
+import { resolveSelectedAccountId } from "@/components/schemes/blueLinkSelection"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -245,7 +246,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
   const [blueLinkEntries, setBlueLinkEntries] = useState<BlueLinkEntry[]>([])
   const [blueLinkGroups, setBlueLinkGroups] = useState<BlueLinkGroup[]>([])
   const [blueLinkMissing, setBlueLinkMissing] = useState("")
-  const [selectedAccountIds, setSelectedAccountIds] = useState<Set<string>>(new Set())
+  const [selectedAccountId, setSelectedAccountId] = useState("")
   const [blueLinkKey, setBlueLinkKey] = useState("")
 
   const [presetFields, setPresetFields] = useState<string[]>([])
@@ -732,34 +733,28 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
 
   const getBlueLinkAccountCacheKey = () => `scheme_blue_link_accounts_${schemeId}`
 
-  const persistBlueLinkAccountSelection = (selection: Set<string>) => {
+  const persistBlueLinkAccountSelection = (accountId: string) => {
     try {
-      localStorage.setItem(getBlueLinkAccountCacheKey(), JSON.stringify(Array.from(selection)))
+      if (accountId) {
+        localStorage.setItem(getBlueLinkAccountCacheKey(), accountId)
+      } else {
+        localStorage.removeItem(getBlueLinkAccountCacheKey())
+      }
     } catch {
       // ignore
     }
   }
 
   const restoreBlueLinkAccountSelection = (accounts: BlueLinkAccount[]) => {
-    const validIds = new Set(accounts.map((account) => account.id))
-    const selected = new Set<string>()
+    let cachedId: string | null = null
     try {
-      const raw = localStorage.getItem(getBlueLinkAccountCacheKey())
-      if (raw) {
-        const stored = JSON.parse(raw)
-        if (Array.isArray(stored)) {
-          stored.forEach((id) => {
-            if (validIds.has(id)) selected.add(id)
-          })
-        }
-      }
+      cachedId = localStorage.getItem(getBlueLinkAccountCacheKey())
     } catch {
       // ignore
     }
-    if (!selected.size) {
-      accounts.forEach((account) => selected.add(account.id))
-    }
-    setSelectedAccountIds(selected)
+    const nextId = resolveSelectedAccountId(accounts, cachedId)
+    setSelectedAccountId(nextId)
+    persistBlueLinkAccountSelection(nextId)
   }
 
   const getBlueLinkProductIds = () =>
@@ -807,7 +802,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     } catch {
       setBlueLinkAccounts([])
       setBlueLinkEntries([])
-      setSelectedAccountIds(new Set())
+      setSelectedAccountId("")
     }
   }
 
@@ -832,7 +827,13 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       showToast("请先设置价格区间", "error")
       return
     }
-    if (!selectedAccountIds.size) {
+    if (!selectedAccountId) {
+      setBlueLinkMissing("请先选择输出账号")
+      return
+    }
+
+    const activeAccount = blueLinkAccounts.find((account) => account.id === selectedAccountId)
+    if (!activeAccount) {
       setBlueLinkMissing("请先选择输出账号")
       return
     }
@@ -846,7 +847,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       entryMap.get(entry.account_id)?.set(entry.product_id, entry)
     })
 
-    const activeAccounts = blueLinkAccounts.filter((account) => selectedAccountIds.has(account.id))
+    const activeAccounts = [activeAccount]
     const missingSummary: string[] = []
     const groups: BlueLinkGroup[] = []
     const multiAccount = activeAccounts.length > 1
@@ -1551,15 +1552,9 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     }
   })
 
-  const handleToggleAccount = (id: string, checked: boolean) => {
-    const next = new Set(selectedAccountIds)
-    if (checked) {
-      next.add(id)
-    } else {
-      next.delete(id)
-    }
-    setSelectedAccountIds(next)
-    persistBlueLinkAccountSelection(next)
+  const handleAccountChange = (id: string) => {
+    setSelectedAccountId(id)
+    persistBlueLinkAccountSelection(id)
   }
 
   const handleRangeChange = (index: number, field: "min" | "max", value: number | null) => {
@@ -1638,11 +1633,11 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
           },
           blueLink: {
             accounts: blueLinkAccounts,
-            selectedAccountIds,
+            selectedAccountId,
             ranges: blueRanges,
             groups: blueLinkGroups,
             missingMessage: blueLinkMissing,
-            onToggleAccount: handleToggleAccount,
+            onAccountChange: handleAccountChange,
             onRangeChange: handleRangeChange,
             onAddRange: () => setBlueRanges((prev) => [...prev, { min: null, max: null }]),
             onRemoveRange: (index) => setBlueRanges((prev) => prev.filter((_, idx) => idx !== index)),
