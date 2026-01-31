@@ -410,18 +410,6 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     setRemoveTarget(null)
   }
 
-  const handleClearFiltered = async () => {
-    if (!filteredItems.length) {
-      showToast("当前没有可清空的商品", "info")
-      return
-    }
-    const confirmed = window.confirm(`确认移除当前筛选下的 ${filteredItems.length} 个商品吗？该操作无法撤销。`)
-    if (!confirmed) return
-    const removeIds = new Set(filteredItems.map((item) => item.id))
-    const nextItems = items.filter((item) => !removeIds.has(item.id))
-    await persistItems(nextItems, "已移除筛选商品")
-  }
-
   const buildProductFormValues = (item: SchemeItem): ProductFormValues => {
     const meta = getMeta(item.spec)
     return {
@@ -1447,53 +1435,6 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     }
   }
 
-  const downloadImages = async () => {
-    if (!filteredItems.length) {
-      showToast("没有可下载的主图", "info")
-      return
-    }
-    const zip = new JSZip()
-    let successCount = 0
-    let failCount = 0
-    for (const item of filteredItems) {
-      const url = getDisplayCover(item)
-      if (!url) {
-        failCount += 1
-        continue
-      }
-      try {
-        const response = await fetch(url)
-        if (!response.ok) throw new Error("download failed")
-        const blob = await response.blob()
-        const safeName = String(item.title || item.id || "cover")
-          .slice(0, 15)
-          .replace(/[\\/:*?"<>|]/g, "")
-        const fileName = safeName ? `${safeName}.jpg` : `cover_${Date.now()}.jpg`
-        zip.file(fileName, blob)
-        successCount += 1
-      } catch {
-        failCount += 1
-      }
-    }
-    if (!successCount) {
-      showToast("主图下载失败，请重试", "error")
-      return
-    }
-    const zipBlob = await zip.generateAsync({ type: "blob" })
-    const url = URL.createObjectURL(zipBlob)
-    const anchor = document.createElement("a")
-    anchor.href = url
-    anchor.download = `方案主图_${Date.now()}.zip`
-    document.body.appendChild(anchor)
-    anchor.click()
-    document.body.removeChild(anchor)
-    URL.revokeObjectURL(url)
-    const message = failCount
-      ? `下载完成，成功 ${successCount} 张，失败 ${failCount} 张`
-      : `主图已打包下载，共 ${successCount} 张`
-    showToast(message, "success")
-  }
-
   const serializeProductForFeishu = (product: ReturnType<typeof buildExportProduct>) => ({
     id: product.id,
     skuId: product.skuId,
@@ -1650,13 +1591,10 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
           onPriceMinChange: setPriceMin,
           onPriceMaxChange: setPriceMax,
           onSortChange: setSortValue,
-          onResetPrice: () => {
-            setPriceMin("")
-            setPriceMax("")
-          },
-          onClearFiltered: handleClearFiltered,
           onClearItems: () => persistItems([], "?????"),
           onOpenPicker: openPicker,
+          onExport: exportExcel,
+          onOpenFeishu: () => setFeishuOpen(true),
         }}
         productList={{
           items: productCards,
@@ -1728,11 +1666,6 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
             onTemplateChange: (value) => setActiveTemplateId(value),
             onRefreshMissing: refreshTemplateMissing,
             onGenerate: generateImages,
-          },
-          exportSync: {
-            onExport: exportExcel,
-            onDownloadImages: downloadImages,
-            onOpenFeishu: () => setFeishuOpen(true),
           },
         }}
       />

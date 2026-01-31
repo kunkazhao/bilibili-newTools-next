@@ -20,10 +20,10 @@ type SchemeDetailPageViewProps = {
     onPriceMinChange: (value: string) => void
     onPriceMaxChange: (value: string) => void
     onSortChange: (value: string) => void
-    onResetPrice: () => void
-    onClearFiltered: () => void
     onClearItems: () => void
     onOpenPicker: () => void
+    onExport: () => void
+    onOpenFeishu: () => void
   }
   productList: {
     items: {
@@ -98,11 +98,6 @@ type SchemeDetailPageViewProps = {
       onRefreshMissing: () => void
       onGenerate: () => void
     }
-    exportSync: {
-      onExport: () => void
-      onDownloadImages: () => void
-      onOpenFeishu: () => void
-    }
   }
 }
 
@@ -131,10 +126,10 @@ export default function SchemeDetailPageView({
             onPriceMinChange={toolbar.onPriceMinChange}
             onPriceMaxChange={toolbar.onPriceMaxChange}
             onSortChange={toolbar.onSortChange}
-            onResetPrice={toolbar.onResetPrice}
-            onClearFiltered={toolbar.onClearFiltered}
             onClearItems={toolbar.onClearItems}
             onOpenPicker={toolbar.onOpenPicker}
+            onExport={toolbar.onExport}
+            onOpenFeishu={toolbar.onOpenFeishu}
           />
 
           <SchemeDetailProductList
@@ -154,7 +149,6 @@ export default function SchemeDetailPageView({
           commentReply={sidebar.commentReply}
           blueLink={sidebar.blueLink}
           image={sidebar.image}
-          exportSync={sidebar.exportSync}
         />
       </div>
     </div>

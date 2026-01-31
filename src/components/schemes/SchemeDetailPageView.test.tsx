@@ -38,10 +38,10 @@ describe("SchemeDetailPageView", () => {
           onPriceMinChange: () => {},
           onPriceMaxChange: () => {},
           onSortChange: () => {},
-          onResetPrice: () => {},
-          onClearFiltered: () => {},
           onClearItems: () => {},
           onOpenPicker: () => {},
+          onExport: () => {},
+          onOpenFeishu: () => {},
         }}
         productList={{
           items: [],
@@ -102,11 +102,6 @@ describe("SchemeDetailPageView", () => {
             onTemplateChange: () => {},
             onRefreshMissing: () => {},
             onGenerate: () => {},
-          },
-          exportSync: {
-            onExport: () => {},
-            onDownloadImages: () => {},
-            onOpenFeishu: () => {},
           },
         }}
       />
