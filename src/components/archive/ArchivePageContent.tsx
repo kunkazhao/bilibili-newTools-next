@@ -1433,7 +1433,7 @@ export default function ArchivePage() {
       onLoadMore={loadMore}
       disableLoadMore={Boolean(schemeFilterId)}
       sortValue={sortValue}
-      onSortChange={setSortValue}
+      onSortChange={handleSortChange}
       onCreate={() => {
         setEditingItemId(null)
         setIsProductFormOpen(true)
@@ -1482,6 +1482,9 @@ export default function ArchivePage() {
         showToast("导入功能待实现", "info")
       }}
       onCancelImport={handleCancelImport}
+      onFixSort={handleFixSort}
+      isFixSortDisabled={fixSortDisabled}
+      isFixSortSaving={isFixSortSaving}
     />
       <ArchiveDialogs
         clearOpen={isClearOpen}
