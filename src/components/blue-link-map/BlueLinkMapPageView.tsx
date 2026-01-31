@@ -58,6 +58,54 @@ export default function BlueLinkMapPageView({
   const accountNameById = new Map(accounts.map((account) => [account.id, account.name]))
   const categoryNameById = new Map(accountCategories.map((category) => [category.id, category.name]))
 
+  if (loading && accounts.length === 0) {
+    return (
+      <div
+        data-testid="blue-link-map-skeleton"
+        className="grid gap-8 lg:grid-cols-[260px_1fr]"
+      >
+        <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card min-h-[calc(100vh-240px)]">
+          <div className="flex items-center justify-between">
+            <div className="h-5 w-24 rounded bg-slate-100" />
+            <div className="h-5 w-8 rounded bg-slate-100" />
+          </div>
+          <div className="mt-4 space-y-2">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div
+                key={index}
+                className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-2"
+              >
+                <div className="h-4 w-20 rounded bg-slate-100" />
+                <div className="h-3 w-8 rounded bg-slate-100" />
+              </div>
+            ))}
+          </div>
+        </aside>
+        <section className="space-y-5">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
+            <div className="flex items-center justify-between">
+              <div className="h-5 w-32 rounded bg-slate-100" />
+              <div className="h-9 w-24 rounded bg-slate-100" />
+            </div>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div
+                key={index}
+                className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card"
+              >
+                <div className="h-4 w-24 rounded bg-slate-100" />
+                <div className="mt-3 h-3 w-full rounded bg-slate-100" />
+                <div className="mt-2 h-3 w-3/4 rounded bg-slate-100" />
+                <div className="mt-4 h-8 w-24 rounded bg-slate-100" />
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    )
+  }
+
   const formatPrice = (value?: number) => {
     if (value === 0 || typeof value === "number") return `${value}元`
     return "--"
@@ -72,14 +120,6 @@ export default function BlueLinkMapPageView({
   const truncateTitle = (value: string) => {
     if (!value) return "--"
     return value.length > 12 ? `${value.slice(0, 12)}...` : value
-  }
-
-  if (loading && !accounts.length && !entries.length) {
-    return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
-        <p className="text-sm text-slate-500">加载中...</p>
-      </div>
-    )
   }
 
   return (
@@ -208,7 +248,13 @@ export default function BlueLinkMapPageView({
                       <div className="flex gap-4">
                         <div className="h-20 w-20 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
                           {cover ? (
-                            <img src={cover} alt={title} className="h-full w-full object-cover" />
+                            <img
+                              src={cover}
+                              alt={title}
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                              decoding="async"
+                            />
                           ) : (
                             <div className="flex h-full w-full items-center justify-center text-xs text-slate-400">
                               暂无封面
