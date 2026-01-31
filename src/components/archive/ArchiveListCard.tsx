@@ -104,7 +104,13 @@ export default function ArchiveListCard({
           onDrop={() => onDrop(id)}
         >
           {image ? (
-            <img src={image} alt={title} className="h-full w-full object-cover" />
+            <img
+              src={image}
+              alt={title}
+              className="h-full w-full object-cover"
+              loading="lazy"
+              decoding="async"
+            />
           ) : null}
           <Button
             type="button"

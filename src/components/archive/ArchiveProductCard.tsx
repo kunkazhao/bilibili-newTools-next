@@ -79,7 +79,13 @@ export default function ArchiveProductCard({
       </div>
 
       <div className="aspect-[4/3] w-full overflow-hidden bg-slate-100">
-        <img src={image} alt={title} className="h-full w-full object-cover" />
+        <img
+          src={image}
+          alt={title}
+          className="h-full w-full object-cover"
+          loading="lazy"
+          decoding="async"
+        />
       </div>
 
       <div className="space-y-4 p-5">
