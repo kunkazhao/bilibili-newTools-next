@@ -53,4 +53,29 @@ describe("SchemeDetailProductList", () => {
     expect(onEdit).toHaveBeenCalledWith("p1")
     expect(onRemove).toHaveBeenCalledWith("p1")
   })
+
+  it("renders a fixed-height scroll container for the list area", () => {
+    const { container } = render(
+      <SchemeDetailProductList
+        items={[]}
+        totalCount={0}
+        onOpenPicker={() => {}}
+        onEdit={() => {}}
+        onRemove={() => {}}
+        onGenerateImage={() => {}}
+        onDragStart={() => {}}
+        onDrop={() => {}}
+      />
+    )
+
+    const scrollArea = container.querySelector(
+      "[data-testid='scheme-detail-product-scroll']"
+    )
+
+    expect(scrollArea).not.toBeNull()
+    expect(scrollArea?.className || "").toContain(
+      "h-[var(--scheme-detail-product-scroll-height)]"
+    )
+    expect(scrollArea?.className || "").toContain("overflow-y-auto")
+  })
 })

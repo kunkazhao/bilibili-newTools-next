@@ -97,6 +97,7 @@
   --dialog-space-3: 12px;
   --dialog-space-4: 16px;
   --dialog-list-max-height: 360px;
+  --scheme-detail-product-scroll-height: calc(100vh - 320px);
 }
 
 body {
