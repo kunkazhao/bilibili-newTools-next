@@ -140,6 +140,9 @@ interface ArchivePageViewProps {
   isImportOpen: boolean
   onCloseImport: () => void
   onCancelImport: () => void
+  onFixSort: () => void
+  isFixSortDisabled: boolean
+  isFixSortSaving: boolean
 }
 
 const CategorySkeleton = () => (
@@ -237,6 +240,9 @@ export default function ArchivePageView({
   isImportOpen,
   onCloseImport,
   onCancelImport,
+  onFixSort,
+  isFixSortDisabled,
+  isFixSortSaving,
 }: ArchivePageViewProps) {
   const sentinelRef = useRef<HTMLDivElement | null>(null)
   const hasMoreRef = useRef(hasMore)
@@ -413,15 +419,25 @@ export default function ArchivePageView({
               </div>
               <div className="grid gap-3 text-sm text-slate-600 md:grid-cols-[max-content_1fr] md:items-center">
                 <span className="font-medium text-slate-700">排序</span>
-                <Select value={sortValue} onValueChange={onSortChange}>
-                  <SelectTrigger className="w-[160px]" aria-label="Sort">
-                    <SelectValue placeholder="请选择" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="manual">手动排序</SelectItem>
-                    <SelectItem value="price">价格升序</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Select value={sortValue} onValueChange={onSortChange}>
+                    <SelectTrigger className="w-[160px]" aria-label="Sort">
+                      <SelectValue placeholder="请选择" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="manual">手动排序</SelectItem>
+                      <SelectItem value="price">价格升序</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <button
+                    type="button"
+                    className="h-10 rounded-md border border-slate-200 px-3 text-xs font-medium text-slate-600 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={isFixSortDisabled || isFixSortSaving}
+                    onClick={onFixSort}
+                  >
+                    {isFixSortSaving ? "保存中..." : "固定排序"}
+                  </button>
+                </div>
               </div>
             </div>
           </section>
