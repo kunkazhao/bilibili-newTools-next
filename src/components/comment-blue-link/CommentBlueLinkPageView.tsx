@@ -5,6 +5,13 @@ import Skeleton from "@/components/Skeleton"
 import { Copy, Pencil, Trash2 } from "lucide-react"
 import type { CommentAccount, CommentCategory, CommentCombo } from "./types"
 
+const PREVIEW_LIMIT = 220
+const buildPreview = (text: string) => {
+  if (!text) return ""
+  if (text.length <= PREVIEW_LIMIT) return text
+  return `${text.slice(0, PREVIEW_LIMIT)}...`
+}
+
 const SidebarSkeleton = () => (
   <div className="space-y-3">
     {Array.from({ length: 6 }).map((_, index) => (
@@ -196,7 +203,9 @@ export default function CommentBlueLinkPageView({
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {visibleCombos.map((combo) => {
               const isExpanded = expandedCombos.has(combo.id)
-              const hasContent = Boolean(combo.content && combo.content.trim())
+              const rawContent = combo.content || ""
+              const hasContent = Boolean(rawContent.trim())
+              const displayContent = isExpanded ? rawContent : buildPreview(rawContent)
               return (
                 <article
                   key={combo.id}
@@ -242,7 +251,7 @@ export default function CommentBlueLinkPageView({
                         isExpanded ? "" : "h-[240px] overflow-hidden"
                       }`}
                     >
-                      {combo.content || "\u6682\u65e0\u5185\u5bb9"}
+                      {displayContent || "\u6682\u65e0\u5185\u5bb9"}
                       {!isExpanded && hasContent ? (
                         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-[#F8F9FF] to-transparent" />
                       ) : null}
