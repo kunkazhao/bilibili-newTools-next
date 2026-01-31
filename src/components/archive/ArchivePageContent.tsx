@@ -70,6 +70,31 @@ const META_KEYS = {
 
 const padSortOrder = (value: number) => String(value).padStart(6, "0")
 
+export const buildSortOrderUpdates = (
+  items: { id: string; spec: Record<string, string> }[]
+) =>
+  items.map((item, index) => ({
+    id: item.id,
+    spec: {
+      ...item.spec,
+      [META_KEYS.sortOrder]: padSortOrder((index + 1) * 10),
+    },
+  }))
+
+export const isFixSortDisabled = (params: {
+  searchValue: string
+  schemeFilterId: string
+  priceBounds: [number, number]
+  priceRange: [number, number]
+}) => {
+  const hasSearch = params.searchValue.trim() !== ""
+  const hasScheme = Boolean(params.schemeFilterId)
+  const priceFiltered =
+    params.priceRange[0] !== params.priceBounds[0] ||
+    params.priceRange[1] !== params.priceBounds[1]
+  return hasSearch || hasScheme || priceFiltered
+}
+
 const normalizeArchiveItem = (item: {
   id: string
   category_id: string
@@ -103,6 +128,16 @@ const normalizeArchiveItem = (item: {
     spec,
   }
 }
+
+const buildManualOrderFromItems = (list: ArchiveItem[]) =>
+  list
+    .filter((item) => item.spec[META_KEYS.sortOrder])
+    .sort((a, b) => {
+      const aOrder = Number(a.spec[META_KEYS.sortOrder] || 0)
+      const bOrder = Number(b.spec[META_KEYS.sortOrder] || 0)
+      return aOrder - bOrder
+    })
+    .map((item) => item.id)
 
 const CACHE_KEYS = {
   categories: "sourcing_category_cache_v1",
@@ -220,6 +255,7 @@ export default function ArchivePage() {
     null
   )
   const [isClearing, setIsClearing] = useState(false)
+  const [isFixSortSaving, setIsFixSortSaving] = useState(false)
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [importState, setImportState] = useState({
     status: "idle" as "idle" | "running" | "done",
@@ -297,6 +333,13 @@ export default function ArchivePage() {
     if (nextMin <= nextMax) return [nextMin, nextMax]
     return [nextMax, nextMin]
   }, [priceBounds, priceRange])
+
+  const fixSortDisabled = isFixSortDisabled({
+    searchValue,
+    schemeFilterId,
+    priceBounds,
+    priceRange: safePriceRange,
+  })
 
   const filteredItems = useMemo(() => {
     return orderedItems.filter((item) => {
@@ -444,6 +487,11 @@ export default function ArchivePage() {
     })
   }
 
+  const handleSortChange = (value: string) => {
+    if (isFixSortSaving) return
+    setSortValue(value)
+  }
+
   const hydrateCategoriesFromCache = useCallback(() => {
     if (hasHydratedCategoriesRef.current) return false
     hasHydratedCategoriesRef.current = true
@@ -476,14 +524,14 @@ export default function ArchivePage() {
       const itemsCache = getCache<{
         items: ArchiveItem[]
         pagination: { offset: number; limit: number; hasMore: boolean }
-        manualOrder?: string[]
       }>(CACHE_KEYS.items)
       if (itemsCache && isFresh(itemsCache, CACHE_TTL.items)) {
         setItems(itemsCache.data.items)
         setHasMore(Boolean(itemsCache.data.pagination?.hasMore))
         setNextOffset(itemsCache.data.pagination?.offset ?? 0)
-        if (itemsCache.data.manualOrder?.length) {
-          setManualOrder(itemsCache.data.manualOrder)
+        const cachedManualOrder = buildManualOrderFromItems(itemsCache.data.items)
+        if (cachedManualOrder.length) {
+          setManualOrder(cachedManualOrder)
           setSortValue("manual")
         }
         setIsListLoading(false)
@@ -499,6 +547,11 @@ export default function ArchivePage() {
           setItems(payload.items)
           setHasMore(Boolean(payload.pagination?.hasMore))
           setNextOffset(payload.pagination?.offset ?? 0)
+          const cachedManualOrder = buildManualOrderFromItems(payload.items)
+          if (cachedManualOrder.length) {
+            setManualOrder(cachedManualOrder)
+            setSortValue("manual")
+          }
           setIsListLoading(false)
           didUseCache = true
         }
@@ -587,14 +640,12 @@ export default function ArchivePage() {
   const saveItemsCache = useCallback((payload: {
     items: ArchiveItem[]
     pagination: { offset: number; limit: number; hasMore: boolean }
-    manualOrder?: string[]
     categoryId: string
   }) => {
     if (payload.categoryId === "all") {
       setCache(CACHE_KEYS.items, {
         items: payload.items,
         pagination: payload.pagination,
-        manualOrder: payload.manualOrder,
       })
       return
     }
@@ -716,14 +767,7 @@ export default function ArchivePage() {
         const normalizedItems: ArchiveItem[] = (response.items ?? []).map((item) =>
           normalizeArchiveItem(item as ItemResponse)
         )
-        const manualIds = normalizedItems
-          .filter((item) => item.spec[META_KEYS.sortOrder])
-          .sort((a, b) => {
-            const aOrder = Number(a.spec[META_KEYS.sortOrder] || 0)
-            const bOrder = Number(b.spec[META_KEYS.sortOrder] || 0)
-            return aOrder - bOrder
-          })
-          .map((item) => item.id)
+        const manualIds = buildManualOrderFromItems(normalizedItems)
         setItems(normalizedItems)
         if (manualIds.length > 0) {
           setManualOrder(manualIds)
@@ -739,7 +783,6 @@ export default function ArchivePage() {
             limit: 50,
             hasMore: response.has_more ?? false,
           },
-          manualOrder: manualIds,
           categoryId: categoryValue,
         })
       } catch (error) {
@@ -814,14 +857,7 @@ export default function ArchivePage() {
       )
       const merged = [...items, ...normalizedItems]
       setItems(merged)
-      const manualIds = merged
-        .filter((item) => item.spec[META_KEYS.sortOrder])
-        .sort((a, b) => {
-          const aOrder = Number(a.spec[META_KEYS.sortOrder] || 0)
-          const bOrder = Number(b.spec[META_KEYS.sortOrder] || 0)
-          return aOrder - bOrder
-        })
-        .map((item) => item.id)
+      const manualIds = buildManualOrderFromItems(merged)
       if (manualIds.length > 0) {
         setManualOrder(manualIds)
       }
@@ -835,7 +871,6 @@ export default function ArchivePage() {
           limit: 50,
           hasMore: response.has_more ?? false,
         },
-        manualOrder: manualIds,
         categoryId: categoryValue,
       })
     } catch {
@@ -881,10 +916,12 @@ export default function ArchivePage() {
   }
 
   const handleDragStart = (id: string) => {
+    if (isFixSortSaving) return
     setDragId(id)
   }
 
   const handleDrop = (targetId: string) => {
+    if (isFixSortSaving) return
     if (!dragId || dragId === targetId) return
     const nextOrder = [...orderedItems.map((item) => item.id)]
     const fromIndex = nextOrder.indexOf(dragId)
@@ -894,18 +931,37 @@ export default function ArchivePage() {
     nextOrder.splice(toIndex, 0, moved)
     setManualOrder(nextOrder)
     setSortValue("manual")
-    showToast("排序已更新", "success")
-    nextOrder.forEach((itemId, index) => {
-      const target = baseItems.find((item) => item.id === itemId)
-      if (!target) return
-      const nextSpec = {
-        ...target.spec,
-        [META_KEYS.sortOrder]: padSortOrder((index + 1) * 10),
-      }
-      updateItem(itemId, { spec: nextSpec }).catch(() => {
-        showToast("排序保存失败", "error")
+    showToast("排序已调整，点击固定排序保存", "success")
+  }
+
+  const handleFixSort = async () => {
+    if (isFixSortSaving || fixSortDisabled) return
+    if (!orderedItems.length) {
+      showToast("当前没有可固定的商品", "info")
+      return
+    }
+    setIsFixSortSaving(true)
+    const updates = buildSortOrderUpdates(orderedItems)
+    const updateMap = new Map(updates.map((item) => [item.id, item.spec]))
+    setItems((prev) =>
+      prev.map((item) => {
+        const nextSpec = updateMap.get(item.id)
+        if (!nextSpec) return item
+        return { ...item, spec: nextSpec }
       })
-    })
+    )
+    setManualOrder(updates.map((item) => item.id))
+    setSortValue("manual")
+    const results = await Promise.allSettled(
+      updates.map((item) => updateItem(item.id, { spec: item.spec }))
+    )
+    const failures = results.filter((result) => result.status === "rejected")
+    if (failures.length) {
+      showToast(`固定排序完成，失败 ${failures.length} 条`, "error")
+    } else {
+      showToast("固定排序已保存", "success")
+    }
+    setIsFixSortSaving(false)
   }
 
   const handleClearList = async () => {
@@ -1223,7 +1279,6 @@ export default function ArchivePage() {
                   limit: 50,
                   hasMore,
                 },
-                manualOrder,
                 categoryId: categoryValue,
               })
             }
