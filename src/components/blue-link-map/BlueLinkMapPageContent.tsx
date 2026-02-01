@@ -1,8 +1,10 @@
 import { startTransition, useEffect, useMemo, useRef, useState } from "react"
 import { useToast } from "@/components/Toast"
 import { apiRequest } from "@/lib/api"
+import { createAccount, deleteAccount as removeAccount, updateAccount } from "@/lib/accountsApi"
 import BlueLinkMapDialogs from "./BlueLinkMapDialogs"
 import BlueLinkMapPageView from "./BlueLinkMapPageView"
+import { fetchBlueLinkMapState } from "./blueLinkMapApi"
 import type {
   BlueLinkAccount,
   BlueLinkCategory,
@@ -11,7 +13,7 @@ import type {
   SourcingItem,
 } from "./types"
 
-const BLUE_LINK_MAP_CACHE_KEY = "blue_link_map_cache_v1"
+const BLUE_LINK_MAP_CACHE_KEY = "blue_link_map_cache_v2"
 const SOURCING_ITEMS_CACHE_KEY = "sourcing_items_cache_v1"
 const BLUE_LINK_CACHE_TTL = 5 * 60 * 1000
 const CACHE_DEBOUNCE_MS = 800
@@ -373,11 +375,7 @@ export default function BlueLinkMapPage() {
         setListLoading(true)
       }
       try {
-        const data = await apiRequest<{
-          accounts: BlueLinkAccount[]
-          categories: BlueLinkCategory[]
-          entries: BlueLinkEntry[]
-        }>("/api/blue-link-map/state")
+        const data = await fetchBlueLinkMapState()
         const accountList = Array.isArray(data.accounts) ? data.accounts : []
         setAccounts(accountList)
         setCategories(Array.isArray(data.categories) ? data.categories : [])
@@ -408,7 +406,7 @@ export default function BlueLinkMapPage() {
       setActiveCategoryId(null)
       return
     }
-    const cacheKey = `blue_link_map_category_${activeAccountId}`
+    const cacheKey = `blue_link_map_category_v2_${activeAccountId}`
     const cachedCategory = localStorage.getItem(cacheKey)
     const accountCategories = categories.filter((cat) => cat.account_id === activeAccountId)
     if (cachedCategory && accountCategories.some((cat) => cat.id === cachedCategory)) {
@@ -420,7 +418,7 @@ export default function BlueLinkMapPage() {
 
   useEffect(() => {
     if (!activeAccountId || !activeCategoryId) return
-    const cacheKey = `blue_link_map_category_${activeAccountId}`
+    const cacheKey = `blue_link_map_category_v2_${activeAccountId}`
     localStorage.setItem(cacheKey, activeCategoryId)
   }, [activeAccountId, activeCategoryId])
 
@@ -480,11 +478,7 @@ export default function BlueLinkMapPage() {
 
   const refreshState = async () => {
     try {
-      const data = await apiRequest<{
-        accounts: BlueLinkAccount[]
-        categories: BlueLinkCategory[]
-        entries: BlueLinkEntry[]
-      }>("/api/blue-link-map/state")
+      const data = await fetchBlueLinkMapState()
       setAccounts(Array.isArray(data.accounts) ? data.accounts : [])
       setCategories(Array.isArray(data.categories) ? data.categories : [])
       const entryList = Array.isArray(data.entries) ? data.entries : []
@@ -626,10 +620,7 @@ export default function BlueLinkMapPage() {
       return
     }
     try {
-      await apiRequest("/api/comment/accounts", {
-        method: "POST",
-        body: JSON.stringify({ name }),
-      })
+      await createAccount({ name })
       setAccountNameInput("")
       await refreshState()
     } catch (error) {
@@ -645,10 +636,7 @@ export default function BlueLinkMapPage() {
       return
     }
     try {
-      const data = await apiRequest<{ account: BlueLinkAccount }>(`/api/comment/accounts/${accountId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ name: trimmed }),
-      })
+      const data = await updateAccount(accountId, { name: trimmed })
       setAccounts((prev) => prev.map((item) => (item.id === accountId ? data.account : item)))
       showToast("账号已更新", "success")
     } catch (error) {
@@ -665,7 +653,7 @@ export default function BlueLinkMapPage() {
       actionLabel: "确认删除",
       onConfirm: async () => {
         try {
-          await apiRequest(`/api/comment/accounts/${accountId}`, { method: "DELETE" })
+          await removeAccount(accountId)
           await refreshState()
         } catch (error) {
           const message = error instanceof Error ? error.message : "删除失败"
