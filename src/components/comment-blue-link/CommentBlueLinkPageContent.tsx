@@ -1,7 +1,12 @@
 import { startTransition, useEffect, useMemo, useRef, useState } from "react"
 import { useToast } from "@/components/Toast"
 import { apiRequest } from "@/lib/api"
-import { buildComboContent, getPinnedComments, isBilibiliInput } from "@/lib/bilibili"
+import {
+  buildComboContent,
+  buildProductContent,
+  getPinnedComments,
+  isBilibiliInput,
+} from "@/lib/bilibili"
 import CommentBlueLinkDialogs from "./CommentBlueLinkDialogs"
 import CommentBlueLinkPageView from "./CommentBlueLinkPageView"
 import {
@@ -15,13 +20,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import type { CommentAccount, CommentCategory, CommentCombo } from "./types"
-
 const COMMENT_BLUE_LINK_CACHE_KEY = "comment_blue_link_cache_v1"
 const COMMENT_BLUE_LINK_CACHE_TTL = 5 * 60 * 1000
+const COMMENT_BLUE_LINK_PRODUCT_KEY = "comment_combo_product_"
 const CACHE_DEBOUNCE_MS = 800
 const CHUNK_SIZE = 40
 const ALL_CATEGORY_ID = "__all__"
-
 type CommentCache = {
   timestamp: number
   accounts: CommentAccount[]
@@ -30,7 +34,6 @@ type CommentCache = {
   currentAccountId?: string | null
   currentCategoryId?: string | null
 }
-
 const getCache = () => {
   try {
     const raw = localStorage.getItem(COMMENT_BLUE_LINK_CACHE_KEY)
@@ -40,12 +43,10 @@ const getCache = () => {
     return null
   }
 }
-
 const isCacheFresh = (cache: CommentCache | null) => {
   if (!cache?.timestamp) return false
   return Date.now() - cache.timestamp < COMMENT_BLUE_LINK_CACHE_TTL
 }
-
 export default function CommentBlueLinkPage() {
   const { showToast } = useToast()
   const [accounts, setAccounts] = useState<CommentAccount[]>([])
@@ -58,7 +59,6 @@ export default function CommentBlueLinkPage() {
   const [visibleCombos, setVisibleCombos] = useState<CommentCombo[]>([])
   const chunkTimerRef = useRef<number | null>(null)
   const cacheTimerRef = useRef<number | null>(null)
-
   const [modalOpen, setModalOpen] = useState(false)
   const [editingCombo, setEditingCombo] = useState<CommentCombo | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<CommentCombo | null>(null)
@@ -69,12 +69,11 @@ export default function CommentBlueLinkPage() {
   const [formContent, setFormContent] = useState("")
   const [formRemark, setFormRemark] = useState("")
   const [extracting, setExtracting] = useState(false)
-
-  const accountCategories = useMemo(() => {
-    if (!currentAccountId) return []
-    return categories.filter((item) => item.account_id === currentAccountId)
-  }, [categories, currentAccountId])
-
+  const [comboViewModes, setComboViewModes] = useState<
+    Record<string, "full" | "product">
+  >({})
+  const [productContents, setProductContents] = useState<Record<string, string>>({})
+  const [productLoading, setProductLoading] = useState<Record<string, boolean>>({})
   const combosIndex = useMemo(() => {
     const byAccount = new Map<string, CommentCombo[]>()
     const byAccountCategory = new Map<string, Map<string, CommentCombo[]>>()
@@ -88,7 +87,6 @@ export default function CommentBlueLinkPage() {
       }
       list.push(combo)
       counts.set(accountId, (counts.get(accountId) ?? 0) + 1)
-
       if (combo.category_id) {
         let categoryMap = byAccountCategory.get(accountId)
         if (!categoryMap) {
@@ -105,7 +103,6 @@ export default function CommentBlueLinkPage() {
     })
     return { byAccount, byAccountCategory, counts }
   }, [combos])
-
   const filteredCombos = useMemo(() => {
     if (!currentAccountId) return []
     if (currentCategoryId && currentCategoryId !== ALL_CATEGORY_ID) {
@@ -117,7 +114,6 @@ export default function CommentBlueLinkPage() {
     }
     return combosIndex.byAccount.get(currentAccountId) ?? []
   }, [combosIndex, currentAccountId, currentCategoryId])
-
   const persistCache = () => {
     try {
       localStorage.setItem(
@@ -135,7 +131,6 @@ export default function CommentBlueLinkPage() {
       // ignore
     }
   }
-
   useEffect(() => {
     const cache = getCache()
     const hasFreshCache = isCacheFresh(cache)
@@ -149,7 +144,6 @@ export default function CommentBlueLinkPage() {
       setLoading(false)
       setListLoading(false)
     }
-
     const load = async () => {
       if (!hasFreshCache) {
         setListLoading(true)
@@ -179,10 +173,8 @@ export default function CommentBlueLinkPage() {
         setListLoading(false)
       }
     }
-
     load().catch(() => {})
   }, [showToast])
-
   useEffect(() => {
     if (cacheTimerRef.current) {
       window.clearTimeout(cacheTimerRef.current)
@@ -197,7 +189,6 @@ export default function CommentBlueLinkPage() {
       }
     }
   }, [accounts, categories, combos, currentAccountId, currentCategoryId])
-
   useEffect(() => {
     if (!currentAccountId) return
     if (currentCategoryId === ALL_CATEGORY_ID) return
@@ -208,7 +199,6 @@ export default function CommentBlueLinkPage() {
       setCurrentCategoryId(ALL_CATEGORY_ID)
     }
   }, [categories, currentAccountId, currentCategoryId])
-
   useEffect(() => {
     if (chunkTimerRef.current) {
       window.clearTimeout(chunkTimerRef.current)
@@ -231,7 +221,6 @@ export default function CommentBlueLinkPage() {
       chunkTimerRef.current = window.setTimeout(next, 16)
     }
   }, [filteredCombos])
-
   useEffect(() => {
     if (!formAccountId) return
     const list = categories.filter((item) => item.account_id === formAccountId)
@@ -244,7 +233,149 @@ export default function CommentBlueLinkPage() {
       setFormCategoryId(list[0].id)
     }
   }, [categories, formAccountId, formCategoryId])
-
+  const readProductCache = (comboId: string) => {
+    if (!comboId) return ""
+    try {
+      return (
+        localStorage.getItem(`${COMMENT_BLUE_LINK_PRODUCT_KEY}${comboId}`)?.trim() ||
+        ""
+      )
+    } catch {
+      return ""
+    }
+  }
+  const writeProductCache = (comboId: string, content: string) => {
+    if (!comboId) return
+    const safeContent = (content || "").trim()
+    if (!safeContent) return
+    try {
+      localStorage.setItem(`${COMMENT_BLUE_LINK_PRODUCT_KEY}${comboId}`, safeContent)
+    } catch {
+      // ignore
+    }
+  }
+  const ensureProductContent = async (combo: CommentCombo) => {
+    if (!combo?.id) return
+    const comboId = combo.id
+    const directProduct = (combo.product_content || "").trim()
+    if (directProduct) {
+      if (!productContents[comboId]) {
+        setProductContents((prev) => ({ ...prev, [comboId]: directProduct }))
+      }
+      return
+    }
+    const cached = productContents[comboId] || readProductCache(comboId)
+    if (cached) {
+      if (!productContents[comboId]) {
+        setProductContents((prev) => ({ ...prev, [comboId]: cached }))
+      }
+      return
+    }
+    if (!combo.source_link) {
+      const fallback = "未获取到商品名称"
+      setProductContents((prev) => ({ ...prev, [comboId]: fallback }))
+      writeProductCache(comboId, fallback)
+      return
+    }
+    if (productLoading[comboId]) return
+    setProductLoading((prev) => ({ ...prev, [comboId]: true }))
+    try {
+      const result = await getPinnedComments(combo.source_link)
+      const content = buildProductContent(result)
+      const safeContent = (content || "").trim() || "未获取到商品名称"
+      setProductContents((prev) => ({ ...prev, [comboId]: safeContent }))
+      writeProductCache(comboId, safeContent)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "生成商品版失败"
+      showToast(message, "error")
+      const fallback = "未获取到商品名称"
+      setProductContents((prev) => ({ ...prev, [comboId]: fallback }))
+      writeProductCache(comboId, fallback)
+    } finally {
+      setProductLoading((prev) => ({ ...prev, [comboId]: false }))
+    }
+  }
+      const getComboDisplayContent = (combo: CommentCombo) => {
+    const mode = comboViewModes[combo.id] ?? "full"
+    if (mode === "product") {
+      const directProduct = (combo.product_content || "").trim()
+      if (directProduct) {
+        return directProduct
+      }
+      const cached = productContents[combo.id] || readProductCache(combo.id)
+      if (cached) {
+        if (!productContents[combo.id]) {
+          setProductContents((prev) => ({ ...prev, [combo.id]: cached }))
+        }
+        return cached
+      }
+      if (!combo.source_link) {
+        return "????????"
+      }
+      if (productLoading[combo.id]) {
+        return "??????..."
+      }
+      return ""
+    }
+    return combo.content || ""
+  }
+  const copyText = async (content: string) => {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(content)
+      return true
+    }
+    try {
+      const textarea = document.createElement("textarea")
+      textarea.value = content
+      textarea.style.position = "fixed"
+      textarea.style.opacity = "0"
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand("copy")
+      document.body.removeChild(textarea)
+      return true
+    } catch {
+      return false
+    }
+  }
+  const handleCopyCombo = async (combo: CommentCombo) => {
+    const content = getComboDisplayContent(combo).trim()
+    if (!content) {
+      const mode = comboViewModes[combo.id] ?? "full"
+      if (mode === "product") {
+        showToast("????????????", "info")
+        void ensureProductContent(combo)
+      } else {
+        showToast("???????", "info")
+      }
+      return
+    }
+    try {
+      const ok = await copyText(content)
+      if (ok) {
+        showToast("???????", "success")
+      } else {
+        showToast("??????????", "error")
+      }
+    } catch {
+      showToast("??????????", "error")
+    }
+  }
+  const handleToggleVersion = (combo: CommentCombo) => {
+    const current = comboViewModes[combo.id] ?? "full"
+    const next = current === "full" ? "product" : "full"
+    setComboViewModes((prev) => ({ ...prev, [combo.id]: next }))
+    if (next === "product") {
+      const directProduct = (combo.product_content || "").trim()
+      if (directProduct) {
+        if (!productContents[combo.id]) {
+          setProductContents((prev) => ({ ...prev, [combo.id]: directProduct }))
+        }
+        return
+      }
+      void ensureProductContent(combo)
+    }
+  }
   const ensureDefaultCategory = async (accountId: string) => {
     const existing = categories.find((item) => item.account_id === accountId)
     if (existing) return existing.id
@@ -264,7 +395,6 @@ export default function CommentBlueLinkPage() {
       return null
     }
   }
-
   const openCreate = () => {
     setEditingCombo(null)
     const accountId = currentAccountId ?? ""
@@ -277,7 +407,6 @@ export default function CommentBlueLinkPage() {
     setFormRemark("")
     setModalOpen(true)
   }
-
   const openEdit = (combo: CommentCombo) => {
     setEditingCombo(combo)
     setFormAccountId(combo.account_id)
@@ -288,70 +417,6 @@ export default function CommentBlueLinkPage() {
     setFormRemark(combo.remark || "")
     setModalOpen(true)
   }
-
-  const handleBatchCopy = async () => {
-    if (!filteredCombos.length) {
-      showToast("暂无可复制内容", "info")
-      return
-    }
-    const text = filteredCombos
-      .map((combo) => {
-        const name = combo.name?.trim() ? `【${combo.name.trim()}】` : ""
-        const content = combo.content?.trim() || ""
-        return [name, content].filter(Boolean).join("\n")
-      })
-      .filter(Boolean)
-      .join("\n\n")
-    if (!text) {
-      showToast("暂无可复制内容", "info")
-      return
-    }
-    try {
-      await navigator.clipboard.writeText(text)
-      showToast("已复制到剪贴板", "success")
-    } catch {
-      try {
-        const textarea = document.createElement("textarea")
-        textarea.value = text
-        textarea.style.position = "fixed"
-        textarea.style.opacity = "0"
-        document.body.appendChild(textarea)
-        textarea.select()
-        document.execCommand("copy")
-        document.body.removeChild(textarea)
-        showToast("已复制到剪贴板", "success")
-      } catch {
-        showToast("复制失败，请手动复制", "error")
-      }
-    }
-  }
-
-  const handleCopyCombo = async (combo: CommentCombo) => {
-    const text = (combo.content || "").trim()
-    if (!text) {
-      showToast("暂无可复制内容", "info")
-      return
-    }
-    try {
-      await navigator.clipboard.writeText(text)
-      showToast("复制成功", "success")
-    } catch {
-      try {
-        const textarea = document.createElement("textarea")
-        textarea.value = text
-        textarea.style.position = "fixed"
-        textarea.style.opacity = "0"
-        document.body.appendChild(textarea)
-        textarea.select()
-        document.execCommand("copy")
-        document.body.removeChild(textarea)
-        showToast("复制成功", "success")
-      } catch {
-        showToast("复制失败，请手动复制", "error")
-      }
-    }
-  }
-
   const handleExtractContent = async () => {
     if (extracting) return
     const link = formSourceLink.trim()
@@ -376,7 +441,6 @@ export default function CommentBlueLinkPage() {
       setExtracting(false)
     }
   }
-
   const handleSave = async () => {
     if (!formAccountId) {
       showToast("请选择账号", "error")
@@ -394,7 +458,6 @@ export default function CommentBlueLinkPage() {
       showToast("当前账号暂无可用分类", "error")
       return
     }
-
     const payload = {
       account_id: formAccountId,
       category_id: categoryId,
@@ -403,7 +466,6 @@ export default function CommentBlueLinkPage() {
       content: formContent.trim(),
       remark: formRemark.trim(),
     }
-
     try {
       if (editingCombo) {
         const data = await apiRequest<{ combo: CommentCombo }>(
@@ -431,7 +493,6 @@ export default function CommentBlueLinkPage() {
       showToast(message, "error")
     }
   }
-
   const handleDelete = async (combo: CommentCombo) => {
     try {
       await apiRequest(`/api/comment/combos/${combo.id}`, { method: "DELETE" })
@@ -442,16 +503,43 @@ export default function CommentBlueLinkPage() {
       showToast(message, "error")
     }
   }
-
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return
     await handleDelete(deleteTarget)
     setDeleteTarget(null)
   }
-
-
+  const comboViewStates = useMemo(() => {
+    const states: Record<
+      string,
+      { mode: "full" | "product"; content: string; loading: boolean }
+    > = {}
+    combos.forEach((combo) => {
+      const mode = comboViewModes[combo.id] ?? "full"
+      if (mode === "product") {
+        const directProduct = (combo.product_content || "").trim()
+        const cached =
+          directProduct || productContents[combo.id] || readProductCache(combo.id)
+        const loading = Boolean(productLoading[combo.id]) && !directProduct
+        let content = cached
+        if (!content) {
+          if (!combo.source_link) {
+            content = "未获取到商品名称"
+          } else {
+            content = "商品版生成中..."
+          }
+        }
+        states[combo.id] = { mode, content, loading }
+        return
+      }
+      states[combo.id] = {
+        mode,
+        content: combo.content || "",
+        loading: false,
+      }
+    })
+    return states
+  }, [combos, comboViewModes, productContents, productLoading])
   const combosCountByAccount = combosIndex.counts
-
   return (
     <>
       <CommentBlueLinkPageView
@@ -459,19 +547,16 @@ export default function CommentBlueLinkPage() {
         listLoading={listLoading}
         accounts={accounts}
         currentAccountId={currentAccountId}
-        currentCategoryId={currentCategoryId}
-        allCategoryId={ALL_CATEGORY_ID}
-        accountCategories={accountCategories}
         filteredCombos={filteredCombos}
         visibleCombos={visibleCombos}
         combosCountByAccount={combosCountByAccount}
+        comboViewStates={comboViewStates}
         onAccountChange={setCurrentAccountId}
-        onCategoryChange={setCurrentCategoryId}
-        onBatchCopy={handleBatchCopy}
         onCopyCombo={handleCopyCombo}
         onOpenCreate={openCreate}
         onOpenEdit={openEdit}
         onDelete={(combo) => setDeleteTarget(combo)}
+        onToggleVersion={handleToggleVersion}
       />
       <CommentBlueLinkDialogs
         modalOpen={modalOpen}

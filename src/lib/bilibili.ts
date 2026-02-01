@@ -409,3 +409,69 @@ export const buildComboContent = (result: BilibiliPinnedResult | null) => {
   const joined = fragments.join("\n").replace(/\n{2,}/g, "\n").trim()
   return joined || "鏈幏鍙栧埌鏈夋晥璇勮"
 }
+
+export const buildProductContent = (result: BilibiliPinnedResult | null) => {
+  if (!result) return ""
+  const lines: string[] = []
+  const seen = new Set<string>()
+  const jumpMap = new Map<string, string>()
+  const shortPattern =
+    /https?:\/\/(?:b23\.tv|bili22\.cn|bili33\.cn|bili2233\.cn)\/[^\s]+/gi
+
+  const collectJump = (comment: Record<string, any>) => {
+    const jump = comment?.content?.jump_url || {}
+    Object.entries(jump).forEach(([url, info]) => {
+      const title =
+        (info as { title?: string; word?: string })?.title ||
+        (info as { title?: string; word?: string })?.word ||
+        ""
+      if (title) {
+        jumpMap.set(url, title.trim())
+      }
+    })
+  }
+
+  const pushLine = (name: string, link: string) => {
+    const safeName = (name || "").trim()
+    const safeLink = (link || "").trim()
+    if (!safeName || !safeLink) return
+    const key = `${safeName}--${safeLink}`
+    if (seen.has(key)) return
+    seen.add(key)
+    lines.push(`${safeName}-- ${safeLink}`)
+  }
+
+  const processComment = (comment: Record<string, any>) => {
+    if (!comment?.content?.message) return
+    const message = comment.content.message as string
+    const matches = message.match(shortPattern) || []
+    matches.forEach((link) => {
+      const name = jumpMap.get(link) || comment.content?.jump_url?.[link]?.title || ""
+      if (name) {
+        pushLine(name, link)
+      }
+    })
+  }
+
+  const pinned = Array.isArray(result.pinnedComments) ? result.pinnedComments : []
+  pinned.forEach(collectJump)
+
+  const replies = Array.isArray(result.subReplies) ? result.subReplies : []
+  replies.forEach((reply) => {
+    collectJump(reply)
+    if (Array.isArray(reply.replies)) {
+      reply.replies.forEach(collectJump)
+    }
+  })
+
+  pinned.forEach(processComment)
+  replies.forEach((reply) => {
+    processComment(reply)
+    if (Array.isArray(reply.replies)) {
+      reply.replies.forEach(processComment)
+    }
+  })
+
+  const joined = lines.join("\n").trim()
+  return joined || "未获取到商品名称"
+}

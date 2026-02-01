@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tech Bold C</title>
+<style>
+
+:root {
+  --tpl-card-bg: transparent;
+  --tpl-panel: rgba(10, 14, 26, 0.96);
+  --tpl-panel-alt: rgba(6, 8, 18, 0.96);
+  --tpl-text: #f8fbff;
+  --tpl-muted: rgba(216, 232, 255, 0.8);
+  --tpl-accent: #35f6ff;
+  --tpl-accent-2: #7b93ff;
+  --tpl-highlight: #aef6ff;
+  --tpl-border: rgba(53, 246, 255, 0.3);
+  --tpl-shadow: 0 18px 40px rgba(12, 16, 24, 0.45);
+  --tpl-font: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif;
+  --tpl-title-font: "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --tpl-summary-font: "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --tpl-cover-w: 260px;
+  --tpl-cover-h: 220px;
+}
+
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: transparent;
+  font-family: var(--tpl-font);
+  color: var(--tpl-text);
+}
+.tpl-cover {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.tpl-param-label {
+  font-size: 13px;
+  color: var(--tpl-muted);
+}
+.tpl-param-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--tpl-text);
+}
+.tpl-img-remark-text {
+  flex: 1;
+  font-family: var(--tpl-summary-font);
+  font-size: 18px;
+  font-weight: 700;
+  color: #f1f6ff;
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.tpl-img-hint {
+  font-size: 13px;
+  color: var(--tpl-accent);
+  white-space: nowrap;
+}
+
+.tpl-img-card {
+  width: 970px;
+  height: 480px;
+  border-radius: 20px;
+  background: var(--tpl-card-bg);
+  box-shadow: var(--tpl-shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.tpl-img-header {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 14px 18px;
+  border-bottom: 2px solid var(--tpl-accent);
+  background: var(--tpl-panel-alt);
+}
+.tpl-img-title {
+  font-family: var(--tpl-title-font);
+  font-size: 28px;
+  font-weight: 800;
+}
+.tpl-img-price {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--tpl-highlight);
+  text-shadow: 0 2px 12px rgba(53, 246, 255, 0.35);
+}
+.tpl-img-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 0.9fr 1.1fr;
+  gap: 12px;
+  padding: 12px 14px;
+}
+.tpl-img-params {
+  display: grid;
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.tpl-img-param-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.tpl-img-param {
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: var(--tpl-panel);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+}
+.tpl-img-cover-panel {
+  border-radius: 16px;
+  border: 1px solid var(--tpl-border);
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.tpl-img-cover-frame {
+  width: var(--tpl-cover-w);
+  height: var(--tpl-cover-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tpl-img-remark-bar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(6, 8, 18, 0.92);
+  border: 1px solid var(--tpl-border);
+}
+.tpl-img-remark-title {
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--tpl-highlight);
+  white-space: nowrap;
+}
+</style>
+</head>
+<body>
+  <div class="tpl-img-card">
+    <div class="tpl-img-header">
+      <div class="tpl-img-title tpl-title" data-field="title">对角布局展示</div>
+      <div class="tpl-img-price tpl-price" data-field="price">899元</div>
+    </div>
+    <div class="tpl-img-body">
+      <div class="tpl-img-params">
+        <div class="tpl-img-param-row">
+          <div class="tpl-img-param tpl-param"><span class="tpl-param-label">参数一</span><span class="tpl-param-value">数据A</span></div>
+          <div class="tpl-img-param tpl-param"><span class="tpl-param-label">参数二</span><span class="tpl-param-value">数据B</span></div>
+        </div>
+        <div class="tpl-img-param-row">
+          <div class="tpl-img-param tpl-param"><span class="tpl-param-label">参数三</span><span class="tpl-param-value">数据C</span></div>
+          <div class="tpl-img-param tpl-param"><span class="tpl-param-label">参数四</span><span class="tpl-param-value">数据D</span></div>
+        </div>
+        <div class="tpl-img-param-row">
+          <div class="tpl-img-param tpl-param"><span class="tpl-param-label">参数五</span><span class="tpl-param-value">数据E</span></div>
+          <div class="tpl-img-param tpl-param"><span class="tpl-param-label">参数六</span><span class="tpl-param-value">数据F</span></div>
+        </div>
+      </div>
+      <div class="tpl-img-cover-panel">
+        <div class="tpl-img-cover-frame">
+          <img class="tpl-cover" data-field="cover" alt="cover" src="test1.png" />
+        </div>
+        <div class="tpl-img-remark-bar">
+          <div class="tpl-img-remark-title">评价</div>
+          <div class="tpl-img-remark-text tpl-remark" data-field="remark">专为电竞优化的高品质设计，详情参数见备注。</div>
+          <div class="tpl-img-hint">置顶评论直达商品链接</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

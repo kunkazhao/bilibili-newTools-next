@@ -1,6 +1,7 @@
 ﻿import { useEffect, useMemo, useState } from "react"
 import ModalForm from "@/components/ModalForm"
 import { Button } from "@/components/ui/button"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { GripVertical, Trash2 } from "lucide-react"
 import type { CategoryItem } from "@/components/archive/types"
 
@@ -118,39 +119,42 @@ export default function CategoryManagerModal({
 
       {errorMessage ? <div className="text-xs text-rose-500">{errorMessage}</div> : null}
 
-      <div className="dialog-list space-y-2">
-        {drafts.map((item) => (
-          <div
-            key={item.id}
-            className="modal-list-row"
-            draggable
-            onDragStart={() => setDragId(item.id)}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={() => handleReorder(item.id)}
-          >
-            <span className="drag-handle" role="img" aria-label="Drag handle">
-              <GripVertical className="h-4 w-4" aria-hidden="true" />
-            </span>
-            <input
-              className="modal-list-field bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
-              value={item.name}
-              name={`category-${item.id}`}
-              aria-label="Category name"
-              onChange={(event) => handleUpdate(item.id, event.target.value)}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="dialog-action-delete"
-              aria-label="Delete category"
-              onClick={() => handleRemove(item.id)}
+      <ScrollArea className="dialog-list" data-dialog-scroll="true">
+        <div className="space-y-2 pr-2">
+          {drafts.map((item) => (
+            <div
+              key={item.id}
+              className="modal-list-row"
+              draggable
+              onDragStart={() => setDragId(item.id)}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={() => handleReorder(item.id)}
             >
-              <Trash2 className="h-4 w-4" aria-hidden="true" />
-            </Button>
-          </div>
-        ))}
-      </div>
+              <span className="drag-handle" role="img" aria-label="Drag handle">
+                <GripVertical className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <input
+                className="modal-list-field bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
+                value={item.name}
+                name={`category-${item.id}`}
+                aria-label="Category name"
+                onChange={(event) => handleUpdate(item.id, event.target.value)}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="dialog-action-delete"
+                aria-label="Delete category"
+                onClick={() => handleRemove(item.id)}
+              >
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      </ScrollArea>
     </ModalForm>
   )
 }
+

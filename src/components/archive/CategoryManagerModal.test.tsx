@@ -5,7 +5,7 @@ import CategoryManagerModal from "./CategoryManagerModal"
 import type { CategoryItem } from "./types"
 
 describe("CategoryManagerModal", () => {
-  it("uses dialog list container for scrollable height", () => {
+  it("uses scroll area for list container", () => {
     const categories: CategoryItem[] = [
       { id: "1", name: "A", sortOrder: 10 },
       { id: "2", name: "B", sortOrder: 20 },
@@ -21,7 +21,7 @@ describe("CategoryManagerModal", () => {
     )
 
     const list = document.querySelector(".dialog-list")
-    expect(list).not.toBeNull()
+    expect(list?.getAttribute("data-dialog-scroll")).toBe("true")
   })
 
   it("renders delete buttons as icons", () => {

@@ -20,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -254,26 +255,28 @@ export default function BlueLinkMapDialogs({
               />
               <Button onClick={onAccountSubmit}>新增</Button>
             </div>
-            <div className="dialog-list space-y-2">
-              {accounts.map((account) => (
-                <EditableListRow
-                  key={account.id}
-                  value={account.name}
-                  inputKey={`${account.id}-${account.name}`}
-                  draggable
-                  dragHandleAriaLabel="Drag handle"
-                  onDragStart={() => setAccountDragId(account.id)}
-                  onDragEnd={() => setAccountDragId(null)}
-                  onDrop={() => handleAccountDrop(account.id)}
-                  onBlur={(value) => onAccountNameBlur(account.id, value)}
-                  actionContent={<Trash2 className="h-4 w-4" aria-hidden="true" />}
-                  actionAriaLabel="Delete account"
-                  actionSize="icon"
-                  actionClassName="dialog-action-delete"
-                  onAction={() => onAccountDelete(account.id)}
-                />
-              ))}
-            </div>
+            <ScrollArea className="dialog-list" data-dialog-scroll="true">
+              <div className="space-y-2 pr-2">
+                {accounts.map((account) => (
+                  <EditableListRow
+                    key={account.id}
+                    value={account.name}
+                    inputKey={`${account.id}-${account.name}`}
+                    draggable
+                    dragHandleAriaLabel="Drag handle"
+                    onDragStart={() => setAccountDragId(account.id)}
+                    onDragEnd={() => setAccountDragId(null)}
+                    onDrop={() => handleAccountDrop(account.id)}
+                    onBlur={(value) => onAccountNameBlur(account.id, value)}
+                    actionContent={<Trash2 className="h-4 w-4" aria-hidden="true" />}
+                    actionAriaLabel="Delete account"
+                    actionSize="icon"
+                    actionClassName="dialog-action-delete"
+                    onAction={() => onAccountDelete(account.id)}
+                  />
+                ))}
+              </div>
+            </ScrollArea>
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => onAccountOpenChange(false)}>
@@ -308,36 +311,38 @@ export default function BlueLinkMapDialogs({
             {!activeAccountId ? (
               <p className="text-xs text-slate-400">请先选择账号。</p>
             ) : (
-              <div className="dialog-list space-y-2">
-                {currentCategories.map((category) => (
-                  <EditableListRow
-                    key={category.id}
-                    value={category.name}
-                    inputKey={`${category.id}-${category.name}`}
-                    draggable
-                    dragHandleAriaLabel="Drag handle"
-                    onDragStart={() => setCategoryDragId(category.id)}
-                    onDragEnd={() => setCategoryDragId(null)}
-                    onDrop={() => handleCategoryDrop(category.id)}
-                    onBlur={(value) => onCategoryNameBlur(category.id, value)}
-                    actionContent={<Trash2 className="h-4 w-4" aria-hidden="true" />}
-                    actionAriaLabel="Delete category"
-                    actionSize="icon"
-                    actionClassName="dialog-action-delete"
-                    onAction={() => onCategoryDelete(category.id)}
-                  />
-                ))}
-                {otherCategories.map((category) => (
-                  <EditableListRow
-                    key={`other-${category.id}`}
-                    value={category.name}
-                    readOnly
-                    actionLabel="添加"
-                    actionAriaLabel="Add category"
-                    onAction={() => onCategoryAddFromOther(category.name)}
-                  />
-                ))}
-              </div>
+              <ScrollArea className="dialog-list" data-dialog-scroll="true">
+                <div className="space-y-2 pr-2">
+                  {currentCategories.map((category) => (
+                    <EditableListRow
+                      key={category.id}
+                      value={category.name}
+                      inputKey={`${category.id}-${category.name}`}
+                      draggable
+                      dragHandleAriaLabel="Drag handle"
+                      onDragStart={() => setCategoryDragId(category.id)}
+                      onDragEnd={() => setCategoryDragId(null)}
+                      onDrop={() => handleCategoryDrop(category.id)}
+                      onBlur={(value) => onCategoryNameBlur(category.id, value)}
+                      actionContent={<Trash2 className="h-4 w-4" aria-hidden="true" />}
+                      actionAriaLabel="Delete category"
+                      actionSize="icon"
+                      actionClassName="dialog-action-delete"
+                      onAction={() => onCategoryDelete(category.id)}
+                    />
+                  ))}
+                  {otherCategories.map((category) => (
+                    <EditableListRow
+                      key={`other-${category.id}`}
+                      value={category.name}
+                      readOnly
+                      actionLabel="添加"
+                      actionAriaLabel="Add category"
+                      onAction={() => onCategoryAddFromOther(category.name)}
+                    />
+                  ))}
+                </div>
+              </ScrollArea>
             )}
           </div>
           <DialogFooter className="gap-2">

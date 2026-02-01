@@ -17,6 +17,7 @@ export interface CommentCombo {
   name: string
   source_link?: string
   content?: string
+  product_content?: string | null
   remark?: string
   created_at?: string
   updated_at?: string

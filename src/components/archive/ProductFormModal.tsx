@@ -28,6 +28,7 @@ interface ProductFormValues {
   comments: string
   image: string
   blueLink: string
+  taobaoLink: string
   categoryId: string
   accountName: string
   shopName: string
@@ -54,6 +55,7 @@ const emptyValues: ProductFormValues = {
   comments: "",
   image: "",
   blueLink: "",
+  taobaoLink: "",
   categoryId: "",
   accountName: "",
   shopName: "",
@@ -200,7 +202,7 @@ export default function ProductFormModal({
   const categorySelectId = `${baseId}-category`
 
   useEffect(() => {
-    setValues(initialValues ?? emptyValues)
+    setValues({ ...emptyValues, ...(initialValues ?? {}) })
     setErrors({})
   }, [initialValues, isOpen])
 
@@ -359,6 +361,7 @@ export default function ProductFormModal({
       }}
       onSubmit={handleSubmit}
       confirmLabel="保存"
+      size="lg"
     >
       <div className="space-y-5">
         <div className="space-y-2">
@@ -476,7 +479,7 @@ export default function ProductFormModal({
                 </span>
               </div>
               <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="product-link">商品链接</Label>
+                <Label htmlFor="product-link">京东链接</Label>
                 <Input
                   id="product-link"
                   value={values.blueLink}
@@ -485,6 +488,14 @@ export default function ProductFormModal({
                 <span className="min-h-[18px] text-xs text-rose-500">
                   {errors.blueLink}
                 </span>
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="taobao-link">淘宝链接</Label>
+                <Input
+                  id="taobao-link"
+                  value={values.taobaoLink}
+                  onChange={(event) => update("taobaoLink", event.target.value)}
+                />
               </div>
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="product-remark">总结</Label>

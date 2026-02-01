@@ -59,4 +59,40 @@ describe("dialog class standards", () => {
     const form = document.querySelector("form")
     expect(form?.className || "").toContain("dialog-form")
   })
+
+  it("applies default modal width for ModalForm", () => {
+    render(
+      <ModalForm
+        isOpen
+        title="Test"
+        onSubmit={() => {}}
+        onOpenChange={() => {}}
+      >
+        <FieldSet />
+      </ModalForm>
+    )
+
+    const dialogs = document.querySelectorAll('[role="dialog"]')
+    const content = dialogs[dialogs.length - 1] as HTMLElement | undefined
+    expect(content?.className || "").toContain("sm:max-w-[560px]")
+  })
+
+  it("constrains modal height and makes body scrollable", () => {
+    render(
+      <ModalForm
+        isOpen
+        title="Test"
+        onSubmit={() => {}}
+        onOpenChange={() => {}}
+      >
+        <FieldSet />
+      </ModalForm>
+    )
+
+    const dialogs = document.querySelectorAll('[role="dialog"]')
+    const content = dialogs[dialogs.length - 1] as HTMLElement | undefined
+    expect(content?.className || "").toContain("max-h-[85vh]")
+    const body = document.querySelector(".dialog-body")
+    expect(body?.className || "").toContain("overflow-y-auto")
+  })
 })

@@ -1,4 +1,13 @@
-﻿import { useEffect, useRef, useState } from "react"
+﻿import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type HTMLAttributes,
+} from "react"
 import Empty from "@/components/Empty"
 import PrimaryButton from "@/components/PrimaryButton"
 import ArchiveListCard from "@/components/archive/ArchiveListCard"
@@ -6,8 +15,15 @@ import CategoryManagerModal from "@/components/archive/CategoryManagerModal"
 import ImportProgressModal from "@/components/archive/ImportProgressModal"
 import PresetFieldsModal from "@/components/archive/PresetFieldsModal"
 import ProductFormModal from "@/components/archive/ProductFormModal"
-import InputGroup from "@/components/InputGroup"
 import Skeleton from "@/components/Skeleton"
+import {
+  ARCHIVE_LIST_ROW_HEIGHT,
+  ARCHIVE_LIST_ROW_GAP,
+  getVirtualItemCount,
+  isLoadMoreRow,
+  resolveListViewportHeight,
+  resolveRowHeight,
+} from "@/components/archive/virtualList"
 import type { CategoryItem } from "@/components/archive/types"
 import { Input } from "@/components/ui/input"
 import {
@@ -17,6 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { List } from "react-window"
 
 interface ParamEntry {
   key: string
@@ -83,7 +100,6 @@ interface ArchivePageViewProps {
   onSortChange: (value: string) => void
   onCreate: () => void
   onEdit: (id: string) => void
-  onCopyLink: (id: string) => void
   onDelete: (id: string) => void
   onToggleFocus: (id: string) => void
   onDragStart: (id: string) => void
@@ -113,6 +129,7 @@ interface ArchivePageViewProps {
     comments: string
     image: string
     blueLink: string
+    taobaoLink: string
     categoryId: string
     accountName: string
     shopName: string
@@ -143,6 +160,12 @@ interface ArchivePageViewProps {
   onFixSort: () => void
   isFixSortDisabled: boolean
   isFixSortSaving: boolean
+}
+
+type ArchiveRowProps = {
+  index: number
+  style: CSSProperties
+  ariaAttributes?: HTMLAttributes<HTMLDivElement>
 }
 
 const CategorySkeleton = () => (
@@ -213,7 +236,6 @@ export default function ArchivePageView({
   onSortChange,
   onCreate,
   onEdit,
-  onCopyLink,
   onDelete,
   onToggleFocus,
   onDragStart,
@@ -244,37 +266,172 @@ export default function ArchivePageView({
   isFixSortDisabled,
   isFixSortSaving,
 }: ArchivePageViewProps) {
-  const sentinelRef = useRef<HTMLDivElement | null>(null)
-  const hasMoreRef = useRef(hasMore)
+  const listContainerRef = useRef<HTMLDivElement | null>(null)
+  const isPriceUnset = priceRange[0] === 0 && priceRange[1] === 0
+  const [minInput, setMinInput] = useState(isPriceUnset ? "" : String(priceRange[0]))
+  const [maxInput, setMaxInput] = useState(isPriceUnset ? "" : String(priceRange[1]))
+  const disableLoadMoreResolved = Boolean(disableLoadMore)
+  const itemsRef = useRef(items)
+  const onToggleFocusRef = useRef(onToggleFocus)
+  const onEditRef = useRef(onEdit)
+  const onDeleteRef = useRef(onDelete)
+  const onDragStartRef = useRef(onDragStart)
+  const onDropRef = useRef(onDrop)
   const onLoadMoreRef = useRef(onLoadMore)
-  const [minInput, setMinInput] = useState(String(priceRange[0]))
-  const [maxInput, setMaxInput] = useState(String(priceRange[1]))
-  const canLoadMore = hasMore && !disableLoadMore
+  const hasMoreRef = useRef(hasMore)
+  const disableLoadMoreRef = useRef(disableLoadMoreResolved)
+  const isLoadingMoreRef = useRef(isLoadingMore)
+
+  itemsRef.current = items
+  onToggleFocusRef.current = onToggleFocus
+  onEditRef.current = onEdit
+  onDeleteRef.current = onDelete
+  onDragStartRef.current = onDragStart
+  onDropRef.current = onDrop
+  onLoadMoreRef.current = onLoadMore
+  hasMoreRef.current = hasMore
+  disableLoadMoreRef.current = disableLoadMoreResolved
+  isLoadingMoreRef.current = isLoadingMore
+
+  const canLoadMore = hasMore && !disableLoadMoreResolved
+  const virtualItemCount = useMemo(
+    () => getVirtualItemCount(items.length, hasMore, disableLoadMoreResolved),
+    [items.length, hasMore, disableLoadMoreResolved]
+  )
+  const [listHeight, setListHeight] = useState(ARCHIVE_LIST_ROW_HEIGHT)
+  const [rowHeight, setRowHeight] = useState(ARCHIVE_LIST_ROW_HEIGHT)
 
   useEffect(() => {
-    hasMoreRef.current = canLoadMore
-    onLoadMoreRef.current = onLoadMore
-  }, [canLoadMore, onLoadMore])
-
-  useEffect(() => {
+    if (priceRange[0] === 0 && priceRange[1] === 0) {
+      setMinInput("")
+      setMaxInput("")
+      return
+    }
     setMinInput(String(priceRange[0]))
     setMaxInput(String(priceRange[1]))
   }, [priceRange])
 
-  useEffect(() => {
-    const target = sentinelRef.current
-    if (!target || disableLoadMore) return
-    const observer = new IntersectionObserver((entries) => {
-      if (entries[0]?.isIntersecting && hasMoreRef.current) {
-        onLoadMoreRef.current()
-      }
+  const parsePriceInput = (value: string) => {
+    const trimmed = value.trim()
+    if (!trimmed) return null
+    const parsed = Number(trimmed)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+
+  const commitPriceRange = () => {
+    const minValue = parsePriceInput(minInput)
+    const maxValue = parsePriceInput(maxInput)
+    if (minValue === null && maxValue === null) {
+      onPriceRangeChange([0, 0])
+      return
+    }
+    const nextMin = minValue ?? priceBounds[0]
+    const nextMax = maxValue ?? priceBounds[1]
+    if (!Number.isFinite(nextMin) || !Number.isFinite(nextMax)) return
+    onPriceRangeChange([nextMin, nextMax])
+  }
+
+  useLayoutEffect(() => {
+    const updateHeight = () => {
+      if (!listContainerRef.current) return
+      const rect = listContainerRef.current.getBoundingClientRect()
+      setListHeight(resolveListViewportHeight(window.innerHeight, rect.top))
+    }
+    updateHeight()
+    window.addEventListener("resize", updateHeight)
+    return () => window.removeEventListener("resize", updateHeight)
+  }, [items.length])
+
+  useLayoutEffect(() => {
+    if (!listContainerRef.current) return
+    const cards = listContainerRef.current.querySelectorAll("[data-archive-card]")
+    if (!cards.length) return
+    let maxHeight = 0
+    cards.forEach((card) => {
+      if (!(card instanceof HTMLElement)) return
+      const height = card.getBoundingClientRect().height
+      if (height > maxHeight) maxHeight = height
     })
-    observer.observe(target)
-    return () => observer.disconnect()
-  }, [disableLoadMore])
+    const next = resolveRowHeight(maxHeight, ARCHIVE_LIST_ROW_GAP, ARCHIVE_LIST_ROW_HEIGHT)
+    if (next !== rowHeight) {
+      setRowHeight(next)
+    }
+  }, [items.length, listHeight, rowHeight])
 
   const showCategorySkeleton = isCategoryLoading && categories.length === 0
   const showListSkeleton = isListLoading && !isUsingCache
+  const rowRenderer = useCallback(
+    ({ index, style, ariaAttributes }: ArchiveRowProps) => {
+      const currentItems = itemsRef.current
+      const currentHasMore = hasMoreRef.current
+      const currentDisableLoadMore = disableLoadMoreRef.current
+      const currentIsLoadingMore = isLoadingMoreRef.current
+      if (isLoadMoreRow(index, currentItems.length, currentHasMore, currentDisableLoadMore)) {
+        return (
+          <div
+            style={{
+              ...style,
+              boxSizing: "border-box",
+              paddingBottom: ARCHIVE_LIST_ROW_GAP,
+            }}
+            className="flex items-center justify-center"
+            {...ariaAttributes}
+          >
+            {currentIsLoadingMore ? (
+              <span className="text-xs text-slate-400">正在加载更多...</span>
+            ) : (
+              <button
+                className="text-xs font-medium text-slate-500 hover:text-slate-700"
+                type="button"
+                onClick={() => onLoadMoreRef.current()}
+              >
+                加载更多
+              </button>
+            )}
+          </div>
+        )
+      }
+
+      const item = currentItems[index]
+      if (!item) return null
+      return (
+        <div
+          style={{
+            ...style,
+            boxSizing: "border-box",
+            paddingBottom: ARCHIVE_LIST_ROW_GAP,
+          }}
+          {...ariaAttributes}
+        >
+          <ArchiveListCard
+            key={item.id}
+            id={item.id}
+            title={item.title}
+            price={item.price}
+            commission={item.commission}
+            commissionRate={item.commissionRate}
+            sales30={item.sales30}
+            comments={item.comments}
+            image={item.image}
+            shopName={item.shopName}
+            uid={item.uid}
+            source={item.source}
+            blueLink={item.blueLink}
+            params={item.params}
+            remark={item.remark}
+            missingTips={item.missingTips}
+            isFocused={item.isFocused}
+            onToggleFocus={onToggleFocusRef.current}
+            onEdit={onEditRef.current}
+            onDelete={onDeleteRef.current}
+            onDragStart={onDragStartRef.current}
+            onDrop={onDropRef.current}
+          />
+        </div>
+      )
+    },
+    []
+  )
 
   return (
     <>
@@ -353,15 +510,15 @@ export default function ArchivePageView({
 
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
             <div className="flex flex-wrap items-center gap-4">
-              <InputGroup
-                label="搜索"
-                placeholder="搜索商品名称、关键词..."
-                value={searchValue}
-                onChange={onSearchChange}
-                width="lg"
-              />
+              <div className="w-full text-sm text-slate-600 md:w-[180px]">
+                <Input
+                  placeholder="搜索商品名称、关键词..."
+                  value={searchValue}
+                  onChange={(event) => onSearchChange(event.target.value)}
+                />
+              </div>
               <div className="grid gap-3 text-sm text-slate-600 md:grid-cols-[max-content_1fr] md:items-center">
-                <span className="font-medium text-slate-700">方案筛选</span>
+                <span className="font-medium text-slate-700">方案</span>
                 <Select
                   value={schemeValue || "all"}
                   onValueChange={(value) => onSchemeChange(value === "all" ? "" : value)}
@@ -380,64 +537,46 @@ export default function ArchivePageView({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex items-center gap-3 text-sm text-slate-600">
-                <span className="font-medium text-slate-700">价格区间</span>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <Input
-                      aria-label="Min price" className="h-8 w-20"
-                      inputMode="numeric"
-                      value={minInput}
-                      onChange={(event) => setMinInput(event.target.value)}
-                      onBlur={() => {
-                        const nextMin = Number(minInput)
-                        const nextMax = Number(maxInput)
-                        if (Number.isFinite(nextMin) && Number.isFinite(nextMax)) {
-                          onPriceRangeChange([nextMin, nextMax])
-                        }
-                      }}
-                    />
-                    <span className="text-xs text-slate-400">-</span>
-                    <Input
-                      aria-label="Max price" className="h-8 w-20"
-                      inputMode="numeric"
-                      value={maxInput}
-                      onChange={(event) => setMaxInput(event.target.value)}
-                      onBlur={() => {
-                        const nextMin = Number(minInput)
-                        const nextMax = Number(maxInput)
-                        if (Number.isFinite(nextMin) && Number.isFinite(nextMax)) {
-                          onPriceRangeChange([nextMin, nextMax])
-                        }
-                      }}
-                    />
-                    <span className="text-xs text-slate-500">
-                      {priceBounds[0]} - {priceBounds[1]}
-                    </span>
-                  </div>
+              <div className="grid gap-3 text-sm text-slate-600 md:grid-cols-[max-content_1fr] md:items-center">
+                <span className="font-medium text-slate-700">价格</span>
+                <div className="flex items-center gap-2">
+                  <Input
+                    aria-label="Min price"
+                    className="h-8 w-20"
+                    inputMode="numeric"
+                    value={minInput}
+                    onChange={(event) => setMinInput(event.target.value)}
+                    onBlur={commitPriceRange}
+                  />
+                  <span className="text-xs text-slate-400">-</span>
+                  <Input
+                    aria-label="Max price"
+                    className="h-8 w-20"
+                    inputMode="numeric"
+                    value={maxInput}
+                    onChange={(event) => setMaxInput(event.target.value)}
+                    onBlur={commitPriceRange}
+                  />
                 </div>
               </div>
-              <div className="grid gap-3 text-sm text-slate-600 md:grid-cols-[max-content_1fr] md:items-center">
-                <span className="font-medium text-slate-700">排序</span>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Select value={sortValue} onValueChange={onSortChange}>
-                    <SelectTrigger className="w-[160px]" aria-label="Sort">
-                      <SelectValue placeholder="请选择" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="manual">手动排序</SelectItem>
-                      <SelectItem value="price">价格升序</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <button
-                    type="button"
-                    className="h-10 rounded-md border border-slate-200 px-3 text-xs font-medium text-slate-600 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={isFixSortDisabled || isFixSortSaving}
-                    onClick={onFixSort}
-                  >
-                    {isFixSortSaving ? "保存中..." : "固定排序"}
-                  </button>
-                </div>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                <Select value={sortValue} onValueChange={onSortChange}>
+                  <SelectTrigger className="w-[160px]" aria-label="Sort">
+                    <SelectValue placeholder="请选择" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="manual">手动排序</SelectItem>
+                    <SelectItem value="price">价格升序</SelectItem>
+                  </SelectContent>
+                </Select>
+                <button
+                  type="button"
+                  className="h-10 rounded-md border border-slate-200 px-3 text-xs font-medium text-slate-600 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={isFixSortDisabled || isFixSortSaving}
+                  onClick={onFixSort}
+                >
+                  {isFixSortSaving ? "保存中..." : "固定排序"}
+                </button>
               </div>
             </div>
           </section>
@@ -458,53 +597,22 @@ export default function ArchivePageView({
               onAction={isListLoading ? undefined : onCreate}
             />
           ) : (
-            <>
-              <section className="space-y-5">
-                {items.map((item) => (
-                  <ArchiveListCard
-                    key={item.id}
-                    id={item.id}
-                    title={item.title}
-                    price={item.price}
-                    commission={item.commission}
-                    commissionRate={item.commissionRate}
-                    sales30={item.sales30}
-                    comments={item.comments}
-                    image={item.image}
-                    shopName={item.shopName}
-                    uid={item.uid}
-                    source={item.source}
-                    blueLink={item.blueLink}
-                    params={item.params}
-                    remark={item.remark}
-                    missingTips={item.missingTips}
-                    isFocused={item.isFocused}
-                    onToggleFocus={onToggleFocus}
-                    onCopyLink={onCopyLink}
-                    onEdit={onEdit}
-                    onDelete={onDelete}
-                    onDragStart={onDragStart}
-                    onDrop={onDrop}
-                  />
-                ))}
-              </section>
-              <div ref={sentinelRef} data-testid="load-more-sentinel" />
-              {isLoadingMore ? (
-                <div className="py-4 text-center text-xs text-slate-400">
-                  正在加载更多...
-                </div>
-              ) : canLoadMore ? (
-                <div className="py-4 text-center">
-                  <button
-                    className="text-xs font-medium text-slate-500 hover:text-slate-700"
-                    type="button"
-                    onClick={onLoadMore}
-                  >
-                    加载更多
-                  </button>
-                </div>
-              ) : null}
-            </>
+            <div ref={listContainerRef} data-testid="archive-virtual-list">
+              <List
+                rowCount={virtualItemCount}
+                rowHeight={rowHeight}
+                rowComponent={rowRenderer}
+                rowProps={{}}
+                onRowsRendered={({ stopIndex }) => {
+                  if (!canLoadMore || isLoadingMore) return
+                  if (stopIndex >= items.length) {
+                    onLoadMore()
+                  }
+                }}
+                defaultHeight={listHeight}
+                style={{ height: listHeight, width: "100%" }}
+              />
+            </div>
           )}
         </div>
       </div>

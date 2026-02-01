@@ -30,6 +30,7 @@ export type ItemResponse = {
   category_id: string
   title: string
   link?: string
+  taobao_link?: string
   price?: number
   commission?: number
   commission_rate?: number
@@ -146,6 +147,7 @@ export async function createItem(payload: {
   category_id: string
   title: string
   link?: string
+  taobao_link?: string
   price?: number
   commission?: number
   commission_rate?: number
@@ -164,6 +166,7 @@ export async function updateItem(
   payload: {
     title?: string
     link?: string
+    taobao_link?: string
     price?: number
     commission?: number
     commission_rate?: number

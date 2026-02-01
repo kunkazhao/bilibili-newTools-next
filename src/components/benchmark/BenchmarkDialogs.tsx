@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -283,30 +284,32 @@ export default function BenchmarkDialogs({
             {categoryDialog.categories.length === 0 ? (
               <Empty title="暂无分类" description="先新增分类再添加对标视频。" />
             ) : (
-              <div className="dialog-list space-y-2">
-                {categoryDialog.categories.map((category) => {
-                  return (
-                    <div key={category.id} className="modal-list-row">
-                      <Input
-                        aria-label="Category name" className="flex-1"
-                        key={`${category.id}-${category.name}`}
-                        defaultValue={category.name}
-                        disabled={categoryDialog.updatingId === String(category.id)}
-                        onBlur={(event) => categoryDialog.onUpdateName(category, event.target.value)}
-                      />
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="dialog-action-delete"
-                        aria-label="Delete category"
-                        onClick={() => categoryDialog.onRequestDelete(category)}
-                      >
-                        <Trash2 className="h-4 w-4" aria-hidden="true" />
-                      </Button>
-                    </div>
-                  )
-                })}
-              </div>
+              <ScrollArea className="dialog-list" data-dialog-scroll="true">
+                <div className="space-y-2 pr-2">
+                  {categoryDialog.categories.map((category) => {
+                    return (
+                      <div key={category.id} className="modal-list-row">
+                        <Input
+                          aria-label="Category name" className="flex-1"
+                          key={`${category.id}-${category.name}`}
+                          defaultValue={category.name}
+                          disabled={categoryDialog.updatingId === String(category.id)}
+                          onBlur={(event) => categoryDialog.onUpdateName(category, event.target.value)}
+                        />
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="dialog-action-delete"
+                          aria-label="Delete category"
+                          onClick={() => categoryDialog.onRequestDelete(category)}
+                        >
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                        </Button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </ScrollArea>
             )}
           </div>
           <DialogFooter>

@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button"
-import { MoreHorizontal, Pencil, Star, Trash2 } from "lucide-react"
+import { GripVertical, Pencil, Star, Trash2 } from "lucide-react"
 
 interface ParamEntry {
   key: string
@@ -24,7 +24,6 @@ interface ArchiveListCardProps {
   missingTips: string[]
   isFocused: boolean
   onToggleFocus: (id: string) => void
-  onCopyLink: (id: string) => void
   onEdit: (id: string) => void
   onDelete: (id: string) => void
   onDragStart: (id: string) => void
@@ -84,7 +83,6 @@ export default function ArchiveListCard({
   missingTips,
   isFocused,
   onToggleFocus,
-  onCopyLink,
   onEdit,
   onDelete,
   onDragStart,
@@ -92,16 +90,27 @@ export default function ArchiveListCard({
 }: ArchiveListCardProps) {
   const normalizedMissingTips = missingTips.map((tip) => decodeUnicodeEscapes(tip))
   const hasMissing = normalizedMissingTips.length > 0
+  const handleDragStart = (event: React.DragEvent<HTMLSpanElement>) => {
+    const card = event.currentTarget.closest("[data-archive-card]")
+    if (card && event.dataTransfer?.setDragImage) {
+      event.dataTransfer.setDragImage(card, card.clientWidth / 2, card.clientHeight / 2)
+    }
+    if (event.dataTransfer?.setData) {
+      event.dataTransfer.setData("text/plain", id)
+    }
+    onDragStart(id)
+  }
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
+    <div
+      className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card"
+      data-archive-card
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={() => onDrop(id)}
+    >
       <div className="flex gap-5">
         <div
           className="relative h-[140px] w-[120px] overflow-hidden rounded-xl border border-slate-200 bg-slate-100"
-          draggable
-          onDragStart={() => onDragStart(id)}
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={() => onDrop(id)}
         >
           {image ? (
             <img
@@ -174,15 +183,15 @@ export default function ArchiveListCard({
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="text-slate-500"
-                onClick={() => onCopyLink(id)}
+              <span
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-500 cursor-grab"
+                role="img"
+                aria-label="Drag handle"
+                draggable
+                onDragStart={handleDragStart}
               >
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
+                <GripVertical className="h-4 w-4" aria-hidden="true" />
+              </span>
               <Button
                 type="button"
                 variant="ghost"

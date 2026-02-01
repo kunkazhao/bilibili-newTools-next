@@ -28,4 +28,28 @@ describe("PresetFieldsModal", () => {
     const handles = screen.getAllByLabelText("Drag handle")
     expect(handles.length).toBeGreaterThan(0)
   })
+
+  it("uses scroll area for preset list", () => {
+    const categories: CategoryItem[] = [
+      {
+        id: "cat-1",
+        name: "Category",
+        sortOrder: 10,
+        specFields: [{ key: "Param-A" }],
+      },
+    ]
+
+    render(
+      <PresetFieldsModal
+        isOpen
+        categories={categories}
+        selectedCategoryId="cat-1"
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    )
+
+    const list = document.querySelector(".dialog-list")
+    expect(list?.getAttribute("data-dialog-scroll")).toBe("true")
+  })
 })

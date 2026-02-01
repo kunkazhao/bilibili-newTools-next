@@ -129,4 +129,22 @@ describe("BlueLinkMapDialogs", () => {
     const handles = screen.getAllByLabelText("Drag handle")
     expect(handles.length).toBeGreaterThanOrEqual(2)
   })
+
+  it("uses scroll area for account list", () => {
+    const accounts: BlueLinkAccount[] = [
+      { id: "acc-1", name: "Account-A" },
+      { id: "acc-2", name: "Account-B" },
+    ]
+
+    render(
+      <BlueLinkMapDialogs
+        {...baseProps}
+        accountModalOpen
+        accounts={accounts}
+      />
+    )
+
+    const list = document.querySelector(".dialog-list")
+    expect(list?.getAttribute("data-dialog-scroll")).toBe("true")
+  })
 })

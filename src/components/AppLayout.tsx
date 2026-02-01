@@ -29,44 +29,39 @@ export default function AppLayout({
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <div className="grid min-h-screen grid-cols-[260px_1fr]">
-        <aside className="flex flex-col border-r border-slate-200 bg-slate-950 px-6 py-6 text-slate-100">
+        <aside className="flex flex-col border-r border-slate-200 bg-[#F0EFE6] px-6 py-6 text-slate-900">
           <div className="mb-8">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
               Creator Console
             </p>
-            <h1 className="mt-3 text-2xl font-semibold text-white">
+            <h1 className="mt-3 text-2xl font-semibold text-slate-900">
               B站带货工具
             </h1>
           </div>
 
           <div className="space-y-6">
             <div className="space-y-3">
-              <p className="text-xs font-semibold text-slate-400">主功能</p>
+              <p className="text-xs font-semibold text-slate-500">主功能</p>
               <div className="space-y-2">
                 {primaryItems.map((item, index) => (
                   <button
                     key={item}
                     className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
                       index === activeIndex
-                        ? "bg-white/10 text-white"
-                        : "text-slate-300 hover:bg-white/5 hover:text-white"
+                        ? "bg-brand/10 text-brand"
+                        : "text-slate-700 hover:bg-slate-900/5 hover:text-slate-900"
                     }`}
                     type="button"
                     onClick={() => onSelect?.(index)}
                   >
                     <span>{item}</span>
-                    {index === activeIndex ? (
-                      <span className="rounded-full bg-brand/20 px-2 py-0.5 text-xs text-brand">
-                        当前
-                      </span>
-                    ) : null}
                   </button>
                 ))}
               </div>
             </div>
 
             <div className="space-y-3">
-              <p className="text-xs font-semibold text-slate-400">小工具</p>
+              <p className="text-xs font-semibold text-slate-500">小工具</p>
               <div className="space-y-2">
                 {utilityItems.map((item, index) => {
                   const targetIndex = primaryItems.length + index
@@ -76,18 +71,13 @@ export default function AppLayout({
                       key={item}
                       className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
                         active
-                          ? "bg-white/10 text-white"
-                          : "text-slate-300 hover:bg-white/5 hover:text-white"
+                          ? "bg-brand/10 text-brand"
+                          : "text-slate-700 hover:bg-slate-900/5 hover:text-slate-900"
                       }`}
                       type="button"
                       onClick={() => onSelect?.(targetIndex)}
                     >
                       <span>{item}</span>
-                      {active ? (
-                        <span className="rounded-full bg-brand/20 px-2 py-0.5 text-xs text-brand">
-                          当前
-                        </span>
-                      ) : null}
                     </button>
                   )
                 })}

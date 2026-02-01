@@ -15,6 +15,12 @@ import {
 import * as XLSX from "xlsx"
 import { apiRequest } from "@/lib/api"
 import {
+  formatArchivePriceForExport,
+  resolveArchiveExportLink,
+  resolveArchiveProductId,
+  resolveArchiveShopName,
+} from "@/components/archive/archiveExport"
+import {
   createCategory,
   createItem,
   deleteCategory,
@@ -39,6 +45,7 @@ interface ArchiveItem {
   image: string
   categoryId: string
   blueLink: string
+  taobaoLink: string
   accountName: string
   remark: string
   isFocused: boolean
@@ -81,6 +88,37 @@ export const buildSortOrderUpdates = (
     },
   }))
 
+export const resolveSortValueAfterLoad = (
+  currentSort: string,
+  hasManualOrder: boolean
+) => {
+  if (currentSort && currentSort !== "manual") return currentSort
+  return hasManualOrder ? "manual" : "manual"
+}
+
+export const resolvePriceRange = (
+  bounds: [number, number],
+  range: [number, number]
+) => {
+  const minBound = Math.min(bounds[0], bounds[1])
+  const maxBound = Math.max(bounds[0], bounds[1])
+  const isUnset = range[0] === 0 && range[1] === 0
+  if (isUnset) return [minBound, maxBound] as [number, number]
+  const nextMin = Math.min(Math.max(range[0], minBound), maxBound)
+  const nextMax = Math.min(Math.max(range[1], minBound), maxBound)
+  if (nextMin <= nextMax) return [nextMin, nextMax]
+  return [nextMax, nextMin]
+}
+
+export const filterSchemesByCategory = (schemes: Scheme[], categoryValue: string) => {
+  if (!categoryValue || categoryValue === "all") {
+    return schemes
+  }
+  return schemes.filter(
+    (scheme) => String(scheme.category_id ?? "") === String(categoryValue)
+  )
+}
+
 export const isFixSortDisabled = (params: {
   searchValue: string
   schemeFilterId: string
@@ -89,9 +127,10 @@ export const isFixSortDisabled = (params: {
 }) => {
   const hasSearch = params.searchValue.trim() !== ""
   const hasScheme = Boolean(params.schemeFilterId)
+  const epsilon = 1e-3
   const priceFiltered =
-    params.priceRange[0] !== params.priceBounds[0] ||
-    params.priceRange[1] !== params.priceBounds[1]
+    Math.abs(params.priceRange[0] - params.priceBounds[0]) > epsilon ||
+    Math.abs(params.priceRange[1] - params.priceBounds[1]) > epsilon
   return hasSearch || hasScheme || priceFiltered
 }
 
@@ -100,6 +139,7 @@ const normalizeArchiveItem = (item: {
   category_id: string
   title?: string
   link?: string
+  taobao_link?: string
   price?: number
   commission?: number
   commission_rate?: number
@@ -122,6 +162,7 @@ const normalizeArchiveItem = (item: {
     image: item.cover_url ?? "",
     categoryId: item.category_id,
     blueLink: spec[META_KEYS.blueLink] || item.link || "",
+    taobaoLink: item.taobao_link ?? "",
     accountName: spec[META_KEYS.shopName] || "",
     remark: item.remark ?? "",
     isFocused: Boolean(spec[META_KEYS.featured]),
@@ -205,22 +246,6 @@ const getTimestamp = () => {
   )
 }
 
-const extractDigitsFromLink = (link: string) => {
-  if (!link) return ""
-  const cleaned = link.trim()
-  const exactMatch = cleaned.match(/item\.jd\.com\/(\d+)\.html/i)
-  if (exactMatch) return exactMatch[1]
-  const paramMatch = cleaned.match(/(?:skuId|sku|productId|wareId|id)[=/](\d{6,})/i)
-  if (paramMatch) return paramMatch[1]
-  const htmlMatch = cleaned.match(/\/(\d{6,})\.html/i)
-  if (htmlMatch) return htmlMatch[1]
-  const allDigits = cleaned.match(/(\d{6,})/g)
-  if (allDigits && allDigits.length > 0) {
-    return allDigits.sort((a, b) => b.length - a.length)[0]
-  }
-  return ""
-}
-
 export default function ArchivePage() {
   const { showToast } = useToast()
   const [items, setItems] = useState<ArchiveItem[]>([])
@@ -245,7 +270,7 @@ export default function ArchivePage() {
   const [schemeFilterId, setSchemeFilterId] = useState("")
   const [schemeFilterItems, setSchemeFilterItems] = useState<ArchiveItem[]>([])
   const [isSchemeLoading, setIsSchemeLoading] = useState(true)
-  const [dragId, setDragId] = useState<string | null>(null)
+  const dragIdRef = useRef<string | null>(null)
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false)
   const [isPresetFieldsOpen, setIsPresetFieldsOpen] = useState(false)
   const [isProductFormOpen, setIsProductFormOpen] = useState(false)
@@ -273,6 +298,7 @@ export default function ArchivePage() {
   const softRefreshOrderRef = useRef<string[] | null>(null)
   const schemeFilterCacheRef = useRef<Map<string, ArchiveItem[]>>(new Map())
   const schemeFilterTokenRef = useRef(0)
+  const skipNextLoadRef = useRef(false)
 
   const applyCountsToCategories = useCallback(
     (nextCategories: CategoryItem[], counts: Record<string, number> | null) => {
@@ -318,6 +344,11 @@ export default function ArchivePage() {
     return [...baseItems].sort((a, b) => a.price - b.price)
   }, [baseItems, manualOrder, sortValue, schemeFilterId])
 
+  const visibleSchemes = useMemo(
+    () => filterSchemesByCategory(schemes, categoryValue),
+    [schemes, categoryValue]
+  )
+
   const priceBounds = useMemo<[number, number]>(() => {
     if (baseItems.length === 0) return [0, 0]
     const values = baseItems.map((item) => item.price).filter((value) => Number.isFinite(value))
@@ -325,14 +356,10 @@ export default function ArchivePage() {
     return [Math.min(...values), Math.max(...values)]
   }, [baseItems])
 
-  const safePriceRange = useMemo<[number, number]>(() => {
-    const minBound = Math.min(priceBounds[0], priceBounds[1])
-    const maxBound = Math.max(priceBounds[0], priceBounds[1])
-    const nextMin = Math.min(Math.max(priceRange[0], minBound), maxBound)
-    const nextMax = Math.min(Math.max(priceRange[1], minBound), maxBound)
-    if (nextMin <= nextMax) return [nextMin, nextMax]
-    return [nextMax, nextMin]
-  }, [priceBounds, priceRange])
+  const safePriceRange = useMemo<[number, number]>(
+    () => resolvePriceRange(priceBounds, priceRange),
+    [priceBounds, priceRange]
+  )
 
   const fixSortDisabled = isFixSortDisabled({
     searchValue,
@@ -391,12 +418,7 @@ export default function ArchivePage() {
         .filter((value) => Number.isFinite(value))
       const nextBounds: [number, number] =
         values.length > 0 ? [Math.min(...values), Math.max(...values)] : [0, 0]
-      const minBound = Math.min(nextBounds[0], nextBounds[1])
-      const maxBound = Math.max(nextBounds[0], nextBounds[1])
-      const nextMin = Math.min(Math.max(priceRange[0], minBound), maxBound)
-      const nextMax = Math.min(Math.max(priceRange[1], minBound), maxBound)
-      const nextSafeRange: [number, number] =
-        nextMin <= nextMax ? [nextMin, nextMax] : [nextMax, nextMin]
+      const nextSafeRange = resolvePriceRange(nextBounds, priceRange)
 
       const keyword = searchValue.trim().toLowerCase()
       const nextFiltered = nextOrdered.filter((item) => {
@@ -466,11 +488,7 @@ export default function ArchivePage() {
   useEffect(() => {
     if (priceBounds[0] === 0 && priceBounds[1] === 0) return
     setPriceRange((prev) => {
-      if (prev[0] === 0 && prev[1] === 0) {
-        const next: [number, number] = [priceBounds[0], priceBounds[1]]
-        if (prev[0] === next[0] && prev[1] === next[1]) return prev
-        return next
-      }
+      if (prev[0] === 0 && prev[1] === 0) return prev
       const next: [number, number] = [
         Math.max(priceBounds[0], prev[0]),
         Math.min(priceBounds[1], prev[1]),
@@ -532,7 +550,10 @@ export default function ArchivePage() {
         const cachedManualOrder = buildManualOrderFromItems(itemsCache.data.items)
         if (cachedManualOrder.length) {
           setManualOrder(cachedManualOrder)
-          setSortValue("manual")
+          const nextSort = resolveSortValueAfterLoad(sortValue, true)
+          if (nextSort !== sortValue) {
+            setSortValue(nextSort)
+          }
         }
         setIsListLoading(false)
         didUseCache = true
@@ -550,7 +571,10 @@ export default function ArchivePage() {
           const cachedManualOrder = buildManualOrderFromItems(payload.items)
           if (cachedManualOrder.length) {
             setManualOrder(cachedManualOrder)
-            setSortValue("manual")
+            const nextSort = resolveSortValueAfterLoad(sortValue, true)
+            if (nextSort !== sortValue) {
+              setSortValue(nextSort)
+            }
           }
           setIsListLoading(false)
           didUseCache = true
@@ -563,7 +587,7 @@ export default function ArchivePage() {
       setIsLoading(false)
     }
     return didUseCache
-  }, [categoryValue, searchValue])
+  }, [categoryValue, searchValue, sortValue])
 
   const hydrateSchemesFromCache = useCallback(() => {
     const schemeCache = getCache<Scheme[]>(SCHEME_CACHE_KEY)
@@ -771,7 +795,10 @@ export default function ArchivePage() {
         setItems(normalizedItems)
         if (manualIds.length > 0) {
           setManualOrder(manualIds)
-          setSortValue("manual")
+          const nextSort = resolveSortValueAfterLoad(sortValue, true)
+          if (nextSort !== sortValue) {
+            setSortValue(nextSort)
+          }
         }
         setHasMore(response.has_more ?? false)
         setNextOffset(response.next_offset ?? normalizedItems.length)
@@ -821,6 +848,10 @@ export default function ArchivePage() {
 
   useEffect(() => {
     if (schemeFilterId) return
+    if (skipNextLoadRef.current) {
+      skipNextLoadRef.current = false
+      return
+    }
     const usedCache = hydrateItemsFromCache()
     if (usedCache && "requestIdleCallback" in window) {
       ;(window as any).requestIdleCallback(
@@ -839,6 +870,16 @@ export default function ArchivePage() {
     }
     loadSchemeFilterItems(schemeFilterId)
   }, [schemeFilterId, loadSchemeFilterItems])
+
+  useEffect(() => {
+    if (!schemeFilterId) return
+    if (categoryValue === "all") return
+    if (isSchemeLoading && schemes.length === 0) return
+    const current = schemes.find((scheme) => scheme.id === schemeFilterId)
+    if (!current || String(current.category_id ?? "") !== String(categoryValue)) {
+      setSchemeFilterId("")
+    }
+  }, [categoryValue, isSchemeLoading, schemeFilterId, schemes])
 
   const loadMore = useCallback(async () => {
     if (schemeFilterId) return
@@ -880,14 +921,6 @@ export default function ArchivePage() {
     }
   }, [categoryValue, searchValue, sortValue, nextOffset, hasMore, isLoading, isLoadingMore, items, showToast, saveItemsCache, schemeFilterId])
 
-  const handleCopyLink = (id: string) => {
-    const target = baseItems.find((item) => item.id === id)
-    if (!target) return
-    navigator.clipboard
-      .writeText(target.blueLink || target.spec[META_KEYS.blueLink] || "")
-      .then(() => showToast("复制成功", "success"))
-      .catch(() => showToast("复制失败", "error"))
-  }
 
   const handleToggleFocus = (id: string) => {
     setItems((prev) =>
@@ -917,11 +950,12 @@ export default function ArchivePage() {
 
   const handleDragStart = (id: string) => {
     if (isFixSortSaving) return
-    setDragId(id)
+    dragIdRef.current = id
   }
 
   const handleDrop = (targetId: string) => {
     if (isFixSortSaving) return
+    const dragId = dragIdRef.current
     if (!dragId || dragId === targetId) return
     const nextOrder = [...orderedItems.map((item) => item.id)]
     const fromIndex = nextOrder.indexOf(dragId)
@@ -929,8 +963,12 @@ export default function ArchivePage() {
     if (fromIndex === -1 || toIndex === -1) return
     const [moved] = nextOrder.splice(fromIndex, 1)
     nextOrder.splice(toIndex, 0, moved)
+    dragIdRef.current = null
     setManualOrder(nextOrder)
-    setSortValue("manual")
+    if (sortValue !== "manual") {
+      skipNextLoadRef.current = true
+      setSortValue("manual")
+    }
     showToast("排序已调整，点击固定排序保存", "success")
   }
 
@@ -1028,7 +1066,7 @@ export default function ArchivePage() {
       return
     }
     try {
-      const formatPrice = (value: number | string) => {
+      const formatAmount = (value: number | string) => {
         if (value === null || value === undefined || value === "") return ""
         const num = Number(value)
         if (Number.isNaN(num)) return String(value)
@@ -1074,22 +1112,19 @@ export default function ArchivePage() {
         const specParams = Object.fromEntries(
           Object.entries(item.spec || {}).filter(([key]) => !key.startsWith("_"))
         )
-        const link =
-          item.spec[META_KEYS.promoLink] ||
-          item.blueLink ||
-          item.spec[META_KEYS.sourceLink] ||
-          ""
-        const productId = extractDigitsFromLink(link) || item.uid || item.id
+        const link = resolveArchiveExportLink(item)
+        const productId = resolveArchiveProductId(item)
+        const shopName = resolveArchiveShopName(item)
         return [
           item.isFocused ? "是" : "",
           item.uid || item.id || "",
           productId,
           item.title || "",
-          formatPrice(item.price),
-          formatPrice(item.commission),
+          formatArchivePriceForExport(item.price),
+          formatAmount(item.commission),
           formatPercent(item.commissionRate),
           item.spec[META_KEYS.sales30] || "",
-          item.spec[META_KEYS.shopName] || "",
+          shopName,
           link,
           item.spec[META_KEYS.comments] || "",
           item.remark || "",
@@ -1146,6 +1181,7 @@ export default function ArchivePage() {
       comments: target.spec[META_KEYS.comments] || "",
       image: target.image,
       blueLink: target.blueLink,
+      taobaoLink: target.taobaoLink,
       categoryId: target.categoryId,
       accountName: target.accountName,
       shopName: target.spec[META_KEYS.shopName] || "",
@@ -1166,6 +1202,7 @@ export default function ArchivePage() {
     comments: string
     image: string
     blueLink: string
+    taobaoLink: string
     categoryId: string
     accountName: string
     shopName: string
@@ -1198,6 +1235,7 @@ export default function ArchivePage() {
         commissionRate: commissionRateValue,
         image: values.image,
         blueLink: values.blueLink,
+        taobaoLink: values.taobaoLink,
         remark: values.remark,
         categoryId: values.categoryId,
         accountName: values.accountName,
@@ -1239,6 +1277,7 @@ export default function ArchivePage() {
         commission_rate: commissionRateValue,
         cover_url: values.image,
         link: values.blueLink,
+        taobao_link: values.taobaoLink,
         remark: values.remark,
         spec: nextSpec,
       })
@@ -1313,6 +1352,7 @@ export default function ArchivePage() {
         commission_rate: commissionRateValue,
         cover_url: values.image,
         link: values.blueLink,
+        taobao_link: values.taobaoLink,
         remark: values.remark,
         spec: specPayload,
       })
@@ -1417,7 +1457,7 @@ export default function ArchivePage() {
       isListLoading={isListLoading}
       isRefreshing={isRefreshing}
       isUsingCache={usingCache}
-      schemes={schemes}
+      schemes={visibleSchemes}
       schemeValue={schemeFilterId}
       isSchemeLoading={isSchemeLoading}
       onSchemeChange={(value) => setSchemeFilterId(value)}
@@ -1425,7 +1465,7 @@ export default function ArchivePage() {
       selectedCategory={categoryValue}
       searchValue={searchValue}
       onSearchChange={setSearchValue}
-      priceRange={safePriceRange}
+      priceRange={priceRange}
       priceBounds={priceBounds}
       onPriceRangeChange={handlePriceRangeChange}
       hasMore={hasMore}
@@ -1439,7 +1479,6 @@ export default function ArchivePage() {
         setIsProductFormOpen(true)
       }}
       onEdit={openEdit}
-      onCopyLink={handleCopyLink}
       onDelete={(id) => {
         const target = items.find((item) => item.id === id)
         setDeleteTarget({ id, title: target?.title })

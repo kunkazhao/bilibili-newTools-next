@@ -156,6 +156,8 @@ export default function BlueLinkMapPage() {
   const [pickerHasMore, setPickerHasMore] = useState(false)
   const [pickerLoading, setPickerLoading] = useState(false)
   const [pickerEntry, setPickerEntry] = useState<BlueLinkEntry | null>(null)
+  const pickerSearchTimerRef = useRef<number | null>(null)
+  const pickerRequestIdRef = useRef(0)
 
   const [progressOpen, setProgressOpen] = useState(false)
   const [progressLabel, setProgressLabel] = useState("映射")
@@ -307,6 +309,23 @@ export default function BlueLinkMapPage() {
       chunkTimerRef.current = window.setTimeout(next, 16)
     }
   }, [filteredEntries])
+
+  useEffect(() => {
+    return () => {
+      if (pickerSearchTimerRef.current) {
+        window.clearTimeout(pickerSearchTimerRef.current)
+        pickerSearchTimerRef.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (pickerOpen) return
+    if (pickerSearchTimerRef.current) {
+      window.clearTimeout(pickerSearchTimerRef.current)
+      pickerSearchTimerRef.current = null
+    }
+  }, [pickerOpen])
 
   useEffect(() => {
     const loadSourcingCategories = async () => {
@@ -785,9 +804,11 @@ export default function BlueLinkMapPage() {
 
   const loadPickerItems = async (
     reset = false,
-    categoryId = pickerCategoryId
+    categoryId = pickerCategoryId,
+    keyword = pickerKeyword
   ) => {
-    if (pickerLoading) return
+    if (pickerLoading && !reset) return
+    const requestId = ++pickerRequestIdRef.current
     setPickerLoading(true)
     const limit = 50
     const offset = reset ? 0 : pickerOffset
@@ -797,26 +818,34 @@ export default function BlueLinkMapPage() {
     params.set("fields", "list")
     const resolvedCategoryId = resolveSourcingCategoryId(categoryId)
     if (resolvedCategoryId) params.set("category_id", resolvedCategoryId)
-    const trimmedKeyword = pickerKeyword.trim()
+    const trimmedKeyword = keyword.trim()
     if (trimmedKeyword) params.set("q", trimmedKeyword)
     try {
       const data = await apiRequest<{ items: SourcingItem[]; has_more?: boolean; next_offset?: number }>(
         `/api/sourcing/items?${params.toString()}`
       )
       const list = Array.isArray(data.items) ? data.items : []
+      if (requestId !== pickerRequestIdRef.current) return
       setPickerItems((prev) => (reset ? list : prev.concat(list)))
       setPickerHasMore(Boolean(data.has_more))
       setPickerOffset(data.next_offset ?? offset + list.length)
     } catch (error) {
+      if (requestId !== pickerRequestIdRef.current) return
       const message = error instanceof Error ? error.message : "加载商品失败"
       showToast(message, "error")
     } finally {
-      setPickerLoading(false)
+      if (requestId === pickerRequestIdRef.current) {
+        setPickerLoading(false)
+      }
     }
   }
 
   const openProductPicker = (entry: BlueLinkEntry) => {
     const defaultCategoryId = activeCategoryId || ""
+    if (pickerSearchTimerRef.current) {
+      window.clearTimeout(pickerSearchTimerRef.current)
+      pickerSearchTimerRef.current = null
+    }
     setPickerEntry(entry)
     setPickerKeyword("")
     setPickerCategoryId(defaultCategoryId)
@@ -824,7 +853,7 @@ export default function BlueLinkMapPage() {
     setPickerOffset(0)
     setPickerHasMore(false)
     setPickerOpen(true)
-    void loadPickerItems(true, defaultCategoryId)
+    void loadPickerItems(true, defaultCategoryId, "")
   }
 
   const handlePickerCategoryChange = (value: string) => {
@@ -832,7 +861,22 @@ export default function BlueLinkMapPage() {
     setPickerItems([])
     setPickerOffset(0)
     setPickerHasMore(false)
-    void loadPickerItems(true, value)
+    if (pickerSearchTimerRef.current) {
+      window.clearTimeout(pickerSearchTimerRef.current)
+      pickerSearchTimerRef.current = null
+    }
+    void loadPickerItems(true, value, pickerKeyword)
+  }
+
+  const handlePickerKeywordChange = (value: string) => {
+    setPickerKeyword(value)
+    if (!pickerOpen) return
+    if (pickerSearchTimerRef.current) {
+      window.clearTimeout(pickerSearchTimerRef.current)
+    }
+    pickerSearchTimerRef.current = window.setTimeout(() => {
+      void loadPickerItems(true, pickerCategoryId, value)
+    }, 300)
   }
 
   const patchEntryMapping = async (entryId: string, productId: string | null, skuId: string | null) => {
@@ -1144,16 +1188,18 @@ export default function BlueLinkMapPage() {
         onCategoryReorder={handleCategoryReorder}
         pickerOpen={pickerOpen}
         pickerCategoryId={pickerCategoryId}
+        pickerKeyword={pickerKeyword}
         pickerItems={pickerItems}
         pickerHasMore={pickerHasMore}
         pickerLoading={pickerLoading}
         onPickerCategoryChange={handlePickerCategoryChange}
+        onPickerKeywordChange={handlePickerKeywordChange}
         onPickerOpenChange={setPickerOpen}
         onPickerPick={(itemId) => {
           if (!pickerEntry) return
           void updateEntryProduct(pickerEntry.id, itemId)
         }}
-        onPickerLoadMore={() => void loadPickerItems(false, pickerCategoryId)}
+        onPickerLoadMore={() => void loadPickerItems(false, pickerCategoryId, pickerKeyword)}
         progressOpen={progressOpen}
         progressLabel={progressLabel}
         progressTotal={progressTotal}

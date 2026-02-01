@@ -1,9 +1,9 @@
-import { useState } from "react"
+﻿import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import Empty from "@/components/Empty"
 import Skeleton from "@/components/Skeleton"
 import { Copy, Pencil, Trash2 } from "lucide-react"
-import type { CommentAccount, CommentCategory, CommentCombo } from "./types"
+import type { CommentAccount, CommentCombo } from "./types"
 
 const PREVIEW_LIMIT = 220
 const buildPreview = (text: string) => {
@@ -47,19 +47,19 @@ interface CommentBlueLinkPageViewProps {
   listLoading: boolean
   accounts: CommentAccount[]
   currentAccountId: string | null
-  currentCategoryId: string
-  allCategoryId: string
-  accountCategories: CommentCategory[]
   filteredCombos: CommentCombo[]
   visibleCombos: CommentCombo[]
   combosCountByAccount: Map<string, number>
+  comboViewStates: Record<
+    string,
+    { mode: "full" | "product"; content: string; loading: boolean }
+  >
   onAccountChange: (accountId: string) => void
-  onCategoryChange: (categoryId: string) => void
-  onBatchCopy: () => void
   onCopyCombo: (combo: CommentCombo) => void
   onOpenCreate: () => void
   onOpenEdit: (combo: CommentCombo) => void
   onDelete: (combo: CommentCombo) => void
+  onToggleVersion: (combo: CommentCombo) => void
 }
 
 export default function CommentBlueLinkPageView({
@@ -67,19 +67,16 @@ export default function CommentBlueLinkPageView({
   listLoading,
   accounts,
   currentAccountId,
-  currentCategoryId,
-  allCategoryId,
-  accountCategories,
   filteredCombos,
   visibleCombos,
   combosCountByAccount,
+  comboViewStates,
   onAccountChange,
-  onCategoryChange,
-  onBatchCopy,
   onCopyCombo,
   onOpenCreate,
   onOpenEdit,
   onDelete,
+  onToggleVersion,
 }: CommentBlueLinkPageViewProps) {
   const [expandedCombos, setExpandedCombos] = useState<Set<string>>(new Set())
 
@@ -151,40 +148,7 @@ export default function CommentBlueLinkPageView({
       <section className="space-y-5">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                className={`rounded-full border px-3 py-1 text-xs ${
-                  currentCategoryId === allCategoryId
-                    ? "border-brand bg-brand/10 text-brand"
-                    : "border-slate-200 text-slate-500"
-                }`}
-                onClick={() => onCategoryChange(allCategoryId)}
-              >
-                全部
-              </button>
-              {accountCategories.map((category) => (
-                <button
-                  key={category.id}
-                  className={`rounded-full border px-3 py-1 text-xs ${
-                    currentCategoryId === category.id
-                      ? "border-brand bg-brand/10 text-brand"
-                      : "border-slate-200 text-slate-500"
-                  }`}
-                  type="button"
-                  onClick={() => onCategoryChange(category.id)}
-                >
-                  {category.name}
-                </button>
-              ))}
-              {!accountCategories.length ? (
-                <span className="text-xs text-slate-400">该账号暂无分类</span>
-              ) : null}
-            </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" onClick={onBatchCopy} disabled={!filteredCombos.length}>
-                批量复制
-              </Button>
               <Button onClick={onOpenCreate}>新增组合</Button>
             </div>
           </div>
@@ -203,7 +167,8 @@ export default function CommentBlueLinkPageView({
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {visibleCombos.map((combo) => {
               const isExpanded = expandedCombos.has(combo.id)
-              const rawContent = combo.content || ""
+              const viewState = comboViewStates[combo.id]
+              const rawContent = viewState?.content ?? combo.content ?? ""
               const hasContent = Boolean(rawContent.trim())
               const displayContent = isExpanded ? rawContent : buildPreview(rawContent)
               return (
@@ -212,11 +177,19 @@ export default function CommentBlueLinkPageView({
                   className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card"
                 >
                   <div className="space-y-2">
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center justify-between gap-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="text-sm font-semibold text-slate-900">{combo.name}</p>
                       </div>
                       <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 px-2 text-xs text-slate-500"
+                        onClick={() => onToggleVersion(combo)}
+                      >
+                        {viewState?.mode === "product" ? "\u5546\u54c1\u7248" : "\u5b8c\u6574\u7248"}
+                      </Button>
                       <Button
                         variant="outline"
                         size="icon"
@@ -247,9 +220,7 @@ export default function CommentBlueLinkPageView({
                       </div>
                     </div>
                     <div
-                      className={`relative w-full rounded-lg bg-[#F8F9FF] p-3 text-xs text-slate-600 whitespace-pre-line break-words ${
-                        isExpanded ? "" : "h-[240px] overflow-hidden"
-                      }`}
+                      className="relative w-full rounded-lg bg-[#F8F9FF] p-3 text-xs text-slate-600 whitespace-pre-line break-words"
                     >
                       {displayContent || "\u6682\u65e0\u5185\u5bb9"}
                       {!isExpanded && hasContent ? (
@@ -279,3 +250,10 @@ export default function CommentBlueLinkPageView({
     </div>
   )
 }
+
+
+
+
+
+
+

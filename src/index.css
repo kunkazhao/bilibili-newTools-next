@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -60,7 +60,11 @@
 
   .dialog-list {
     max-height: var(--dialog-list-max-height);
-    overflow: auto;
+    overflow: hidden;
+  }
+
+  .dialog-list[data-dialog-scroll="true"] {
+    height: var(--dialog-list-max-height);
   }
 
   .dialog-action-delete {
@@ -100,9 +104,14 @@
   --scheme-detail-product-scroll-height: calc(100vh - 320px);
 }
 
+html {
+  font-size: 17px;
+}
+
 body {
-  font-family: "Manrope", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB",
-    "Noto Sans CJK SC", "Segoe UI", sans-serif;
+  font-family: "Noto Sans SC", "Microsoft YaHei", "PingFang SC",
+    "Hiragino Sans GB", "Noto Sans CJK SC", "Segoe UI", sans-serif;
+  font-weight: 500;
   background: #f8fafc;
   color: #0f172a;
 }

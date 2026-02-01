@@ -59,6 +59,7 @@ interface SchemeItem {
   image?: string
   coverUrl?: string
   link?: string
+  taobao_link?: string
   remark?: string
   spec?: Record<string, string>
 }
@@ -112,6 +113,7 @@ interface ProductFormValues {
   comments: string
   image: string
   blueLink: string
+  taobaoLink: string
   categoryId: string
   accountName: string
   shopName: string
@@ -423,6 +425,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       comments: meta.comments ?? "",
       image: getDisplayCover(item),
       blueLink: meta.blueLink || item.link || "",
+      taobaoLink: item.taobao_link ?? "",
       categoryId: scheme?.category_id || "",
       accountName: meta.shopName || "",
       shopName: meta.shopName || "",
@@ -471,6 +474,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
         commission: updatedItem.commission ?? item.commission,
         commission_rate: updatedItem.commission_rate ?? item.commission_rate,
         link: updatedItem.link ?? item.link,
+        taobao_link: updatedItem.taobao_link ?? item.taobao_link,
         spec: updatedItem.spec ?? item.spec,
         remark: updatedItem.remark ?? item.remark,
         cover_url: updatedItem.cover_url ?? item.cover_url,
@@ -510,6 +514,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
           commission_rate: commissionRateValue,
           cover_url: values.image,
           link: values.blueLink,
+          taobao_link: values.taobaoLink,
           remark: values.remark,
           spec: nextSpec,
         }),
