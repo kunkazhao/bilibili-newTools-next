@@ -6,6 +6,7 @@ import SchemeDetailDialogs from "@/components/schemes/SchemeDetailDialogs"
 import SchemeDetailPageView from "@/components/schemes/SchemeDetailPageView"
 import { selectSingleImageTarget } from "@/components/schemes/schemeImageSingle"
 import { resolveSelectedAccountId } from "@/components/schemes/blueLinkSelection"
+import { fetchBlueLinkMapState } from "@/components/blue-link-map/blueLinkMapApi"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,7 +43,7 @@ const META_SPEC_KEYS = {
 } as const
 
 const IMAGE_TEMPLATE_CACHE_KEY = "image_template_cache_v1"
-const BLUE_LINK_STATE_CACHE_PREFIX = "scheme_blue_link_state_v1"
+const BLUE_LINK_STATE_CACHE_PREFIX = "scheme_blue_link_state_v2"
 const CACHE_TTL = 5 * 60 * 1000
 const EMPTY_TEMPLATE_VALUE = "__empty__"
 
@@ -786,11 +787,8 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       }
     }
     setBlueLinkKey(key)
-    const params = productIds.length ? `?product_ids=${encodeURIComponent(productIds.join(","))}` : ""
     try {
-      const data = await apiRequest<{ accounts: BlueLinkAccount[]; entries: BlueLinkEntry[] }>(
-        `/api/blue-link-map/state${params}`
-      )
+      const data = await fetchBlueLinkMapState(productIds)
       const accounts = Array.isArray(data.accounts) ? data.accounts : []
       const entries = Array.isArray(data.entries) ? data.entries : []
       setBlueLinkAccounts(accounts)
