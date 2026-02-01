@@ -1,7 +1,6 @@
-export interface BlueLinkAccount {
-  id: string
-  name: string
-}
+import type { Account } from "@/types/account"
+
+export type BlueLinkAccount = Account
 
 export interface BlueLinkCategory {
   id: string

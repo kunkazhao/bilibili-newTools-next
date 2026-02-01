@@ -1,7 +1,6 @@
-export interface CommentAccount {
-  id: string
-  name: string
-}
+import type { Account } from "@/types/account"
+
+export type CommentAccount = Account
 
 export interface CommentCategory {
   id: string
