@@ -9,6 +9,7 @@ const showToast = vi.fn()
 import { ToastProvider } from "@/components/Toast"
 import { apiRequest } from "@/lib/api"
 import { getPinnedComments } from "@/lib/bilibili"
+import { fetchCommentBlueLinkState } from "./commentBlueLinkApi"
 
 const cacheKey = "comment_blue_link_cache_v1"
 
@@ -19,6 +20,10 @@ vi.mock("@/components/Toast", () => ({
 
 vi.mock("@/lib/api", () => ({
   apiRequest: vi.fn(),
+}))
+
+vi.mock("./commentBlueLinkApi", () => ({
+  fetchCommentBlueLinkState: vi.fn(),
 }))
 
 vi.mock("@/lib/bilibili", async () => {
@@ -65,7 +70,7 @@ describe("CommentBlueLinkPageContent product_content", () => {
         currentCategoryId: "__all__",
       })
     )
-    vi.mocked(apiRequest).mockResolvedValue({ accounts, categories, combos })
+    vi.mocked(fetchCommentBlueLinkState).mockResolvedValue({ accounts, categories, combos })
 
     const user = userEvent.setup()
 
@@ -114,7 +119,7 @@ describe("CommentBlueLinkPageContent product_content", () => {
         currentCategoryId: "__all__",
       })
     )
-    vi.mocked(apiRequest).mockResolvedValue({ accounts, categories, combos })
+    vi.mocked(fetchCommentBlueLinkState).mockResolvedValue({ accounts, categories, combos })
 
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, "clipboard", {
@@ -137,5 +142,21 @@ describe("CommentBlueLinkPageContent product_content", () => {
     fireEvent.click(copyButtons[0])
 
     await waitFor(() => expect(showToast).toHaveBeenCalled())
+  })
+
+  it("loads state from v2 endpoint", async () => {
+    vi.mocked(fetchCommentBlueLinkState).mockResolvedValue({
+      accounts: [],
+      categories: [],
+      combos: [],
+    })
+
+    render(
+      <ToastProvider>
+        <CommentBlueLinkPageContent />
+      </ToastProvider>
+    )
+
+    await waitFor(() => expect(fetchCommentBlueLinkState).toHaveBeenCalled())
   })
 })

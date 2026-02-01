@@ -9,6 +9,7 @@ import {
 } from "@/lib/bilibili"
 import CommentBlueLinkDialogs from "./CommentBlueLinkDialogs"
 import CommentBlueLinkPageView from "./CommentBlueLinkPageView"
+import { fetchCommentBlueLinkState } from "./commentBlueLinkApi"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,7 +21,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import type { CommentAccount, CommentCategory, CommentCombo } from "./types"
-const COMMENT_BLUE_LINK_CACHE_KEY = "comment_blue_link_cache_v1"
+const COMMENT_BLUE_LINK_CACHE_KEY = "comment_blue_link_cache_v2"
 const COMMENT_BLUE_LINK_CACHE_TTL = 5 * 60 * 1000
 const COMMENT_BLUE_LINK_PRODUCT_KEY = "comment_combo_product_"
 const CACHE_DEBOUNCE_MS = 800
@@ -149,11 +150,7 @@ export default function CommentBlueLinkPage() {
         setListLoading(true)
       }
       try {
-        const data = await apiRequest<{
-          accounts: CommentAccount[]
-          categories: CommentCategory[]
-          combos: CommentCombo[]
-        }>("/api/comment/blue-links/state")
+        const data = await fetchCommentBlueLinkState()
         const accountList = Array.isArray(data.accounts) ? data.accounts : []
         const categoryList = Array.isArray(data.categories) ? data.categories : []
         const comboList = Array.isArray(data.combos) ? data.combos : []
