@@ -2,6 +2,7 @@
 import ArchivePageView from "@/components/archive/ArchivePageView"
 import ArchiveDialogs from "@/components/archive/ArchiveDialogs"
 import { useToast } from "@/components/Toast"
+import { useListDataPipeline } from "@/hooks/useListDataPipeline"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -248,20 +249,13 @@ const getTimestamp = () => {
 
 export default function ArchivePage() {
   const { showToast } = useToast()
-  const [items, setItems] = useState<ArchiveItem[]>([])
   const [schemes, setSchemes] = useState<Scheme[]>([])
   const [categories, setCategories] = useState<CategoryItem[]>([])
   const [categoryCounts, setCategoryCounts] = useState<Record<string, number> | null>(
     null
   )
-  const [isLoading, setIsLoading] = useState(true)
+  const categoryCountsRef = useRef<Record<string, number> | null>(null)
   const [isCategoryLoading, setIsCategoryLoading] = useState(true)
-  const [isListLoading, setIsListLoading] = useState(true)
-  const [isRefreshing, setIsRefreshing] = useState(false)
-  const [isLoadingMore, setIsLoadingMore] = useState(false)
-  const [hasMore, setHasMore] = useState(true)
-  const [nextOffset, setNextOffset] = useState(0)
-  const [errorMessage, setErrorMessage] = useState<string | undefined>()
   const [searchValue, setSearchValue] = useState("")
   const [categoryValue, setCategoryValue] = useState("all")
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 0])
@@ -269,6 +263,8 @@ export default function ArchivePage() {
   const [sortValue, setSortValue] = useState("manual")
   const [schemeFilterId, setSchemeFilterId] = useState("")
   const [schemeFilterItems, setSchemeFilterItems] = useState<ArchiveItem[]>([])
+  const [schemeListLoading, setSchemeListLoading] = useState(false)
+  const [schemeErrorMessage, setSchemeErrorMessage] = useState<string | undefined>()
   const [isSchemeLoading, setIsSchemeLoading] = useState(true)
   const dragIdRef = useRef<string | null>(null)
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false)
@@ -290,15 +286,19 @@ export default function ArchivePage() {
     failed: 0,
     failures: [] as { link: string; title: string; reason: string }[],
   })
-  const [usingCache, setUsingCache] = useState(false)
   const [visibleItems, setVisibleItems] = useState<ArchiveItem[]>([])
   const hasHydratedCategoriesRef = useRef(false)
-  const lastItemsCacheKeyRef = useRef<string | null>(null)
   const chunkTimerRef = useRef<number | null>(null)
   const softRefreshOrderRef = useRef<string[] | null>(null)
   const schemeFilterCacheRef = useRef<Map<string, ArchiveItem[]>>(new Map())
   const schemeFilterTokenRef = useRef(0)
   const skipNextLoadRef = useRef(false)
+  const lastFetchOffsetRef = useRef(0)
+  const itemsRef = useRef<ArchiveItem[]>([])
+
+  useEffect(() => {
+    categoryCountsRef.current = categoryCounts
+  }, [categoryCounts])
 
   const applyCountsToCategories = useCallback(
     (nextCategories: CategoryItem[], counts: Record<string, number> | null) => {
@@ -320,6 +320,84 @@ export default function ArchivePage() {
       return next
     })
   }, [categories])
+
+  const {
+    items,
+    status: listStatus,
+    error: listError,
+    setFilters,
+    refresh: refreshItems,
+    loadMore: loadMoreItems,
+    hasMore: listHasMore,
+    isLoadingMore: listIsLoadingMore,
+    setItems,
+  } = useListDataPipeline<
+    ArchiveItem,
+    { categoryId: string; keyword: string; sort: string },
+    ItemsResponse
+  >({
+    cacheKey: "archive-items",
+    ttlMs: 3 * 60 * 1000,
+    pageSize: 50,
+    initialFilters: { categoryId: "all", keyword: "", sort: "manual" },
+    fetcher: async ({ filters, offset, limit }) => {
+      lastFetchOffsetRef.current = offset
+      return fetchItems({
+        categoryId: filters.categoryId === "all" ? undefined : filters.categoryId,
+        limit,
+        offset,
+        keyword: filters.keyword || undefined,
+        sort: filters.sort === "manual" ? "manual" : undefined,
+      })
+    },
+    mapResponse: (response) => {
+      const normalizedItems: ArchiveItem[] = (response.items ?? []).map((item) =>
+        normalizeArchiveItem(item as ItemResponse)
+      )
+      const merged =
+        lastFetchOffsetRef.current > 0
+          ? itemsRef.current.concat(normalizedItems)
+          : normalizedItems
+      const manualIds = buildManualOrderFromItems(merged)
+      if (manualIds.length > 0) {
+        setManualOrder(manualIds)
+        const nextSort = resolveSortValueAfterLoad(sortValue, true)
+        if (nextSort !== sortValue) {
+          setSortValue(nextSort)
+        }
+      }
+      return {
+        items: normalizedItems,
+        pagination: {
+          hasMore: response.has_more ?? false,
+          nextOffset: response.next_offset ?? merged.length,
+        },
+      }
+    },
+  })
+
+  useEffect(() => {
+    itemsRef.current = items
+  }, [items])
+
+  useEffect(() => {
+    if (skipNextLoadRef.current) {
+      skipNextLoadRef.current = false
+      return
+    }
+    setFilters({ categoryId: categoryValue, keyword: searchValue, sort: sortValue })
+  }, [categoryValue, searchValue, sortValue, setFilters])
+
+  
+  const isListLoading =
+    schemeFilterId !== ""
+      ? schemeListLoading
+      : listStatus === "loading" || listStatus === "warmup" || listStatus === "refreshing"
+  const isRefreshing = schemeFilterId === "" && listStatus === "refreshing"
+  const errorMessage = schemeFilterId ? schemeErrorMessage : listError ?? undefined
+  const isUsingCache = schemeFilterId === "" && listStatus === "refreshing"
+  const hasMore = schemeFilterId === "" && listHasMore
+  const isLoadingMore = schemeFilterId === "" && listIsLoadingMore
 
   const baseItems = useMemo(
     () => (schemeFilterId ? schemeFilterItems : items),
@@ -519,7 +597,9 @@ export default function ArchivePage() {
       const cachedCategories = Array.isArray(categoryCache.data)
         ? categoryCache.data
         : []
-      setCategories(applyCountsToCategories(cachedCategories, categoryCounts))
+      setCategories(
+        applyCountsToCategories(cachedCategories, categoryCountsRef.current)
+      )
       setIsCategoryLoading(false)
       didUseCache = true
     }
@@ -530,64 +610,7 @@ export default function ArchivePage() {
       setCategories((prev) => applyCountsToCategories(prev, countsCache.data))
     }
     return didUseCache
-  }, [applyCountsToCategories, categoryCounts])
-
-  const hydrateItemsFromCache = useCallback(() => {
-    const cacheKey = `${categoryValue}:${searchValue}`
-    if (lastItemsCacheKeyRef.current === cacheKey) return false
-    lastItemsCacheKeyRef.current = cacheKey
-
-    let didUseCache = false
-    if (searchValue.trim() === "" && categoryValue === "all") {
-      const itemsCache = getCache<{
-        items: ArchiveItem[]
-        pagination: { offset: number; limit: number; hasMore: boolean }
-      }>(CACHE_KEYS.items)
-      if (itemsCache && isFresh(itemsCache, CACHE_TTL.items)) {
-        setItems(itemsCache.data.items)
-        setHasMore(Boolean(itemsCache.data.pagination?.hasMore))
-        setNextOffset(itemsCache.data.pagination?.offset ?? 0)
-        const cachedManualOrder = buildManualOrderFromItems(itemsCache.data.items)
-        if (cachedManualOrder.length) {
-          setManualOrder(cachedManualOrder)
-          const nextSort = resolveSortValueAfterLoad(sortValue, true)
-          if (nextSort !== sortValue) {
-            setSortValue(nextSort)
-          }
-        }
-        setIsListLoading(false)
-        didUseCache = true
-      }
-    }
-
-    if (categoryValue !== "all") {
-      const categoryItemsCache = getCache<Record<string, { items: ArchiveItem[]; pagination: { offset: number; limit: number; hasMore: boolean } }>>(CACHE_KEYS.categoryItems)
-      if (categoryItemsCache && isFresh(categoryItemsCache, CACHE_TTL.categoryItems)) {
-        const payload = categoryItemsCache.data?.[categoryValue]
-        if (payload?.items?.length) {
-          setItems(payload.items)
-          setHasMore(Boolean(payload.pagination?.hasMore))
-          setNextOffset(payload.pagination?.offset ?? 0)
-          const cachedManualOrder = buildManualOrderFromItems(payload.items)
-          if (cachedManualOrder.length) {
-            setManualOrder(cachedManualOrder)
-            const nextSort = resolveSortValueAfterLoad(sortValue, true)
-            if (nextSort !== sortValue) {
-              setSortValue(nextSort)
-            }
-          }
-          setIsListLoading(false)
-          didUseCache = true
-        }
-      }
-    }
-
-    setUsingCache(didUseCache)
-    if (didUseCache) {
-      setIsLoading(false)
-    }
-    return didUseCache
-  }, [categoryValue, searchValue, sortValue])
+  }, [applyCountsToCategories])
 
   const hydrateSchemesFromCache = useCallback(() => {
     const schemeCache = getCache<Scheme[]>(SCHEME_CACHE_KEY)
@@ -640,14 +663,16 @@ export default function ArchivePage() {
         specFields: category.spec_fields ?? [],
         count: category.item_count ?? 0,
       }))
-      setCategories(applyCountsToCategories(normalized, categoryCounts))
+      setCategories(
+        applyCountsToCategories(normalized, categoryCountsRef.current)
+      )
       setCache(CACHE_KEYS.categories, normalized)
     } catch {
       // ignore
     } finally {
       setIsCategoryLoading(false)
     }
-  }, [applyCountsToCategories, categoryCounts])
+  }, [applyCountsToCategories])
 
   const loadCategoryCounts = useCallback(async () => {
     try {
@@ -660,33 +685,6 @@ export default function ArchivePage() {
       // ignore
     }
   }, [applyCountsToCategories])
-
-  const saveItemsCache = useCallback((payload: {
-    items: ArchiveItem[]
-    pagination: { offset: number; limit: number; hasMore: boolean }
-    categoryId: string
-  }) => {
-    if (payload.categoryId === "all") {
-      setCache(CACHE_KEYS.items, {
-        items: payload.items,
-        pagination: payload.pagination,
-      })
-      return
-    }
-    const existing = getCache<Record<string, { items: ArchiveItem[]; pagination: { offset: number; limit: number; hasMore: boolean } }>>(CACHE_KEYS.categoryItems)
-    const next: Record<string, { items: ArchiveItem[]; pagination: { offset: number; limit: number; hasMore: boolean } }> = {
-      ...(existing?.data ?? {}),
-      [payload.categoryId]: {
-        items: payload.items,
-        pagination: payload.pagination,
-      },
-    }
-    const entries = Object.entries(next)
-      .sort((a, b) => (b[1].pagination.offset ?? 0) - (a[1].pagination.offset ?? 0))
-      .slice(0, CATEGORY_CACHE_LIMIT)
-    const trimmed = Object.fromEntries(entries)
-    setCache(CACHE_KEYS.categoryItems, trimmed)
-  }, [])
 
   const loadSchemeFilterItems = useCallback(
     async (schemeId: string, options?: { force?: boolean }) => {
@@ -702,8 +700,8 @@ export default function ArchivePage() {
           return
         }
       }
-      setIsListLoading(true)
-      setErrorMessage(undefined)
+      setSchemeListLoading(true)
+      setSchemeErrorMessage(undefined)
       const token = ++schemeFilterTokenRef.current
       try {
         const data = await apiRequest<{ scheme: Scheme }>(`/api/schemes/${schemeId}`)
@@ -755,77 +753,14 @@ export default function ArchivePage() {
         if (token !== schemeFilterTokenRef.current) return
         setSchemeFilterItems([])
         const message = error instanceof Error ? error.message : "加载方案商品失败"
-        setErrorMessage(message)
+        setSchemeErrorMessage(message)
       } finally {
         if (token === schemeFilterTokenRef.current) {
-          setIsListLoading(false)
+          setSchemeListLoading(false)
         }
       }
     },
     [schemeFilterId, upsertScheme]
-  )
-
-  const loadItems = useCallback(
-    async ({ preserve }: { preserve?: boolean } = {}) => {
-      if (schemeFilterId) {
-        await loadSchemeFilterItems(schemeFilterId)
-        return
-      }
-      if (preserve) {
-        setIsRefreshing(true)
-      } else {
-        setIsLoading(true)
-        setIsListLoading(true)
-        setErrorMessage(undefined)
-        setHasMore(true)
-        setNextOffset(0)
-      }
-      try {
-        const response = await fetchItems({
-          categoryId: categoryValue === "all" ? undefined : categoryValue,
-          limit: 50,
-          offset: 0,
-          keyword: searchValue || undefined,
-          sort: sortValue === "manual" ? "manual" : undefined,
-        })
-        const normalizedItems: ArchiveItem[] = (response.items ?? []).map((item) =>
-          normalizeArchiveItem(item as ItemResponse)
-        )
-        const manualIds = buildManualOrderFromItems(normalizedItems)
-        setItems(normalizedItems)
-        if (manualIds.length > 0) {
-          setManualOrder(manualIds)
-          const nextSort = resolveSortValueAfterLoad(sortValue, true)
-          if (nextSort !== sortValue) {
-            setSortValue(nextSort)
-          }
-        }
-        setHasMore(response.has_more ?? false)
-        setNextOffset(response.next_offset ?? normalizedItems.length)
-
-        saveItemsCache({
-          items: normalizedItems,
-          pagination: {
-            offset: response.next_offset ?? normalizedItems.length,
-            limit: 50,
-            hasMore: response.has_more ?? false,
-          },
-          categoryId: categoryValue,
-        })
-      } catch (error) {
-        if (!preserve) {
-          setErrorMessage(error instanceof Error ? error.message : "加载失败")
-        }
-      } finally {
-        if (preserve) {
-          setIsRefreshing(false)
-        } else {
-          setIsLoading(false)
-          setIsListLoading(false)
-        }
-      }
-    },
-    [categoryValue, searchValue, sortValue, saveItemsCache, schemeFilterId, loadSchemeFilterItems]
   )
 
   useEffect(() => {
@@ -846,23 +781,7 @@ export default function ArchivePage() {
     loadSchemes({ silent: usedCache })
   }, [hydrateSchemesFromCache, loadSchemes])
 
-  useEffect(() => {
-    if (schemeFilterId) return
-    if (skipNextLoadRef.current) {
-      skipNextLoadRef.current = false
-      return
-    }
-    const usedCache = hydrateItemsFromCache()
-    if (usedCache && "requestIdleCallback" in window) {
-      ;(window as any).requestIdleCallback(
-        () => loadItems({ preserve: true }),
-        { timeout: 1500 }
-      )
-    } else {
-      loadItems({ preserve: usedCache })
-    }
-  }, [categoryValue, searchValue, sortValue, schemeFilterId, hydrateItemsFromCache, loadItems])
-
+  
   useEffect(() => {
     if (!schemeFilterId) {
       setSchemeFilterItems([])
@@ -883,43 +802,9 @@ export default function ArchivePage() {
 
   const loadMore = useCallback(async () => {
     if (schemeFilterId) return
-    if (isLoading || isLoadingMore || !hasMore) return
-    setIsLoadingMore(true)
-    try {
-      const response = await fetchItems({
-        categoryId: categoryValue === "all" ? undefined : categoryValue,
-        limit: 50,
-        offset: nextOffset,
-        keyword: searchValue || undefined,
-        sort: sortValue === "manual" ? "manual" : undefined,
-      })
-      const normalizedItems: ArchiveItem[] = (response.items ?? []).map((item) =>
-        normalizeArchiveItem(item as ItemResponse)
-      )
-      const merged = [...items, ...normalizedItems]
-      setItems(merged)
-      const manualIds = buildManualOrderFromItems(merged)
-      if (manualIds.length > 0) {
-        setManualOrder(manualIds)
-      }
-      setHasMore(response.has_more ?? false)
-      const next = response.next_offset ?? nextOffset + normalizedItems.length
-      setNextOffset(next)
-      saveItemsCache({
-        items: merged,
-        pagination: {
-          offset: next,
-          limit: 50,
-          hasMore: response.has_more ?? false,
-        },
-        categoryId: categoryValue,
-      })
-    } catch {
-      showToast("加载失败", "error")
-    } finally {
-      setIsLoadingMore(false)
-    }
-  }, [categoryValue, searchValue, sortValue, nextOffset, hasMore, isLoading, isLoadingMore, items, showToast, saveItemsCache, schemeFilterId])
+    await loadMoreItems()
+  }, [schemeFilterId, loadMoreItems])
+
 
 
   const handleToggleFocus = (id: string) => {
@@ -1029,7 +914,7 @@ export default function ArchivePage() {
       const failures = results.filter((result) => result.status === "rejected")
       if (failures.length) {
         showToast(`清空完成，失败 ${failures.length} 条`, "error")
-        loadItems()
+        refreshItems()
       } else {
         showToast(`已清空 ${deleteIds.size} 个商品`, "success")
       }
@@ -1052,7 +937,7 @@ export default function ArchivePage() {
     try {
       await deleteItem(deleteTarget.id)
       showToast("删除成功", "success")
-      loadItems()
+      refreshItems()
     } catch {
       showToast("删除失败", "error")
     } finally {
@@ -1108,14 +993,19 @@ export default function ArchivePage() {
         ...paramKeys,
       ]
 
-      const rows = filteredItems.map((item) => {
+      const rows = filteredItems.flatMap((item) => {
         const specParams = Object.fromEntries(
           Object.entries(item.spec || {}).filter(([key]) => !key.startsWith("_"))
         )
-        const link = resolveArchiveExportLink(item)
+        const jdLink = resolveArchiveExportLink(item)
+        const taobaoLink = String(item.taobaoLink || "").trim()
+        const links: string[] = []
+        if (jdLink) links.push(jdLink)
+        if (taobaoLink && taobaoLink !== jdLink) links.push(taobaoLink)
+        if (!links.length) links.push("")
         const productId = resolveArchiveProductId(item)
         const shopName = resolveArchiveShopName(item)
-        return [
+        const baseRow = [
           item.isFocused ? "是" : "",
           item.uid || item.id || "",
           productId,
@@ -1125,7 +1015,7 @@ export default function ArchivePage() {
           formatPercent(item.commissionRate),
           item.spec[META_KEYS.sales30] || "",
           shopName,
-          link,
+          "",
           item.spec[META_KEYS.comments] || "",
           item.remark || "",
           ...paramKeys.map((key) => {
@@ -1134,6 +1024,11 @@ export default function ArchivePage() {
             return String(value)
           }),
         ]
+        return links.map((link) => {
+          const row = [...baseRow]
+          row[9] = link
+          return row
+        })
       })
 
       const workbook = XLSX.utils.book_new()
@@ -1310,17 +1205,6 @@ export default function ArchivePage() {
                 nextSchemeFromServer
               )
             }
-            if (!schemeFilterId) {
-              saveItemsCache({
-                items: nextItemsFromServer,
-                pagination: {
-                  offset: nextOffset,
-                  limit: 50,
-                  hasMore,
-                },
-                categoryId: categoryValue,
-              })
-            }
           }
           showToast("商品已更新", "success")
         })
@@ -1358,7 +1242,7 @@ export default function ArchivePage() {
       })
         .then(() => {
           showToast("商品已新增", "success")
-          loadItems()
+          refreshItems()
         })
         .catch(() => showToast("新增失败", "error"))
     }
@@ -1393,7 +1277,7 @@ export default function ArchivePage() {
     Promise.all(tasks)
       .then(() => {
         showToast("分类已保存", "success")
-        loadItems()
+        refreshItems()
       })
       .catch(() => showToast("分类保存失败", "error"))
   }
@@ -1405,7 +1289,7 @@ export default function ArchivePage() {
     updateCategory(categoryId, { spec_fields: fields })
       .then(() => {
         showToast("预设参数已保存", "success")
-        loadItems()
+        refreshItems()
       })
       .catch(() => showToast("预设参数保存失败", "error"))
   }
@@ -1456,7 +1340,7 @@ export default function ArchivePage() {
       isCategoryLoading={isCategoryLoading}
       isListLoading={isListLoading}
       isRefreshing={isRefreshing}
-      isUsingCache={usingCache}
+      isUsingCache={isUsingCache}
       schemes={visibleSchemes}
       schemeValue={schemeFilterId}
       isSchemeLoading={isSchemeLoading}
