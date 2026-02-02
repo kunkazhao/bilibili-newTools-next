@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react"
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useToast } from "@/components/Toast"
 import { apiRequest } from "@/lib/api"
 import {
@@ -9,6 +9,7 @@ import {
 import BenchmarkDialogs from "@/components/benchmark/BenchmarkDialogs"
 import BenchmarkPageView from "@/components/benchmark/BenchmarkPageView"
 import { pickCategoryColor } from "@/components/benchmark/benchmarkUtils"
+import { useListDataPipeline } from "@/hooks/useListDataPipeline"
 import type {
   BenchmarkCategory,
   BenchmarkEntry,
@@ -17,13 +18,58 @@ import type {
 } from "@/components/benchmark/types"
 
 const API_BASE = import.meta.env.VITE_API_BASE?.replace(/\/$/, "") ?? ""
+const EMPTY_STATE: BenchmarkState = { categories: [], entries: [] }
 
 export default function BenchmarkPage() {
   const { showToast } = useToast()
-  const [isLoading, setIsLoading] = useState(true)
-  const [categories, setCategories] = useState<BenchmarkCategory[]>([])
-  const [entries, setEntries] = useState<BenchmarkEntry[]>([])
+  const fetchBenchmarkState = useCallback(
+    async () => apiRequest<BenchmarkState>("/api/benchmark/state"),
+    []
+  )
+  const mapBenchmarkResponse = useCallback((response: BenchmarkState) => {
+    const categories = Array.isArray(response.categories) ? response.categories : []
+    const entries = Array.isArray(response.entries) ? response.entries : []
+    return {
+      items: [{ categories, entries }],
+      pagination: { hasMore: false, nextOffset: 1 },
+    }
+  }, [])
+  const {
+    items: stateItems,
+    status,
+    error,
+    setItems: setStateItems,
+    refresh,
+  } = useListDataPipeline<BenchmarkState, { scope: string }, BenchmarkState>({
+    cacheKey: "benchmark",
+    ttlMs: 3 * 60 * 1000,
+    pageSize: 1,
+    initialFilters: { scope: "all" },
+    fetcher: fetchBenchmarkState,
+    mapResponse: mapBenchmarkResponse,
+  })
+  const state = stateItems[0] ?? EMPTY_STATE
+  const categories = state.categories
+  const entries = state.entries
   const [filter, setFilter] = useState("all")
+  const lastErrorRef = useRef<string | null>(null)
+  const updateState = useCallback(
+    (updater: (prev: BenchmarkState) => BenchmarkState) => {
+      setStateItems((prev) => {
+        const current = prev[0] ?? EMPTY_STATE
+        return [updater(current)]
+      })
+    },
+    [setStateItems]
+  )
+  const isLoading = status === "loading" || status === "warmup"
+
+  useEffect(() => {
+    if (status !== "error" || !error) return
+    if (lastErrorRef.current === error) return
+    lastErrorRef.current = error
+    showToast(error, "error")
+  }, [error, showToast, status])
 
   const [addOpen, setAddOpen] = useState(false)
   const [addLinks, setAddLinks] = useState("")
@@ -56,29 +102,7 @@ export default function BenchmarkPage() {
     })
   }, [entries, filter])
 
-  const loadState = async () => {
-    setIsLoading(true)
-    try {
-      const data = await apiRequest<BenchmarkState>("/api/benchmark/state")
-      const nextCategories = Array.isArray(data.categories) ? data.categories : []
-      const nextEntries = Array.isArray(data.entries) ? data.entries : []
-      setCategories(nextCategories)
-      setEntries(nextEntries)
-      if (filter !== "all") {
-        const exists = nextCategories.some((cat) => String(cat.id) === filter)
-        if (!exists) setFilter("all")
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "加载对标数据失败"
-      showToast(message, "error")
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
-  useEffect(() => {
-    loadState().catch(() => {})
-  }, [])
 
   const openAddDialog = () => {
     if (!categories.length) {
@@ -138,7 +162,7 @@ export default function BenchmarkPage() {
           body: JSON.stringify(payload),
         })
       }
-      await loadState()
+      await refresh()
       showToast("已添加到对标库", "success")
       setAddOpen(false)
     } catch (error) {
@@ -182,11 +206,17 @@ export default function BenchmarkPage() {
         }
       )
       if (data?.entry) {
-        setEntries((prev) => prev.map((item) => (item.id === data.entry?.id ? data.entry : item)))
+        updateState((prev) => ({
+          ...prev,
+          entries: prev.entries.map((item) => (item.id === data.entry?.id ? data.entry : item)),
+        }))
       } else {
-        setEntries((prev) =>
-          prev.map((item) => (item.id === editing.id ? { ...item, ...payload } : item))
-        )
+        updateState((prev) => ({
+          ...prev,
+          entries: prev.entries.map((item) =>
+            item.id === editing.id ? { ...item, ...payload } : item
+          ),
+        }))
       }
       showToast("已更新视频信息", "success")
       setEditing(null)
@@ -202,7 +232,10 @@ export default function BenchmarkPage() {
     if (!entryToDelete) return
     try {
       await apiRequest(`/api/benchmark/entries/${entryToDelete.id}`, { method: "DELETE" })
-      setEntries((prev) => prev.filter((item) => item.id !== entryToDelete.id))
+      updateState((prev) => ({
+        ...prev,
+        entries: prev.entries.filter((item) => item.id !== entryToDelete.id),
+      }))
       showToast("已删除该视频", "success")
     } catch (error) {
       const message = error instanceof Error ? error.message : "删除失败"
@@ -235,7 +268,7 @@ export default function BenchmarkPage() {
           failed.push(name)
         }
       }
-      await loadState()
+      await refresh()
       setCategoryInput("")
       if (failed.length) {
         showToast(`以下分类新增失败：${failed.join("、")}`, "error")
@@ -252,8 +285,11 @@ export default function BenchmarkPage() {
     const categoryId = String(categoryToDelete.id)
     try {
       await apiRequest(`/api/benchmark/categories/${categoryId}`, { method: "DELETE" })
-      setCategories((prev) => prev.filter((item) => String(item.id) !== categoryId))
-      setEntries((prev) => prev.filter((entry) => String(entry.category_id || "") !== categoryId))
+      updateState((prev) => ({
+        ...prev,
+        categories: prev.categories.filter((item) => String(item.id) !== categoryId),
+        entries: prev.entries.filter((entry) => String(entry.category_id || "") !== categoryId),
+      }))
       if (filter === categoryId) setFilter("all")
       showToast("分类已删除", "success")
     } catch (error) {
@@ -299,13 +335,13 @@ export default function BenchmarkPage() {
         })
       }
       await apiRequest(`/api/benchmark/categories/${category.id}`, { method: "DELETE" })
-      await loadState()
+      await refresh()
       if (keepFilter) setFilter(String(created.id))
       showToast("分类已更新", "success")
     } catch (error) {
       const message = error instanceof Error ? error.message : "分类更新失败"
       showToast(message, "error")
-      await loadState()
+      await refresh()
     } finally {
       setCategoryUpdatingId(null)
     }

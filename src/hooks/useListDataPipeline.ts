@@ -35,6 +35,8 @@ export function useListDataPipeline<TItem, TFilters, TResponse>(
   options: ListPipelineOptions<TItem, TFilters, TResponse>
 ): ListPipelineResult<TItem, TFilters> {
   const { cacheKey, ttlMs, pageSize, initialFilters, fetcher, mapResponse } = options
+  const fetcherRef = useRef(fetcher)
+  const mapResponseRef = useRef(mapResponse)
   const [filters, setFilters] = useState<TFilters>(initialFilters)
   const [items, setItems] = useState<TItem[]>([])
   const [status, setStatus] = useState<ListStatus>("idle")
@@ -63,15 +65,23 @@ export function useListDataPipeline<TItem, TFilters, TResponse>(
     return false
   }, [storageKey, ttlMs])
 
+  useEffect(() => {
+    fetcherRef.current = fetcher
+  }, [fetcher])
+
+  useEffect(() => {
+    mapResponseRef.current = mapResponse
+  }, [mapResponse])
+
   const refresh = useCallback(async () => {
     const requestId = ++requestIdRef.current
     const hasItems = itemsCountRef.current > 0
     setStatus(hasItems ? "refreshing" : "loading")
     setError(null)
     try {
-      const response = await fetcher({ filters, offset: 0, limit: pageSize })
+      const response = await fetcherRef.current({ filters, offset: 0, limit: pageSize })
       if (!isMountedRef.current || requestId !== requestIdRef.current) return
-      const mapped = mapResponse(response)
+      const mapped = mapResponseRef.current(response)
       if (!isMountedRef.current) return
       setItems(mapped.items)
       setHasMore(Boolean(mapped.pagination?.hasMore))
@@ -87,14 +97,14 @@ export function useListDataPipeline<TItem, TFilters, TResponse>(
       setStatus("error")
       setError(err instanceof Error ? err.message : "Load failed")
     }
-  }, [filters, pageSize, fetcher, mapResponse, storageKey])
+  }, [filters, pageSize, storageKey])
 
   const loadMore = useCallback(async () => {
     if (isLoadingMore || !hasMore) return
     setIsLoadingMore(true)
     try {
-      const response = await fetcher({ filters, offset: nextOffset, limit: pageSize })
-      const mapped = mapResponse(response)
+      const response = await fetcherRef.current({ filters, offset: nextOffset, limit: pageSize })
+      const mapped = mapResponseRef.current(response)
       const merged = items.concat(mapped.items)
       if (!isMountedRef.current) return
       setItems(merged)
@@ -110,7 +120,7 @@ export function useListDataPipeline<TItem, TFilters, TResponse>(
         setIsLoadingMore(false)
       }
     }
-  }, [fetcher, filters, hasMore, isLoadingMore, items, mapResponse, nextOffset, pageSize, storageKey])
+  }, [filters, hasMore, isLoadingMore, items, nextOffset, pageSize, storageKey])
 
   useEffect(() => {
     itemsCountRef.current = items.length

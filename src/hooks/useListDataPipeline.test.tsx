@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 
 import { useListDataPipeline } from "./useListDataPipeline"
@@ -51,5 +51,30 @@ describe("useListDataPipeline", () => {
     })
 
     expect(screen.getByTestId("status").textContent).toBe("ready")
+  })
+
+  it("does not refetch repeatedly on stable render", async () => {
+    const fetcher = vi.fn(async () => ({ items: ["new"], hasMore: false, nextOffset: 1 }))
+
+    function StableDemo() {
+      useListDataPipeline({
+        cacheKey: "demo",
+        ttlMs: 3000,
+        pageSize: 2,
+        initialFilters: { q: "a" },
+        fetcher,
+        mapResponse: (response) => ({
+          items: response.items,
+          pagination: { hasMore: response.hasMore, nextOffset: response.nextOffset },
+        }),
+      })
+      return null
+    }
+
+    render(<StableDemo />)
+
+    await waitFor(() => expect(fetcher).toHaveBeenCalled())
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(fetcher).toHaveBeenCalledTimes(1)
   })
 })
