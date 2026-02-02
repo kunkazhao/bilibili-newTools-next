@@ -10,8 +10,8 @@ import { ToastProvider } from "@/components/Toast"
 import { apiRequest } from "@/lib/api"
 import { getPinnedComments } from "@/lib/bilibili"
 import { fetchCommentBlueLinkState } from "./commentBlueLinkApi"
-
-const cacheKey = "comment_blue_link_cache_v1"
+import { buildListCacheKey, setListCache } from "@/lib/listCache"
+import { stableStringify } from "@/lib/stableStringify"
 
 vi.mock("@/components/Toast", () => ({
   useToast: () => ({ showToast }),
@@ -59,17 +59,16 @@ describe("CommentBlueLinkPageContent product_content", () => {
         product_content: "Product content",
       },
     ]
-    localStorage.setItem(
-      cacheKey,
-      JSON.stringify({
-        timestamp: Date.now(),
-        accounts,
-        categories,
-        combos,
-        currentAccountId: "a1",
-        currentCategoryId: "__all__",
-      })
-    )
+    const filterHash = stableStringify({ scope: "all" })
+    const cacheKey = buildListCacheKey("comment-blue-link", filterHash)
+    setListCache(cacheKey, {
+      data: {
+        items: [{ accounts, categories, combos }],
+        pagination: { hasMore: false, nextOffset: 1 },
+      },
+      timestamp: Date.now(),
+      filters: { scope: "all" },
+    })
     vi.mocked(fetchCommentBlueLinkState).mockResolvedValue({ accounts, categories, combos })
 
     const user = userEvent.setup()
@@ -108,17 +107,16 @@ describe("CommentBlueLinkPageContent product_content", () => {
         product_content: "Product content",
       },
     ]
-    localStorage.setItem(
-      cacheKey,
-      JSON.stringify({
-        timestamp: Date.now(),
-        accounts,
-        categories,
-        combos,
-        currentAccountId: "a1",
-        currentCategoryId: "__all__",
-      })
-    )
+    const filterHash = stableStringify({ scope: "all" })
+    const cacheKey = buildListCacheKey("comment-blue-link", filterHash)
+    setListCache(cacheKey, {
+      data: {
+        items: [{ accounts, categories, combos }],
+        pagination: { hasMore: false, nextOffset: 1 },
+      },
+      timestamp: Date.now(),
+      filters: { scope: "all" },
+    })
     vi.mocked(fetchCommentBlueLinkState).mockResolvedValue({ accounts, categories, combos })
 
     const writeText = vi.fn().mockResolvedValue(undefined)
@@ -158,5 +156,58 @@ describe("CommentBlueLinkPageContent product_content", () => {
     )
 
     await waitFor(() => expect(fetchCommentBlueLinkState).toHaveBeenCalled())
+  })
+
+  it("renders cached combos while refresh is in-flight", async () => {
+    const accounts = [{ id: "a1", name: "Account" }]
+    const categories: [] = []
+    const combos = [
+      {
+        id: "c1",
+        name: "Combo",
+        account_id: "a1",
+        category_id: "",
+        content: "Full content",
+        remark: "",
+        source_link: "https://b23.tv/abc",
+        product_content: "Product content",
+      },
+    ]
+
+    const filterHash = stableStringify({ scope: "all" })
+    const cacheKey = buildListCacheKey("comment-blue-link", filterHash)
+    setListCache(cacheKey, {
+      data: {
+        items: [
+          {
+            accounts,
+            categories,
+            combos,
+          },
+        ],
+        pagination: { hasMore: false, nextOffset: 1 },
+      },
+      timestamp: Date.now(),
+      filters: { scope: "all" },
+    })
+
+    let resolveFetch: ((value: { accounts: []; categories: []; combos: [] }) => void) | null =
+      null
+    vi.mocked(fetchCommentBlueLinkState).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve
+        })
+    )
+
+    render(
+      <ToastProvider>
+        <CommentBlueLinkPageContent />
+      </ToastProvider>
+    )
+
+    expect(await screen.findByText("Combo")).not.toBeNull()
+
+    resolveFetch?.({ accounts: [], categories: [], combos: [] })
   })
 })

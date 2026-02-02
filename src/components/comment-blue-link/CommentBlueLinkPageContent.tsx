@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useToast } from "@/components/Toast"
 import { apiRequest } from "@/lib/api"
 import {
@@ -10,6 +10,7 @@ import {
 import CommentBlueLinkDialogs from "./CommentBlueLinkDialogs"
 import CommentBlueLinkPageView from "./CommentBlueLinkPageView"
 import { fetchCommentBlueLinkState } from "./commentBlueLinkApi"
+import { useListDataPipeline } from "@/hooks/useListDataPipeline"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,45 +22,44 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import type { CommentAccount, CommentCategory, CommentCombo } from "./types"
-const COMMENT_BLUE_LINK_CACHE_KEY = "comment_blue_link_cache_v2"
-const COMMENT_BLUE_LINK_CACHE_TTL = 5 * 60 * 1000
 const COMMENT_BLUE_LINK_PRODUCT_KEY = "comment_combo_product_"
-const CACHE_DEBOUNCE_MS = 800
 const CHUNK_SIZE = 40
 const ALL_CATEGORY_ID = "__all__"
-type CommentCache = {
-  timestamp: number
+
+type CommentBlueLinkState = {
   accounts: CommentAccount[]
   categories: CommentCategory[]
   combos: CommentCombo[]
-  currentAccountId?: string | null
-  currentCategoryId?: string | null
 }
-const getCache = () => {
-  try {
-    const raw = localStorage.getItem(COMMENT_BLUE_LINK_CACHE_KEY)
-    if (!raw) return null
-    return JSON.parse(raw) as CommentCache
-  } catch {
-    return null
-  }
-}
-const isCacheFresh = (cache: CommentCache | null) => {
-  if (!cache?.timestamp) return false
-  return Date.now() - cache.timestamp < COMMENT_BLUE_LINK_CACHE_TTL
-}
+
+const EMPTY_STATE: CommentBlueLinkState = { accounts: [], categories: [], combos: [] }
 export default function CommentBlueLinkPage() {
   const { showToast } = useToast()
-  const [accounts, setAccounts] = useState<CommentAccount[]>([])
-  const [categories, setCategories] = useState<CommentCategory[]>([])
-  const [combos, setCombos] = useState<CommentCombo[]>([])
+  const { items: stateItems, status, error, setItems: setStateItems } =
+    useListDataPipeline<CommentBlueLinkState, { scope: string }, CommentBlueLinkState>({
+      cacheKey: "comment-blue-link",
+      ttlMs: 3 * 60 * 1000,
+      pageSize: 1,
+      initialFilters: { scope: "all" },
+      fetcher: async () => fetchCommentBlueLinkState(),
+      mapResponse: (response) => {
+        const accounts = Array.isArray(response.accounts) ? response.accounts : []
+        const categories = Array.isArray(response.categories) ? response.categories : []
+        const combos = Array.isArray(response.combos) ? response.combos : []
+        return {
+          items: [{ accounts, categories, combos }],
+          pagination: { hasMore: false, nextOffset: 1 },
+        }
+      },
+    })
+  const state = stateItems[0] ?? EMPTY_STATE
+  const accounts = state.accounts
+  const categories = state.categories
+  const combos = state.combos
   const [currentAccountId, setCurrentAccountId] = useState<string | null>(null)
   const [currentCategoryId, setCurrentCategoryId] = useState<string>(ALL_CATEGORY_ID)
-  const [loading, setLoading] = useState(true)
-  const [listLoading, setListLoading] = useState(true)
   const [visibleCombos, setVisibleCombos] = useState<CommentCombo[]>([])
   const chunkTimerRef = useRef<number | null>(null)
-  const cacheTimerRef = useRef<number | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [editingCombo, setEditingCombo] = useState<CommentCombo | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<CommentCombo | null>(null)
@@ -75,6 +75,20 @@ export default function CommentBlueLinkPage() {
   >({})
   const [productContents, setProductContents] = useState<Record<string, string>>({})
   const [productLoading, setProductLoading] = useState<Record<string, boolean>>({})
+  const lastErrorRef = useRef<string | null>(null)
+
+  const updateState = useCallback(
+    (updater: (prev: CommentBlueLinkState) => CommentBlueLinkState) => {
+      setStateItems((prev) => {
+        const current = prev[0] ?? EMPTY_STATE
+        return [updater(current)]
+      })
+    },
+    [setStateItems]
+  )
+
+  const isPageLoading = status === "loading" || status === "warmup"
+  const isListLoading = status === "loading" || status === "warmup" || status === "refreshing"
   const combosIndex = useMemo(() => {
     const byAccount = new Map<string, CommentCombo[]>()
     const byAccountCategory = new Map<string, Map<string, CommentCombo[]>>()
@@ -115,77 +129,28 @@ export default function CommentBlueLinkPage() {
     }
     return combosIndex.byAccount.get(currentAccountId) ?? []
   }, [combosIndex, currentAccountId, currentCategoryId])
-  const persistCache = () => {
-    try {
-      localStorage.setItem(
-        COMMENT_BLUE_LINK_CACHE_KEY,
-        JSON.stringify({
-          timestamp: Date.now(),
-          accounts,
-          categories,
-          combos,
-          currentAccountId,
-          currentCategoryId,
-        })
-      )
-    } catch {
-      // ignore
-    }
-  }
   useEffect(() => {
-    const cache = getCache()
-    const hasFreshCache = isCacheFresh(cache)
-    if (hasFreshCache) {
-      setAccounts(Array.isArray(cache?.accounts) ? cache?.accounts ?? [] : [])
-      setCategories(Array.isArray(cache?.categories) ? cache?.categories ?? [] : [])
-      setCombos(Array.isArray(cache?.combos) ? cache?.combos ?? [] : [])
-      const accountId = cache?.currentAccountId || cache?.accounts?.[0]?.id || null
-      setCurrentAccountId(accountId)
-      setCurrentCategoryId(cache?.currentCategoryId || ALL_CATEGORY_ID)
-      setLoading(false)
-      setListLoading(false)
-    }
-    const load = async () => {
-      if (!hasFreshCache) {
-        setListLoading(true)
-      }
-      try {
-        const data = await fetchCommentBlueLinkState()
-        const accountList = Array.isArray(data.accounts) ? data.accounts : []
-        const categoryList = Array.isArray(data.categories) ? data.categories : []
-        const comboList = Array.isArray(data.combos) ? data.combos : []
-        setAccounts(accountList)
-        setCategories(categoryList)
-        startTransition(() => {
-          setCombos(comboList)
-        })
-        const nextAccountId = accountList[0]?.id || null
-        setCurrentAccountId((prev) => prev || nextAccountId)
-        setCurrentCategoryId((prev) => prev || ALL_CATEGORY_ID)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "加载失败"
-        showToast(message, "error")
-      } finally {
-        setLoading(false)
-        setListLoading(false)
-      }
-    }
-    load().catch(() => {})
-  }, [showToast])
+    if (status !== "error" || !error) return
+    if (lastErrorRef.current === error) return
+    lastErrorRef.current = error
+    showToast(error, "error")
+  }, [error, showToast, status])
+
   useEffect(() => {
-    if (cacheTimerRef.current) {
-      window.clearTimeout(cacheTimerRef.current)
+    if (accounts.length === 0) {
+      setCurrentAccountId(null)
+      setCurrentCategoryId(ALL_CATEGORY_ID)
+      return
     }
-    cacheTimerRef.current = window.setTimeout(() => {
-      persistCache()
-      cacheTimerRef.current = null
-    }, CACHE_DEBOUNCE_MS)
-    return () => {
-      if (cacheTimerRef.current) {
-        window.clearTimeout(cacheTimerRef.current)
+    setCurrentAccountId((prev) => {
+      if (prev && accounts.some((item) => item.id === prev)) {
+        return prev
       }
-    }
-  }, [accounts, categories, combos, currentAccountId, currentCategoryId])
+      return accounts[0]?.id || null
+    })
+    setCurrentCategoryId((prev) => prev || ALL_CATEGORY_ID)
+  }, [accounts])
+
   useEffect(() => {
     if (!currentAccountId) return
     if (currentCategoryId === ALL_CATEGORY_ID) return
@@ -382,7 +347,10 @@ export default function CommentBlueLinkPage() {
         body: JSON.stringify({ account_id: accountId, name: "默认" }),
       })
       if (data.category) {
-        setCategories((prev) => [data.category, ...prev])
+        updateState((prev) => ({
+          ...prev,
+          categories: [data.category, ...prev.categories],
+        }))
         return data.category.id
       }
       return null
@@ -472,16 +440,22 @@ export default function CommentBlueLinkPage() {
             body: JSON.stringify(payload),
           }
         )
-        setCombos((prev) =>
-          prev.map((item) => (item.id === data.combo.id ? data.combo : item))
-        )
+        updateState((prev) => ({
+          ...prev,
+          combos: prev.combos.map((item) =>
+            item.id === data.combo.id ? data.combo : item
+          ),
+        }))
         showToast("保存成功", "success")
       } else {
         const data = await apiRequest<{ combo: CommentCombo }>("/api/comment/combos", {
           method: "POST",
           body: JSON.stringify(payload),
         })
-        setCombos((prev) => [data.combo, ...prev])
+        updateState((prev) => ({
+          ...prev,
+          combos: [data.combo, ...prev.combos],
+        }))
         showToast("新增成功", "success")
       }
       setModalOpen(false)
@@ -493,7 +467,10 @@ export default function CommentBlueLinkPage() {
   const handleDelete = async (combo: CommentCombo) => {
     try {
       await apiRequest(`/api/comment/combos/${combo.id}`, { method: "DELETE" })
-      setCombos((prev) => prev.filter((item) => item.id !== combo.id))
+      updateState((prev) => ({
+        ...prev,
+        combos: prev.combos.filter((item) => item.id !== combo.id),
+      }))
       showToast("删除成功", "success")
     } catch (error) {
       const message = error instanceof Error ? error.message : "删除失败"
@@ -540,8 +517,8 @@ export default function CommentBlueLinkPage() {
   return (
     <>
       <CommentBlueLinkPageView
-        loading={loading}
-        listLoading={listLoading}
+        loading={isPageLoading}
+        listLoading={isListLoading}
         accounts={accounts}
         currentAccountId={currentAccountId}
         filteredCombos={filteredCombos}
