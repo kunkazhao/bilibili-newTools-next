@@ -1,7 +1,8 @@
-import { startTransition, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useToast } from "@/components/Toast"
 import { apiRequest } from "@/lib/api"
 import { createAccount, deleteAccount as removeAccount, updateAccount } from "@/lib/accountsApi"
+import { useListDataPipeline } from "@/hooks/useListDataPipeline"
 import BlueLinkMapDialogs from "./BlueLinkMapDialogs"
 import BlueLinkMapPageView from "./BlueLinkMapPageView"
 import { fetchBlueLinkMapState } from "./blueLinkMapApi"
@@ -13,10 +14,15 @@ import type {
   SourcingItem,
 } from "./types"
 
-const BLUE_LINK_MAP_CACHE_KEY = "blue_link_map_cache_v2"
 const SOURCING_ITEMS_CACHE_KEY = "sourcing_items_cache_v1"
-const BLUE_LINK_CACHE_TTL = 5 * 60 * 1000
-const CACHE_DEBOUNCE_MS = 800
+
+type BlueLinkMapState = {
+  accounts: BlueLinkAccount[]
+  categories: BlueLinkCategory[]
+  entries: BlueLinkEntry[]
+}
+
+const EMPTY_STATE: BlueLinkMapState = { accounts: [], categories: [], entries: [] }
 
 const META_SPEC_KEYS = {
   promoLink: "_promo_link",
@@ -31,11 +37,6 @@ function getJsonCache<T>(key: string): T | null {
   } catch {
     return null
   }
-}
-
-function isCacheFresh(cache: { timestamp?: number } | null, ttl: number) {
-  if (!cache?.timestamp) return false
-  return Date.now() - cache.timestamp < ttl
 }
 
 function extractMetaSpec(spec?: Record<string, string>) {
@@ -122,17 +123,32 @@ function normalizeName(value?: string) {
 
 export default function BlueLinkMapPage() {
   const { showToast } = useToast()
-  const [accounts, setAccounts] = useState<BlueLinkAccount[]>([])
-  const [categories, setCategories] = useState<BlueLinkCategory[]>([])
-  const [entries, setEntries] = useState<BlueLinkEntry[]>([])
+  const { items: stateItems, status, error, refresh, setItems: setStateItems } =
+    useListDataPipeline<BlueLinkMapState, { scope: string }, BlueLinkMapState>({
+      cacheKey: "blue-link-map",
+      ttlMs: 3 * 60 * 1000,
+      pageSize: 1,
+      initialFilters: { scope: "all" },
+      fetcher: async () => fetchBlueLinkMapState(),
+      mapResponse: (response) => {
+        const accounts = Array.isArray(response.accounts) ? response.accounts : []
+        const categories = Array.isArray(response.categories) ? response.categories : []
+        const entries = Array.isArray(response.entries) ? response.entries : []
+        return {
+          items: [{ accounts, categories, entries }],
+          pagination: { hasMore: false, nextOffset: 1 },
+        }
+      },
+    })
+  const state = stateItems[0] ?? EMPTY_STATE
+  const accounts = state.accounts
+  const categories = state.categories
+  const entries = state.entries
   const [activeAccountId, setActiveAccountId] = useState<string | null>(null)
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null)
   const [searchValue, setSearchValue] = useState("")
-  const [loading, setLoading] = useState(true)
-  const [listLoading, setListLoading] = useState(true)
   const [visibleEntries, setVisibleEntries] = useState<BlueLinkEntry[]>([])
   const chunkTimerRef = useRef<number | null>(null)
-  const cacheTimerRef = useRef<number | null>(null)
 
   const [accountModalOpen, setAccountModalOpen] = useState(false)
   const [categoryModalOpen, setCategoryModalOpen] = useState(false)
@@ -181,6 +197,20 @@ export default function BlueLinkMapPage() {
   const skuIndexAllRef = useRef<Map<string, SourcingItem>>(new Map())
   const itemsAllLoadedRef = useRef(false)
   const itemsLoadingRef = useRef(false)
+  const lastErrorRef = useRef<string | null>(null)
+
+  const updateState = useCallback(
+    (updater: (prev: BlueLinkMapState) => BlueLinkMapState) => {
+      setStateItems((prev) => {
+        const current = prev[0] ?? EMPTY_STATE
+        return [updater(current)]
+      })
+    },
+    [setStateItems]
+  )
+
+  const isPageLoading = status === "loading" || status === "warmup"
+  const isListLoading = status === "loading" || status === "warmup" || status === "refreshing"
 
   const moveById = <T extends { id: string }>(items: T[], sourceId: string, targetId: string) => {
     const fromIndex = items.findIndex((item) => item.id === sourceId)
@@ -344,62 +374,28 @@ export default function BlueLinkMapPage() {
   }, [])
 
   useEffect(() => {
+    if (status !== "error" || !error) return
+    if (lastErrorRef.current === error) return
+    lastErrorRef.current = error
+    showToast(error, "error")
+  }, [error, showToast, status])
+
+  useEffect(() => {
     hydrateItemsFromCache()
-    const cache = getJsonCache<{
-      timestamp: number
-      accounts: BlueLinkAccount[]
-      categories: BlueLinkCategory[]
-      entries: BlueLinkEntry[]
-      activeAccountId?: string | null
-      activeCategoryId?: string | null
-    }>(BLUE_LINK_MAP_CACHE_KEY)
+  }, [])
 
-    const hasCache = isCacheFresh(cache, BLUE_LINK_CACHE_TTL) && Boolean(cache)
-    if (hasCache && cache) {
-      setAccounts(Array.isArray(cache.accounts) ? cache.accounts : [])
-      setCategories(Array.isArray(cache.categories) ? cache.categories : [])
-      setEntries(Array.isArray(cache.entries) ? cache.entries : [])
-      const cachedAccountId =
-        cache.activeAccountId && cache.accounts?.some((item) => item.id === cache.activeAccountId)
-          ? cache.activeAccountId
-          : cache.accounts?.[0]?.id || null
-      setActiveAccountId(cachedAccountId)
-      setActiveCategoryId(cache.activeCategoryId || null)
-      setLoading(false)
-      setListLoading(false)
+  useEffect(() => {
+    if (accounts.length === 0) {
+      setActiveAccountId(null)
+      return
     }
-
-    const load = async () => {
-      if (!hasCache) {
-        setLoading(true)
-        setListLoading(true)
+    setActiveAccountId((prev) => {
+      if (prev && accounts.some((item) => item.id === prev)) {
+        return prev
       }
-      try {
-        const data = await fetchBlueLinkMapState()
-        const accountList = Array.isArray(data.accounts) ? data.accounts : []
-        setAccounts(accountList)
-        setCategories(Array.isArray(data.categories) ? data.categories : [])
-        const entryList = Array.isArray(data.entries) ? data.entries : []
-        startTransition(() => {
-          setEntries(entryList)
-        })
-        setActiveAccountId((prev) => {
-          if (prev && accountList.some((item) => item.id === prev)) {
-            return prev
-          }
-          return accountList[0]?.id || null
-        })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "加载蓝链失败"
-        showToast(message, "error")
-      } finally {
-        setLoading(false)
-        setListLoading(false)
-      }
-    }
-
-    load().catch(() => {})
-  }, [showToast])
+      return accounts[0]?.id || null
+    })
+  }, [accounts])
 
   useEffect(() => {
     if (!activeAccountId) {
@@ -438,36 +434,6 @@ export default function BlueLinkMapPage() {
   }, [entries])
 
   useEffect(() => {
-    if (cacheTimerRef.current) {
-      window.clearTimeout(cacheTimerRef.current)
-    }
-    cacheTimerRef.current = window.setTimeout(() => {
-      try {
-        localStorage.setItem(
-          BLUE_LINK_MAP_CACHE_KEY,
-          JSON.stringify({
-            timestamp: Date.now(),
-            accounts,
-            categories,
-            entries,
-            activeAccountId,
-            activeCategoryId,
-          })
-        )
-      } catch {
-        // ignore
-      } finally {
-        cacheTimerRef.current = null
-      }
-    }, CACHE_DEBOUNCE_MS)
-    return () => {
-      if (cacheTimerRef.current) {
-        window.clearTimeout(cacheTimerRef.current)
-      }
-    }
-  }, [accounts, categories, entries, activeAccountId, activeCategoryId])
-
-  useEffect(() => {
     if (!visibleEntries.length) return
     const targetIds = new Set(
       visibleEntries.map((entry) => entry.product_id).filter(Boolean) as string[]
@@ -477,18 +443,7 @@ export default function BlueLinkMapPage() {
   }, [visibleEntries])
 
   const refreshState = async () => {
-    try {
-      const data = await fetchBlueLinkMapState()
-      setAccounts(Array.isArray(data.accounts) ? data.accounts : [])
-      setCategories(Array.isArray(data.categories) ? data.categories : [])
-      const entryList = Array.isArray(data.entries) ? data.entries : []
-      startTransition(() => {
-        setEntries(entryList)
-      })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "刷新失败"
-      showToast(message, "error")
-    }
+    await refresh()
   }
 
   const handleCopy = async (entry: BlueLinkEntry) => {
@@ -517,22 +472,29 @@ export default function BlueLinkMapPage() {
   }
 
   const handleAccountReorder = (sourceId: string, targetId: string) => {
-    setAccounts((prev) => moveById(prev, sourceId, targetId))
+    updateState((prev) => ({
+      ...prev,
+      accounts: moveById(prev.accounts, sourceId, targetId),
+    }))
   }
 
   const handleCategoryReorder = (sourceId: string, targetId: string) => {
     if (!activeAccountId) return
-    setCategories((prev) => {
-      const current = prev.filter((item) => item.account_id === activeAccountId)
+    updateState((prev) => {
+      const current = prev.categories.filter((item) => item.account_id === activeAccountId)
       const reordered = moveById(current, sourceId, targetId)
       if (reordered === current) return prev
       let index = 0
-      return prev.map((item) => {
+      const nextCategories = prev.categories.map((item) => {
         if (item.account_id !== activeAccountId) return item
         const next = reordered[index] ?? item
         index += 1
         return next
       })
+      return {
+        ...prev,
+        categories: nextCategories,
+      }
     })
   }
 
@@ -571,7 +533,10 @@ export default function BlueLinkMapPage() {
         method: "DELETE",
       })
       showToast("已删除", "success")
-      setEntries((prev) => prev.filter((item) => item.id !== entry.id))
+      updateState((prev) => ({
+        ...prev,
+        entries: prev.entries.filter((item) => item.id !== entry.id),
+      }))
     } catch (error) {
       const message = error instanceof Error ? error.message : "删除失败"
       showToast(message, "error")
@@ -637,7 +602,12 @@ export default function BlueLinkMapPage() {
     }
     try {
       const data = await updateAccount(accountId, { name: trimmed })
-      setAccounts((prev) => prev.map((item) => (item.id === accountId ? data.account : item)))
+      updateState((prev) => ({
+        ...prev,
+        accounts: prev.accounts.map((item) =>
+          item.id === accountId ? data.account : item
+        ),
+      }))
       showToast("账号已更新", "success")
     } catch (error) {
       const message = error instanceof Error ? error.message : "更新失败"
@@ -684,7 +654,10 @@ export default function BlueLinkMapPage() {
         body: JSON.stringify({ account_id: activeAccountId, name: trimmed }),
       })
       if (data.category) {
-        setCategories((prev) => [data.category, ...prev])
+        updateState((prev) => ({
+          ...prev,
+          categories: [data.category, ...prev.categories],
+        }))
       }
       if (!nameOverride) {
         setCategoryNameInput("")
@@ -710,7 +683,12 @@ export default function BlueLinkMapPage() {
           body: JSON.stringify({ name: trimmed }),
         }
       )
-      setCategories((prev) => prev.map((item) => (item.id === categoryId ? data.category : item)))
+      updateState((prev) => ({
+        ...prev,
+        categories: prev.categories.map((item) =>
+          item.id === categoryId ? data.category : item
+        ),
+      }))
       setCategoryError("")
     } catch (error) {
       const message = error instanceof Error ? error.message : "更新失败"
@@ -731,7 +709,10 @@ export default function BlueLinkMapPage() {
       onConfirm: async () => {
         try {
           await apiRequest(`/api/blue-link-map/categories/${categoryId}`, { method: "DELETE" })
-          setCategories((prev) => prev.filter((item) => item.id !== categoryId))
+          updateState((prev) => ({
+            ...prev,
+            categories: prev.categories.filter((item) => item.id !== categoryId),
+          }))
         } catch (error) {
           const message = error instanceof Error ? error.message : "删除分类失败"
           showToast(message, "error")
@@ -872,13 +853,14 @@ export default function BlueLinkMapPage() {
       method: "PATCH",
       body: JSON.stringify({ product_id: productId, sku_id: skuId || null }),
     })
-    setEntries((prev) =>
-      prev.map((entry) =>
+    updateState((prev) => ({
+      ...prev,
+      entries: prev.entries.map((entry) =>
         entry.id === entryId
           ? { ...entry, product_id: productId || null, updated_at: new Date().toISOString() }
           : entry
-      )
-    )
+      ),
+    }))
   }
 
   const updateEntryProduct = async (entryId: string, productId: string) => {
@@ -1114,8 +1096,8 @@ export default function BlueLinkMapPage() {
   return (
     <>
       <BlueLinkMapPageView
-        loading={loading}
-        listLoading={listLoading}
+        loading={isPageLoading}
+        listLoading={isListLoading}
         accounts={accounts}
         entries={entries}
         activeAccountId={activeAccountId}
