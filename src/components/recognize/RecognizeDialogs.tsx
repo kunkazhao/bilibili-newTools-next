@@ -18,6 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import ProgressDialog from "@/components/ProgressDialog"
 import { Input } from "@/components/ui/input"
 import { Field, FieldContent, FieldDescription, FieldLabel, FieldSet } from "@/components/ui/field"
 import type { PreviewImage } from "./types"
@@ -49,6 +50,16 @@ interface RecognizeDialogsProps {
   clearOpen: boolean
   onClearOpenChange: (open: boolean) => void
   onClear: () => void
+
+  progressOpen: boolean
+  progressTitle: string
+  progressStatus: "running" | "done" | "cancelled" | "error"
+  progressTotal: number
+  progressProcessed: number
+  progressSuccess: number
+  progressFailures: Array<{ name: string; reason?: string; link?: string }>
+  onProgressCancel: () => void
+  onProgressOpenChange: (open: boolean) => void
 }
 
 export default function RecognizeDialogs({
@@ -73,6 +84,15 @@ export default function RecognizeDialogs({
   clearOpen,
   onClearOpenChange,
   onClear,
+  progressOpen,
+  progressTitle,
+  progressStatus,
+  progressTotal,
+  progressProcessed,
+  progressSuccess,
+  progressFailures,
+  onProgressCancel,
+  onProgressOpenChange,
 }: RecognizeDialogsProps) {
   const baseId = useId()
   const addColumnId = `${baseId}-add-column`
@@ -194,6 +214,21 @@ export default function RecognizeDialogs({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ProgressDialog
+        open={progressOpen}
+        title={progressTitle}
+        status={progressStatus}
+        total={progressTotal}
+        processed={progressProcessed}
+        success={progressSuccess}
+        failures={progressFailures}
+        showSummary
+        showFailures
+        allowCancel
+        onCancel={onProgressCancel}
+        onOpenChange={onProgressOpenChange}
+      />
     </>
   )
 }

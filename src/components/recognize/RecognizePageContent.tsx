@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import type { ChangeEvent, DragEvent } from "react"
 import { useToast } from "@/components/Toast"
 import * as XLSX from "xlsx"
@@ -11,6 +11,26 @@ const API_BASE = import.meta.env.VITE_API_BASE?.replace(/\/$/, "") ?? ""
 const ENTRY_STORAGE_KEY = "image_params_entries"
 const COLUMN_ORDER_KEY = "image_params_column_order"
 const COLUMN_LOCK_KEY = "image_params_column_lock"
+
+const getLocalEntries = () => {
+  try {
+    const rawEntries = localStorage.getItem(ENTRY_STORAGE_KEY)
+    if (!rawEntries) return []
+    const parsed = JSON.parse(rawEntries)
+    if (!Array.isArray(parsed)) return []
+    return parsed as RecognizeEntry[]
+  } catch {
+    return []
+  }
+}
+
+const saveLocalEntries = (next: RecognizeEntry[]) => {
+  try {
+    localStorage.setItem(ENTRY_STORAGE_KEY, JSON.stringify(next))
+  } catch {
+    // ignore
+  }
+}
 
 const COLUMN_ALIAS_GROUPS = [
   {
@@ -310,6 +330,16 @@ export default function RecognizePageContent() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [draggingColumn, setDraggingColumn] = useState<string | null>(null)
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null)
+  const [progressOpen, setProgressOpen] = useState(false)
+  const [progressStatus, setProgressStatus] = useState<
+    "running" | "done" | "cancelled" | "error"
+  >("done")
+  const [progressTotal, setProgressTotal] = useState(0)
+  const [progressProcessed, setProgressProcessed] = useState(0)
+  const [progressSuccess, setProgressSuccess] = useState(0)
+  const [progressFailures, setProgressFailures] = useState<
+    Array<{ name: string; reason?: string; link?: string }>
+  >([])
 
   const [addColumnOpen, setAddColumnOpen] = useState(false)
   const [addColumnValue, setAddColumnValue] = useState("")
@@ -325,29 +355,38 @@ export default function RecognizePageContent() {
 
   const inputRef = useRef<HTMLInputElement | null>(null)
   const columnOrderRef = useRef<string[]>([])
+  const progressCancelRef = useRef(false)
 
   useEffect(() => {
     columnOrderRef.current = columnOrder
   }, [columnOrder])
 
+  const updateLocalEntries = useCallback(
+    (updater: (prev: RecognizeEntry[]) => RecognizeEntry[]) => {
+      setEntries((prev) => {
+        const next = updater(prev)
+        saveLocalEntries(next)
+        return next
+      })
+    },
+    []
+  )
+
   useEffect(() => {
     try {
-      const rawEntries = localStorage.getItem(ENTRY_STORAGE_KEY)
-      if (rawEntries) {
-        const list = JSON.parse(rawEntries)
-        if (Array.isArray(list)) {
-          const normalized = list.map((item: RecognizeEntry) => {
-            const entry = {
-              ...item,
-              params: item.params || {},
-              price: item.price ? normalizePrice(item.price) : "",
-            }
-            normalizeEntryParams(entry)
-            removePriceColumns(entry.params)
-            return entry
-          })
-          setEntries(normalized)
-        }
+      const list = getLocalEntries()
+      if (list.length) {
+        const normalized = list.map((item: RecognizeEntry) => {
+          const entry = {
+            ...item,
+            params: item.params || {},
+            price: item.price ? normalizePrice(item.price) : "",
+          }
+          normalizeEntryParams(entry)
+          removePriceColumns(entry.params)
+          return entry
+        })
+        setEntries(normalized)
       }
     } catch {
       // ignore
@@ -373,14 +412,6 @@ export default function RecognizePageContent() {
       // ignore
     }
   }, [])
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(ENTRY_STORAGE_KEY, JSON.stringify(entries))
-    } catch {
-      // ignore
-    }
-  }, [entries])
 
   useEffect(() => {
     const unique = new Set<string>()
@@ -411,12 +442,25 @@ export default function RecognizePageContent() {
 
   const handleFiles = async (files: File[]) => {
     if (!files.length) return
+    progressCancelRef.current = false
+    setProgressOpen(true)
+    setProgressStatus("running")
+    setProgressTotal(files.length)
+    setProgressProcessed(0)
+    setProgressSuccess(0)
+    setProgressFailures([])
     setIsProcessing(true)
     try {
       for (let i = 0; i < files.length; i += 1) {
+        if (progressCancelRef.current) break
         const file = files[i]
         if (!file.type.startsWith("image/")) {
           showToast(`文件 ${file.name} 不是图片，已跳过`, "error")
+          setProgressFailures((prev) => [
+            ...prev,
+            { name: file.name, reason: "文件类型不是图片" },
+          ])
+          setProgressProcessed((prev) => prev + 1)
           continue
         }
 
@@ -457,14 +501,22 @@ export default function RecognizePageContent() {
           }
           normalizeEntryParams(entry)
           removePriceColumns(entry.params)
-          setEntries((prev) => [...prev, entry])
+          updateLocalEntries((prev) => [...prev, entry])
+          setProgressSuccess((prev) => prev + 1)
+          setProgressProcessed((prev) => prev + 1)
         } catch (error) {
           const message = error instanceof Error ? error.message : "识别失败"
           showToast(`识别失败: ${message}`, "error")
+          setProgressFailures((prev) => [
+            ...prev,
+            { name: file.name, reason: message },
+          ])
+          setProgressProcessed((prev) => prev + 1)
         }
       }
     } finally {
       setIsProcessing(false)
+      setProgressStatus(progressCancelRef.current ? "cancelled" : "done")
     }
   }
 
@@ -502,7 +554,7 @@ export default function RecognizePageContent() {
     }
     const next = [...columnOrderRef.current, column]
     setColumnOrder(next)
-    setEntries((prev) =>
+    updateLocalEntries((prev) =>
       prev.map((entry) => ({
         ...entry,
         params: { ...entry.params, [column]: entry.params[column] ?? "" },
@@ -535,7 +587,7 @@ export default function RecognizePageContent() {
     }
     const next = columnOrderRef.current.map((item) => (item === editColumnOriginal ? column : item))
     setColumnOrder(next)
-    setEntries((prev) =>
+    updateLocalEntries((prev) =>
       prev.map((entry) => {
         if (!(editColumnOriginal in entry.params)) return entry
         const nextParams = { ...entry.params }
@@ -560,7 +612,7 @@ export default function RecognizePageContent() {
     if (!deleteColumn) return
     const next = columnOrderRef.current.filter((col) => col !== deleteColumn)
     setColumnOrder(next)
-    setEntries((prev) =>
+    updateLocalEntries((prev) =>
       prev.map((entry) => {
         if (!(deleteColumn in entry.params)) return entry
         const nextParams = { ...entry.params }
@@ -578,12 +630,12 @@ export default function RecognizePageContent() {
 
   const handleDeleteEntry = () => {
     if (!deleteEntryId) return
-    setEntries((prev) => prev.filter((entry) => entry.id !== deleteEntryId))
+    updateLocalEntries((prev) => prev.filter((entry) => entry.id !== deleteEntryId))
     setDeleteEntryId(null)
   }
 
   const handleClear = () => {
-    setEntries([])
+    updateLocalEntries(() => [])
     if (!isColumnLocked) {
       setColumnOrder([])
       try {
@@ -743,6 +795,18 @@ export default function RecognizePageContent() {
         clearOpen={clearOpen}
         onClearOpenChange={setClearOpen}
         onClear={handleClear}
+        progressOpen={progressOpen}
+        progressTitle="识别进度"
+        progressStatus={progressStatus}
+        progressTotal={progressTotal}
+        progressProcessed={progressProcessed}
+        progressSuccess={progressSuccess}
+        progressFailures={progressFailures}
+        onProgressCancel={() => {
+          progressCancelRef.current = true
+          setProgressStatus("cancelled")
+        }}
+        onProgressOpenChange={(open) => setProgressOpen(open)}
       />
     </>
   )
