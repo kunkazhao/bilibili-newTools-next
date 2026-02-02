@@ -2,6 +2,7 @@
 import { apiRequest } from "@/lib/api"
 import { useToast } from "@/components/Toast"
 import Empty from "@/components/Empty"
+import ProgressDialog from "@/components/ProgressDialog"
 import SchemeDetailDialogs from "@/components/schemes/SchemeDetailDialogs"
 import SchemeDetailPageView from "@/components/schemes/SchemeDetailPageView"
 import { useListDataPipeline } from "@/hooks/useListDataPipeline"
@@ -314,6 +315,17 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
   const [imageStatus, setImageStatus] = useState<{ message: string; type: "info" | "error" | "success" } | null>(
     null
   )
+  const [progressOpen, setProgressOpen] = useState(false)
+  const [progressStatus, setProgressStatus] = useState<
+    "running" | "done" | "cancelled" | "error"
+  >("done")
+  const [progressTotal, setProgressTotal] = useState(0)
+  const [progressProcessed, setProgressProcessed] = useState(0)
+  const [progressSuccess, setProgressSuccess] = useState(0)
+  const [progressFailures, setProgressFailures] = useState<
+    Array<{ name: string; reason?: string; link?: string }>
+  >([])
+  const progressCancelRef = useRef(false)
 
   const [feishuOpen, setFeishuOpen] = useState(false)
   const [feishuProductLink, setFeishuProductLink] = useState("")
@@ -1189,6 +1201,13 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       setImageStatus({ message: "图片渲染容器缺失", type: "error" })
       return
     }
+    progressCancelRef.current = false
+    setProgressOpen(true)
+    setProgressStatus("running")
+    setProgressTotal(items.length)
+    setProgressProcessed(0)
+    setProgressSuccess(0)
+    setProgressFailures([])
     setImageStatus({ message: "正在生成图片...", type: "info" })
     refreshTemplateMissing()
 
@@ -1202,9 +1221,20 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     let successCount = 0
     let failedCount = 0
     let index = 1
+    const recordFailure = (name: string, reason: string) => {
+      failedCount += 1
+      setProgressFailures((prev) => [...prev, { name, reason }])
+      setProgressProcessed((prev) => prev + 1)
+    }
+    const recordSuccess = () => {
+      successCount += 1
+      setProgressSuccess((prev) => prev + 1)
+      setProgressProcessed((prev) => prev + 1)
+    }
 
     try {
       for (const item of items) {
+        if (progressCancelRef.current) break
         const renderRoot = imageRenderRef.current
         renderRoot.innerHTML = ""
         const wrapper = document.createElement("div")
@@ -1217,7 +1247,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
 
         const rect = wrapper.getBoundingClientRect()
         if (!rect.width || !rect.height) {
-          failedCount += 1
+          recordFailure(item.title || `商品_${index}`, "模板尺寸为 0")
           index += 1
           continue
         }
@@ -1231,15 +1261,16 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
         if (blob) {
           const name = sanitizeFilename(item.title || `商品_${index}`)
           zip.file(`${name}.png`, blob)
-          successCount += 1
+          recordSuccess()
         } else {
-          failedCount += 1
+          recordFailure(item.title || `商品_${index}`, "生成图片失败")
         }
         index += 1
       }
 
       if (!successCount) {
         setImageStatus({ message: "生成失败：未生成任何图片", type: "error" })
+        setProgressStatus(progressCancelRef.current ? "cancelled" : "done")
         return
       }
 
@@ -1260,8 +1291,10 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
         ? `图片已生成并开始下载（成功 ${successCount} 张，失败 ${failedCount} 张）`
         : "图片已生成并开始下载"
       setImageStatus({ message, type: "success" })
+      setProgressStatus(progressCancelRef.current ? "cancelled" : "done")
     } catch {
       setImageStatus({ message: "生成失败，请重试", type: "error" })
+      setProgressStatus("error")
     }
   }
 
@@ -1742,6 +1775,23 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       />
 
       <div ref={imageRenderRef} className="fixed left-[-9999px] top-[-9999px]" />
+      <ProgressDialog
+        open={progressOpen}
+        title="生成图片进度"
+        status={progressStatus}
+        total={progressTotal}
+        processed={progressProcessed}
+        success={progressSuccess}
+        failures={progressFailures}
+        showSummary
+        showFailures
+        allowCancel
+        onCancel={() => {
+          progressCancelRef.current = true
+          setProgressStatus("cancelled")
+        }}
+        onOpenChange={(open) => setProgressOpen(open)}
+      />
       <SchemeDetailDialogs
         formatNumber={formatNumber}
         picker={{
