@@ -147,4 +147,24 @@ describe("BlueLinkMapDialogs", () => {
     const list = document.querySelector(".dialog-list")
     expect(list?.getAttribute("data-dialog-scroll")).toBe("true")
   })
+
+  it("renders progress dialog summary", () => {
+    render(
+      <BlueLinkMapDialogs
+        {...baseProps}
+        progressOpen
+        progressLabel="映射"
+        progressTotal={10}
+        progressProcessed={5}
+        progressSuccess={4}
+        progressFailures={[{ link: "", name: "未识别SKU", reason: "商品无法匹配" }]}
+        progressRunning
+      />
+    )
+
+    expect(screen.getByText("映射进度")).not.toBeNull()
+    expect(screen.getByText("50%")).not.toBeNull()
+    expect(screen.getByText("10个商品 · 1个失败")).not.toBeNull()
+    expect(screen.getByRole("button", { name: "取消" })).not.toBeNull()
+  })
 })

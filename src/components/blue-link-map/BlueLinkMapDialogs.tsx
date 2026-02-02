@@ -20,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import ProgressDialog from "@/components/ProgressDialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Input } from "@/components/ui/input"
 import {
@@ -416,57 +417,27 @@ export default function BlueLinkMapDialogs({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={progressOpen} onOpenChange={onProgressOpenChange}>
-        <DialogContent className="sm:max-w-[520px]">
-          <DialogHeader>
-            <DialogTitle>{progressLabel}进度</DialogTitle>
-            <DialogDescription>
-              {progressRunning
-                ? `${progressLabel}中... 已处理 ${progressProcessed} / ${progressTotal}`
-                : progressCancelled
-                ? `${progressLabel}已取消`
-                : `${progressLabel}完成`}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <div className="h-2 w-full rounded-full bg-slate-100">
-              <div
-                className="h-2 rounded-full bg-brand transition-all"
-                style={{ width: progressTotal ? `${(progressProcessed / progressTotal) * 100}%` : "0%" }}
-              />
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-center text-xs text-slate-500">
-              <div>总数 {progressTotal}</div>
-              <div>成功 {progressSuccess}</div>
-              <div>失败 {progressFailures.length}</div>
-            </div>
-            <div className="max-h-[200px] space-y-2 overflow-auto text-xs text-slate-600">
-              {progressFailures.length === 0 ? (
-                <div className="text-slate-400">暂无失败记录</div>
-              ) : (
-                progressFailures.map((item, index) => (
-                  <div key={`${item.link}-${index}`} className="rounded-lg border border-slate-200 p-2">
-                    <div className="text-rose-500">[{item.reason}]</div>
-                    <div>{item.name}</div>
-                    <div className="break-all text-slate-400">{item.link}</div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-          <DialogFooter className="gap-2">
-            {progressRunning ? (
-              <Button variant="outline" onClick={onProgressCancel}>
-                取消
-              </Button>
-            ) : (
-              <Button variant="outline" onClick={onProgressClose}>
-                关闭
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ProgressDialog
+        open={progressOpen}
+        title={`${progressLabel}进度`}
+        status={progressRunning ? "running" : progressCancelled ? "cancelled" : "done"}
+        total={progressTotal}
+        processed={progressProcessed}
+        success={progressSuccess}
+        failures={progressFailures.map((item) => ({
+          name: item.name,
+          link: item.link,
+          reason: item.reason,
+        }))}
+        showSummary
+        showFailures
+        allowCancel
+        onCancel={onProgressCancel}
+        onOpenChange={(open) => {
+          onProgressOpenChange(open)
+          if (!open) onProgressClose()
+        }}
+      />
 
       <AlertDialog open={confirmOpen} onOpenChange={onConfirmOpenChange}>
         <AlertDialogContent>
