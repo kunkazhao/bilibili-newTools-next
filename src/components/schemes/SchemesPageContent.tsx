@@ -3,6 +3,7 @@ import { apiRequest } from "@/lib/api"
 import { useToast } from "@/components/Toast"
 import SchemesDialogs from "@/components/schemes/SchemesDialogs"
 import SchemesPageView from "@/components/schemes/SchemesPageView"
+import { useListDataPipeline } from "@/hooks/useListDataPipeline"
 import type { CategoryItem } from "@/components/archive/types"
 import type { Scheme, SchemesPageProps } from "@/components/schemes/types"
 import {
@@ -13,7 +14,6 @@ import {
 } from "@/components/archive/archiveApi"
 
 const ARCHIVE_CATEGORY_CACHE_KEY = "sourcing_category_cache_v1"
-const SCHEME_CACHE_KEY = "scheme_list_cache_v1"
 
 type CachePayload<T> = { timestamp: number; data?: T; items?: T }
 
@@ -41,15 +41,27 @@ function saveCache<T>(key: string, data: T) {
 }
 
 const getCategoryCache = () => getCache<CategoryItem[]>(ARCHIVE_CATEGORY_CACHE_KEY)
-const getSchemeCache = () => getCache<Scheme[]>(SCHEME_CACHE_KEY)
-
 export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
   const { showToast } = useToast()
-  const [schemes, setSchemes] = useState<Scheme[]>([])
+  const {
+    items: schemes,
+    status: schemeStatus,
+    error: schemeError,
+    setItems: setSchemes,
+  } = useListDataPipeline<Scheme, { scope: string }, { schemes: Scheme[] }>({
+    cacheKey: "schemes",
+    ttlMs: 3 * 60 * 1000,
+    pageSize: 50,
+    initialFilters: { scope: "all" },
+    fetcher: async () => apiRequest<{ schemes: Scheme[] }>("/api/schemes"),
+    mapResponse: (response) => ({
+      items: Array.isArray(response.schemes) ? response.schemes : [],
+      pagination: { hasMore: false, nextOffset: response.schemes?.length ?? 0 },
+    }),
+  })
   const [categories, setCategories] = useState<CategoryItem[]>([])
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null)
   const [isCategoryLoading, setIsCategoryLoading] = useState(true)
-  const [isSchemeLoading, setIsSchemeLoading] = useState(true)
   const [statusMessage, setStatusMessage] = useState("")
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false)
 
@@ -75,55 +87,43 @@ export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
     return schemes.filter((scheme) => scheme.category_id === activeCategoryId)
   }, [schemes, activeCategoryId])
 
+  const isSchemeLoading =
+    schemeStatus === "loading" || schemeStatus === "warmup" || schemeStatus === "refreshing"
+
   useEffect(() => {
-    const schemeCache = getSchemeCache()
+    setStatusMessage("")
     const categoryCache = getCategoryCache()
-    const cachedSchemes = getCacheData(schemeCache) ?? []
     const cachedCategories = getCacheData(categoryCache) ?? []
 
-    if (cachedSchemes.length) {
-      setSchemes(cachedSchemes)
-    }
     if (cachedCategories.length) {
       setCategories(cachedCategories)
     }
 
-    setIsSchemeLoading(cachedSchemes.length === 0)
     setIsCategoryLoading(cachedCategories.length === 0)
 
     const init = async () => {
-      setStatusMessage("")
-      const [schemeResult, categoryResult] = await Promise.allSettled([
-        apiRequest<{ schemes: Scheme[] }>("/api/schemes"),
-        loadCategories(),
-      ])
-
-      if (schemeResult.status === "fulfilled") {
-        const schemeList = Array.isArray(schemeResult.value.schemes)
-          ? schemeResult.value.schemes
-          : []
-        setSchemes(schemeList)
-        saveCache(SCHEME_CACHE_KEY, schemeList)
-      } else if (!cachedSchemes.length) {
-        setStatusMessage("加载方案失败")
-      }
-
-      if (categoryResult.status === "fulfilled") {
-        const categoryList = Array.isArray(categoryResult.value)
-          ? categoryResult.value
-          : []
+      const categoryList = await loadCategories()
+      if (categoryList.length) {
         setCategories(categoryList)
         saveCache(ARCHIVE_CATEGORY_CACHE_KEY, categoryList)
       } else if (!cachedCategories.length) {
         setStatusMessage("加载分类失败")
       }
-
-      setIsSchemeLoading(false)
       setIsCategoryLoading(false)
     }
 
     init().catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (schemeStatus !== "error") return
+    if (schemes.length === 0) {
+      setStatusMessage("加载方案失败")
+    }
+    if (schemeError) {
+      showToast(schemeError, "error")
+    }
+  }, [schemeError, schemeStatus, schemes.length, showToast])
 
   useEffect(() => {
     if (!categories.length) return
@@ -230,11 +230,7 @@ export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
           }
         )
         const updated = response.scheme
-        setSchemes((prev) => {
-          const next = prev.map((item) => (item.id === updated.id ? updated : item))
-          saveCache(SCHEME_CACHE_KEY, next)
-          return next
-        })
+        setSchemes((prev) => prev.map((item) => (item.id === updated.id ? updated : item)))
         showToast("方案已更新", "success")
       } else {
         const response = await apiRequest<{ scheme: Scheme }>("/api/schemes", {
@@ -242,11 +238,7 @@ export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
           body: JSON.stringify({ ...payload, items: [] }),
         })
         const created = response.scheme
-        setSchemes((prev) => {
-          const next = [created, ...prev]
-          saveCache(SCHEME_CACHE_KEY, next)
-          return next
-        })
+        setSchemes((prev) => [created, ...prev])
         if (!activeCategoryId) {
           setActiveCategoryId(created.category_id)
         }
@@ -270,17 +262,12 @@ export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
     const targetId = pendingDeleteId
     setDeleteOpen(false)
     const snapshot = schemes
-    setSchemes((prev) => {
-      const next = prev.filter((item) => item.id !== targetId)
-      saveCache(SCHEME_CACHE_KEY, next)
-      return next
-    })
+    setSchemes((prev) => prev.filter((item) => item.id !== targetId))
     try {
       await apiRequest(`/api/schemes/${targetId}`, { method: "DELETE" })
       showToast("方案已删除", "success")
     } catch (error) {
       setSchemes(snapshot)
-      saveCache(SCHEME_CACHE_KEY, snapshot)
       const message = error instanceof Error ? error.message : "删除失败"
       showToast(message, "error")
     } finally {

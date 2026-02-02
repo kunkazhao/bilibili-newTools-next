@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { apiRequest } from "@/lib/api"
 import { useToast } from "@/components/Toast"
 import Empty from "@/components/Empty"
 import SchemeDetailDialogs from "@/components/schemes/SchemeDetailDialogs"
 import SchemeDetailPageView from "@/components/schemes/SchemeDetailPageView"
+import { useListDataPipeline } from "@/hooks/useListDataPipeline"
 import { selectSingleImageTarget } from "@/components/schemes/schemeImageSingle"
 import { resolveSelectedAccountId } from "@/components/schemes/blueLinkSelection"
 import { fetchBlueLinkMapState } from "@/components/blue-link-map/blueLinkMapApi"
@@ -74,6 +75,13 @@ interface Scheme {
   created_at?: string
   items?: SchemeItem[]
 }
+
+interface SchemeDetailState {
+  scheme: Scheme | null
+  items: SchemeItem[]
+}
+
+const EMPTY_DETAIL_STATE: SchemeDetailState = { scheme: null, items: [] }
 
 interface BlueLinkAccount {
   id: string
@@ -206,18 +214,63 @@ function buildSpecDetailText(params: Record<string, string>, separator = " / ", 
 export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageProps) {
   const { showToast } = useToast()
   const imageRenderRef = useRef<HTMLDivElement | null>(null)
-  const [scheme, setScheme] = useState<Scheme | null>(null)
-  const [items, setItems] = useState<SchemeItem[]>([])
+  const {
+    items: stateItems,
+    status,
+    error,
+    setItems: setStateItems,
+    setFilters,
+  } = useListDataPipeline<SchemeDetailState, { schemeId: string }, { scheme: Scheme }>({
+    cacheKey: `scheme-detail-${schemeId}`,
+    ttlMs: 3 * 60 * 1000,
+    pageSize: 1,
+    initialFilters: { schemeId },
+    fetcher: async ({ filters }) =>
+      apiRequest<{ scheme: Scheme }>(`/api/schemes/${filters.schemeId}`),
+    mapResponse: (response) => {
+      const loaded = response.scheme ?? null
+      const list = Array.isArray(loaded?.items) ? loaded.items : []
+      return {
+        items: [{ scheme: loaded, items: list }],
+        pagination: { hasMore: false, nextOffset: 1 },
+      }
+    },
+  })
+  const state = stateItems[0] ?? EMPTY_DETAIL_STATE
+  const scheme = state.scheme
+  const items = state.items
+  const lastErrorRef = useRef<string | null>(null)
+  const updateState = useCallback(
+    (updater: (prev: SchemeDetailState) => SchemeDetailState) => {
+      setStateItems((prev) => {
+        const current = prev[0] ?? EMPTY_DETAIL_STATE
+        return [updater(current)]
+      })
+    },
+    [setStateItems]
+  )
+
   const [removeTarget, setRemoveTarget] = useState<SchemeItem | null>(null)
   const [sourceItems, setSourceItems] = useState<SchemeItem[]>([])
   const [categoryOptions, setCategoryOptions] = useState<Array<{ label: string; value: string }>>([])
   const [isProductFormOpen, setIsProductFormOpen] = useState(false)
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null)
   const [productFormInitialValues, setProductFormInitialValues] = useState<ProductFormValues | undefined>(undefined)
-  const [loading, setLoading] = useState(true)
+  const isLoading = status === "loading" || status === "warmup"
   const [priceMin, setPriceMin] = useState("")
   const [priceMax, setPriceMax] = useState("")
   const [sortValue, setSortValue] = useState("price-asc")
+
+  useEffect(() => {
+    setFilters({ schemeId })
+  }, [schemeId, setFilters])
+
+  useEffect(() => {
+    if (status !== "error" || !error) return
+    if (lastErrorRef.current === error) return
+    lastErrorRef.current = error
+    showToast(error, "error")
+  }, [error, showToast, status])
 
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickerKeyword, setPickerKeyword] = useState("")
@@ -299,24 +352,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     return list
   }, [items, priceMin, priceMax, sortValue])
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true)
-      try {
-        const data = await apiRequest<{ scheme: Scheme }>(`/api/schemes/${schemeId}`)
-        const loaded = data.scheme
-        setScheme(loaded)
-        setItems(Array.isArray(loaded?.items) ? loaded.items : [])
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "加载方案失败"
-        showToast(message, "error")
-      } finally {
-        setLoading(false)
-      }
-    }
 
-    load().catch(() => {})
-  }, [schemeId, showToast])
 
   useEffect(() => {
     const loadPromptTemplates = async () => {
@@ -394,8 +430,11 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
           body: JSON.stringify({ items: nextItems }),
         }
       )
-      setScheme(response.scheme)
-      setItems(Array.isArray(response.scheme.items) ? response.scheme.items : [])
+      updateState((prev) => ({
+        ...prev,
+        scheme: response.scheme,
+        items: Array.isArray(response.scheme.items) ? response.scheme.items : [],
+      }))
       if (message) showToast(message, "success")
     } catch (error) {
       const text = error instanceof Error ? error.message : "保存失败"
@@ -1208,7 +1247,10 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       const url = URL.createObjectURL(output)
       const anchor = document.createElement("a")
       anchor.href = url
-      anchor.download = `方案商品图_${Date.now()}.zip`
+      const schemeName = String(scheme?.name || "方案")
+      const categoryName = String(scheme?.category_name || scheme?.category_id || "品类")
+      const zipName = sanitizeFilename(`${schemeName}-${categoryName}`)
+      anchor.download = `${zipName}.zip`
       document.body.appendChild(anchor)
       anchor.click()
       document.body.removeChild(anchor)
@@ -1312,6 +1354,36 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       specParams,
       remark: item.remark || "",
     }
+  }
+
+  const exportJsonTxt = () => {
+    if (!items.length) {
+      showToast("没有可导出的商品", "info")
+      return
+    }
+    const payload = items.map((item) => {
+      const spec = item.spec || {}
+      const meta = getMeta(spec)
+      return {
+        商品名称: item.title || "",
+        所有参数: stripMetaSpec(spec),
+        remark: item.remark || "",
+        重点标记: Boolean(spec._featured),
+        京东链接: (meta.promoLink || meta.sourceLink || item.link || "").trim(),
+      }
+    })
+    const jsonText = JSON.stringify(payload, null, 2)
+    const blob = new Blob([jsonText], { type: "text/plain;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    const baseName = sanitizeFilename(`${scheme?.name || "方案"}-参数`)
+    anchor.href = url
+    anchor.download = `${baseName}.txt`
+    document.body.appendChild(anchor)
+    anchor.click()
+    document.body.removeChild(anchor)
+    URL.revokeObjectURL(url)
+    showToast("已导出JSON", "success")
   }
 
   const exportExcel = () => {
@@ -1514,7 +1586,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
           ]
         : []
 
-  if (loading) {
+  if (isLoading && !scheme) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
         <p className="text-sm text-slate-500">加载中...</p>
@@ -1581,6 +1653,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
           itemCount: items.length,
           createdAt: formatDate(scheme.created_at),
           onBack,
+          onExportJson: exportJsonTxt,
         }}
         toolbar={{
           priceMin,
@@ -1755,3 +1828,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     </>
   )
 }
+
+
+
+
