@@ -59,6 +59,14 @@ interface ArchiveItem {
   price: number
   commission: number
   commissionRate: number
+  jdPrice: number
+  jdCommission: number
+  jdCommissionRate: number
+  jdSales: number
+  tbPrice: number
+  tbCommission: number
+  tbCommissionRate: number
+  tbSales: number
   image: string
   categoryId: string
   blueLink: string
@@ -93,6 +101,44 @@ const META_KEYS = {
 }
 
 const padSortOrder = (value: number) => String(value).padStart(6, "0")
+
+export const buildArchiveMetricsPayload = (values: {
+  price: string
+  commissionRate: string
+  sales30: string
+  tbPrice: string
+  tbCommissionRate: string
+  tbSales: string
+}) => {
+  const toNumber = (value: string) => {
+    const numeric = Number(value)
+    return Number.isFinite(numeric) ? numeric : 0
+  }
+
+  const jdPrice = toNumber(values.price)
+  const jdCommissionRate = toNumber(values.commissionRate)
+  const jdCommission = (jdPrice * jdCommissionRate) / 100
+  const jdSales = toNumber(values.sales30)
+
+  const tbPrice = toNumber(values.tbPrice)
+  const tbCommissionRate = toNumber(values.tbCommissionRate)
+  const tbCommission = (tbPrice * tbCommissionRate) / 100
+  const tbSales = toNumber(values.tbSales)
+
+  return {
+    price: jdPrice,
+    commission: jdCommission,
+    commission_rate: jdCommissionRate,
+    jd_price: jdPrice,
+    jd_commission: jdCommission,
+    jd_commission_rate: jdCommissionRate,
+    jd_sales: jdSales,
+    tb_price: tbPrice,
+    tb_commission: tbCommission,
+    tb_commission_rate: tbCommissionRate,
+    tb_sales: tbSales,
+  }
+}
 
 export const buildSortOrderUpdates = (
   items: { id: string; spec: Record<string, string> }[]
@@ -233,13 +279,29 @@ const normalizeArchiveItem = (item: {
   const rawPrice = Number(item.price ?? 0)
   const rawCommission = Number(item.commission ?? 0)
   const rawCommissionRate = Number(item.commission_rate ?? 0)
+  const rawJdPrice = Number(item.jd_price ?? rawPrice ?? 0)
+  const rawJdCommission = Number(item.jd_commission ?? rawCommission ?? 0)
+  const rawJdCommissionRate = Number(item.jd_commission_rate ?? rawCommissionRate ?? 0)
+  const rawJdSales = Number(item.jd_sales ?? spec[META_KEYS.sales30] ?? 0)
+  const rawTbPrice = Number(item.tb_price ?? 0)
+  const rawTbCommission = Number(item.tb_commission ?? 0)
+  const rawTbCommissionRate = Number(item.tb_commission_rate ?? 0)
+  const rawTbSales = Number(item.tb_sales ?? 0)
   return {
     id: item.id,
     uid: (item as { uid?: string }).uid ?? "",
     title: item.title ?? "",
-    price: Number.isFinite(rawPrice) ? rawPrice : 0,
-    commission: Number.isFinite(rawCommission) ? rawCommission : 0,
-    commissionRate: Number.isFinite(rawCommissionRate) ? rawCommissionRate : 0,
+    price: Number.isFinite(rawJdPrice) ? rawJdPrice : 0,
+    commission: Number.isFinite(rawJdCommission) ? rawJdCommission : 0,
+    commissionRate: Number.isFinite(rawJdCommissionRate) ? rawJdCommissionRate : 0,
+    jdPrice: Number.isFinite(rawJdPrice) ? rawJdPrice : 0,
+    jdCommission: Number.isFinite(rawJdCommission) ? rawJdCommission : 0,
+    jdCommissionRate: Number.isFinite(rawJdCommissionRate) ? rawJdCommissionRate : 0,
+    jdSales: Number.isFinite(rawJdSales) ? rawJdSales : 0,
+    tbPrice: Number.isFinite(rawTbPrice) ? rawTbPrice : 0,
+    tbCommission: Number.isFinite(rawTbCommission) ? rawTbCommission : 0,
+    tbCommissionRate: Number.isFinite(rawTbCommissionRate) ? rawTbCommissionRate : 0,
+    tbSales: Number.isFinite(rawTbSales) ? rawTbSales : 0,
     image: item.cover_url ?? "",
     categoryId: item.category_id,
     blueLink: spec[META_KEYS.blueLink] || item.link || "",
@@ -1284,7 +1346,10 @@ export default function ArchivePage() {
       price: String(target.price),
       commission: String(target.commission),
       commissionRate: target.commissionRate ? String(target.commissionRate) : "",
-      sales30: target.spec[META_KEYS.sales30] || "",
+      sales30: target.jdSales ? String(target.jdSales) : target.spec[META_KEYS.sales30] || "",
+      tbPrice: target.tbPrice ? String(target.tbPrice) : "",
+      tbCommissionRate: target.tbCommissionRate ? String(target.tbCommissionRate) : "",
+      tbSales: target.tbSales ? String(target.tbSales) : "",
       comments: target.spec[META_KEYS.comments] || "",
       image: target.image,
       blueLink: target.blueLink,
@@ -1306,6 +1371,9 @@ export default function ArchivePage() {
     commission: string
     commissionRate: string
     sales30: string
+    tbPrice: string
+    tbCommissionRate: string
+    tbSales: string
     comments: string
     image: string
     blueLink: string
@@ -1316,12 +1384,7 @@ export default function ArchivePage() {
     remark: string
     params: Record<string, string>
   }) => {
-    const priceValue = Number(values.price)
-    const commissionRateValue = Number(values.commissionRate || 0)
-    const commissionValue =
-      Number.isFinite(priceValue) && Number.isFinite(commissionRateValue)
-        ? (priceValue * commissionRateValue) / 100
-        : 0
+    const metrics = buildArchiveMetricsPayload(values)
     if (editingItemId) {
       const target = baseItems.find((item) => item.id === editingItemId)
       if (!target) return
@@ -1337,9 +1400,17 @@ export default function ArchivePage() {
       const nextItem: ArchiveItem = {
         ...target,
         title: values.title,
-        price: priceValue,
-        commission: commissionValue,
-        commissionRate: commissionRateValue,
+        price: metrics.price,
+        commission: metrics.commission,
+        commissionRate: metrics.commission_rate,
+        jdPrice: metrics.jd_price,
+        jdCommission: metrics.jd_commission,
+        jdCommissionRate: metrics.jd_commission_rate,
+        jdSales: metrics.jd_sales,
+        tbPrice: metrics.tb_price,
+        tbCommission: metrics.tb_commission,
+        tbCommissionRate: metrics.tb_commission_rate,
+        tbSales: metrics.tb_sales,
         image: values.image,
         blueLink: values.blueLink,
         taobaoLink: values.taobaoLink,
@@ -1382,9 +1453,7 @@ export default function ArchivePage() {
 
       const request = updateItem(editingItemId, {
         title: values.title,
-        price: priceValue,
-        commission: commissionValue,
-        commission_rate: commissionRateValue,
+        ...metrics,
         cover_url: values.image,
         link: values.blueLink,
         taobao_link: values.taobaoLink,
@@ -1447,9 +1516,7 @@ export default function ArchivePage() {
       const request = createItem({
         category_id: values.categoryId,
         title: values.title,
-        price: priceValue,
-        commission: commissionValue,
-        commission_rate: commissionRateValue,
+        ...metrics,
         cover_url: values.image,
         link: values.blueLink,
         taobao_link: values.taobaoLink,
@@ -1533,14 +1600,32 @@ export default function ArchivePage() {
       key,
       value: item.spec[key] ?? "",
     }))
+    const jdPriceText = item.jdPrice ? String(item.jdPrice) : "--"
+    const jdCommissionText = item.jdCommission ? String(item.jdCommission) : "--"
+    const jdCommissionRateText = item.jdCommissionRate
+      ? `${item.jdCommissionRate.toFixed(2)}%`
+      : "--"
+    const jdSalesText = item.jdSales ? String(item.jdSales) : "--"
+    const tbPriceText = item.tbPrice ? String(item.tbPrice) : "--"
+    const tbCommissionText = item.tbCommission ? String(item.tbCommission) : "--"
+    const tbCommissionRateText = item.tbCommissionRate
+      ? `${item.tbCommissionRate.toFixed(2)}%`
+      : "--"
+    const tbSalesText = item.tbSales ? String(item.tbSales) : "--"
     return {
       ...item,
-      price: item.price ? String(item.price) : "--",
-      commission: item.commission ? String(item.commission) : "--",
-      commissionRate: item.commissionRate
-        ? `${item.commissionRate.toFixed(2)}%`
-        : "--",
-      sales30: item.spec[META_KEYS.sales30] || "--",
+      price: jdPriceText,
+      commission: jdCommissionText,
+      commissionRate: jdCommissionRateText,
+      jdPrice: jdPriceText,
+      jdCommission: jdCommissionText,
+      jdCommissionRate: jdCommissionRateText,
+      jdSales: jdSalesText,
+      tbPrice: tbPriceText,
+      tbCommission: tbCommissionText,
+      tbCommissionRate: tbCommissionRateText,
+      tbSales: tbSalesText,
+      sales30: jdSalesText,
       comments: item.spec[META_KEYS.comments] || "--",
       categoryName,
       params,
