@@ -25,6 +25,9 @@ interface ProductFormValues {
   commission: string
   commissionRate: string
   sales30: string
+  tbPrice: string
+  tbCommissionRate: string
+  tbSales: string
   comments: string
   image: string
   blueLink: string
@@ -53,6 +56,9 @@ const emptyValues: ProductFormValues = {
   commission: "",
   commissionRate: "",
   sales30: "",
+  tbPrice: "",
+  tbCommissionRate: "",
+  tbSales: "",
   comments: "",
   image: "",
   blueLink: "",
@@ -80,7 +86,8 @@ type JdProductInfo = {
 type TaobaoProductInfo = {
   title: string
   price?: string
-  commissionRate?: string
+  commissionRate?: number
+  sales30?: number
   image?: string
   shopName?: string
   materialUrl?: string
@@ -109,6 +116,13 @@ const extractQueryResult = (payload: Record<string, any>) => {
 const normalizeNumber = (value: unknown) => {
   if (value === null || value === undefined) return undefined
   const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : undefined
+}
+
+const normalizeRateNumber = (value: unknown) => {
+  if (value === null || value === undefined) return undefined
+  const raw = String(value).replace("%", "").trim()
+  const numeric = Number(raw)
   return Number.isFinite(numeric) ? numeric : undefined
 }
 
@@ -221,8 +235,8 @@ const fetchTaobaoProduct = async (itemId: string, openIid?: string) => {
   return {
     title: String(data?.title || ""),
     price: data?.price !== undefined ? String(data.price) : "",
-    commissionRate:
-      data?.commissionRate !== undefined ? String(data.commissionRate) : "",
+    commissionRate: normalizeRateNumber(data?.commissionRate),
+    sales30: normalizeNumber(data?.sales30 ?? data?.volume),
     image: String(data?.cover || ""),
     shopName: String(data?.shopName || ""),
     materialUrl: String(data?.materialUrl || ""),
@@ -234,6 +248,7 @@ export default function ProductFormModal({
   categories,
   presetFields,
   initialValues,
+  defaultCategoryId,
   autoOpenCoverPicker,
   onClose,
   onSubmit,
@@ -241,21 +256,26 @@ export default function ProductFormModal({
   const { showToast } = useToast()
   const [values, setValues] = useState<ProductFormValues>(emptyValues)
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [isParsing, setIsParsing] = useState(false)
+  const [isJdParsing, setIsJdParsing] = useState(false)
+  const [isTbParsing, setIsTbParsing] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const coverInputRef = useRef<HTMLInputElement | null>(null)
   const baseId = useId()
   const coverInputId = `${baseId}-cover`
   const categorySelectId = `${baseId}-category`
   const initialValuesKey = useMemo(
-    () => JSON.stringify(initialValues ?? {}),
-    [initialValues]
+    () => JSON.stringify({ initialValues: initialValues ?? {}, defaultCategoryId: defaultCategoryId ?? "" }),
+    [initialValues, defaultCategoryId]
   )
 
   useEffect(() => {
-    setValues({ ...emptyValues, ...(initialValues ?? {}) })
+    const nextValues = { ...emptyValues, ...(initialValues ?? {}) }
+    if (!nextValues.categoryId && defaultCategoryId) {
+      nextValues.categoryId = defaultCategoryId
+    }
+    setValues(nextValues)
     setErrors({})
-  }, [initialValuesKey, isOpen])
+  }, [initialValuesKey, isOpen, defaultCategoryId])
 
   useEffect(() => {
     if (!isOpen || !autoOpenCoverPicker) return
@@ -272,6 +292,13 @@ export default function ProductFormModal({
     return ((price * rate) / 100).toFixed(2)
   }, [values.price, values.commissionRate])
 
+  const computedTbCommission = useMemo(() => {
+    const price = Number(values.tbPrice || 0)
+    const rate = Number(values.tbCommissionRate || 0)
+    if (!Number.isFinite(price) || !Number.isFinite(rate)) return ""
+    return ((price * rate) / 100).toFixed(2)
+  }, [values.tbPrice, values.tbCommissionRate])
+
 
   const update = (key: keyof ProductFormValues, value: string) => {
     setValues((prev) => ({ ...prev, [key]: value }))
@@ -282,12 +309,19 @@ export default function ProductFormModal({
         return next
       })
     }
+    if (key === "taobaoLink" && errors.taobaoLink) {
+      setErrors((prev) => {
+        const next = { ...prev }
+        delete next.taobaoLink
+        return next
+      })
+    }
   }
 
-  const handleParsePromo = async () => {
+  const handleParseJd = async () => {
     const trimmed = values.promoLink.trim()
     if (!trimmed) {
-      setErrors((prev) => ({ ...prev, promoLink: "不能为空" }))
+      setErrors((prev) => ({ ...prev, promoLink: "????" }))
       return
     }
     try {
@@ -296,7 +330,11 @@ export default function ProductFormModal({
         throw new Error("invalid protocol")
       }
     } catch {
-      setErrors((prev) => ({ ...prev, promoLink: "格式不正确" }))
+      setErrors((prev) => ({ ...prev, promoLink: "?????" }))
+      return
+    }
+    if (isTaobaoLink(trimmed)) {
+      showToast("???????JD????", "error")
       return
     }
     if (errors.promoLink) {
@@ -306,34 +344,10 @@ export default function ProductFormModal({
         return next
       })
     }
-    if (isParsing) return
-    setIsParsing(true)
+    if (isJdParsing) return
+    setIsJdParsing(true)
     update("promoLink", trimmed)
     try {
-      if (isTaobaoLink(trimmed)) {
-        const resolved = await resolveTaobaoLink(trimmed)
-        const itemId = resolved.itemId || resolved.openIid
-        if (!itemId) {
-          throw new Error("未能解析淘宝商品ID")
-        }
-        const product = await fetchTaobaoProduct(itemId, resolved.openIid)
-        setValues((prev) => {
-          const hasTitle = Boolean(prev.title?.trim())
-          const hasImage = Boolean(prev.image?.trim())
-          const nextTitle = hasTitle ? prev.title : product.title || prev.title
-          return {
-            ...prev,
-            title: nextTitle,
-            taobaoLink: product.materialUrl || prev.taobaoLink || trimmed,
-            price: product.price ? String(product.price) : prev.price,
-            commissionRate: product.commissionRate || prev.commissionRate,
-            shopName: product.shopName || prev.shopName,
-            image: hasImage ? prev.image : product.image || prev.image,
-          }
-        })
-        showToast("推广链接解析成功", "success")
-        return
-      }
       const resolvedInput = await resolveJdUrl(trimmed)
       const keywordSource =
         trimmed.includes("union-click.jd.com") ||
@@ -379,14 +393,72 @@ export default function ProductFormModal({
           image: hasImage ? prev.image : product.image || prev.image,
         }
       })
-      showToast("推广链接解析成功", "success")
+      showToast("\u89e3\u6790\u6210\u529f", "success")
     } catch (error) {
       showToast(
-        error instanceof Error ? error.message : "推广链接解析失败",
+        error instanceof Error ? error.message : "????????",
         "error"
       )
     } finally {
-      setIsParsing(false)
+      setIsJdParsing(false)
+    }
+  }
+
+  const handleParseTaobao = async () => {
+    const trimmed = values.taobaoLink.trim()
+    if (!trimmed) {
+      setErrors((prev) => ({ ...prev, taobaoLink: "????" }))
+      return
+    }
+    if (!isTaobaoLink(trimmed)) {
+      setErrors((prev) => ({ ...prev, taobaoLink: "????????/????" }))
+      return
+    }
+    if (errors.taobaoLink) {
+      setErrors((prev) => {
+        const next = { ...prev }
+        delete next.taobaoLink
+        return next
+      })
+    }
+    if (isTbParsing) return
+    setIsTbParsing(true)
+    update("taobaoLink", trimmed)
+    try {
+      const resolved = await resolveTaobaoLink(trimmed)
+      const itemId = resolved.itemId || resolved.openIid
+      if (!itemId) {
+        throw new Error("????????ID")
+      }
+      const product = await fetchTaobaoProduct(itemId, resolved.openIid)
+      setValues((prev) => {
+        const hasTitle = Boolean(prev.title?.trim())
+        const hasImage = Boolean(prev.image?.trim())
+        return {
+          ...prev,
+          title: hasTitle ? prev.title : product.title || prev.title,
+          taobaoLink: product.materialUrl || prev.taobaoLink || trimmed,
+          tbPrice: product.price ? String(product.price) : prev.tbPrice,
+          tbCommissionRate:
+            product.commissionRate !== undefined
+              ? String(product.commissionRate)
+              : prev.tbCommissionRate,
+          tbSales:
+            product.sales30 !== undefined
+              ? String(product.sales30)
+              : prev.tbSales,
+          shopName: product.shopName || prev.shopName,
+          image: hasImage ? prev.image : product.image || prev.image,
+        }
+      })
+      showToast("\u89e3\u6790\u6210\u529f", "success")
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : "????????",
+        "error"
+      )
+    } finally {
+      setIsTbParsing(false)
     }
   }
 
@@ -401,6 +473,7 @@ export default function ProductFormModal({
     if (!values.categoryId) nextErrors.categoryId = "必填"
     if (!values.blueLink.trim() && !values.taobaoLink.trim()) {
       nextErrors.blueLink = "必填"
+      nextErrors.taobaoLink = "必填"
     }
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length > 0) return
@@ -477,8 +550,8 @@ export default function ProductFormModal({
       <div className="space-y-5">
         <div className="space-y-2">
           <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <Label htmlFor="promo-link" className="w-20">
-              推广链接
+            <Label htmlFor="promo-link" className="w-24">
+              京东推广链接
             </Label>
             <Input
               id="promo-link"
@@ -490,14 +563,42 @@ export default function ProductFormModal({
             <Button
               type="button"
               variant="outline"
-              onClick={handleParsePromo}
-              disabled={isParsing}
+              data-testid="parse-jd"
+              onClick={handleParseJd}
+              disabled={isJdParsing}
             >
-              {isParsing ? "解析中..." : "解析"}
+              {isJdParsing ? "解析中..." : "解析"}
             </Button>
           </div>
           <span className="min-h-[18px] text-xs text-rose-500">
             {errors.promoLink}
+          </span>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <Label htmlFor="taobao-link" className="w-24">
+              淘宝链接
+            </Label>
+            <Input
+              id="taobao-link"
+              className="flex-1"
+              placeholder="粘贴淘宝/天猫推广链接"
+              value={values.taobaoLink}
+              onChange={(event) => update("taobaoLink", event.target.value)}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              data-testid="parse-taobao"
+              onClick={handleParseTaobao}
+              disabled={isTbParsing}
+            >
+              {isTbParsing ? "解析中..." : "解析"}
+            </Button>
+          </div>
+          <span className="min-h-[18px] text-xs text-rose-500">
+            {errors.taobaoLink}
           </span>
         </div>
 
@@ -600,15 +701,7 @@ export default function ProductFormModal({
                   {errors.blueLink}
                 </span>
               </div>
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="taobao-link">淘宝链接</Label>
-                <Input
-                  id="taobao-link"
-                  value={values.taobaoLink}
-                  onChange={(event) => update("taobaoLink", event.target.value)}
-                />
-              </div>
-              <div className="space-y-2 md:col-span-2">
+<div className="space-y-2 md:col-span-2">
                 <Label htmlFor="product-remark">总结</Label>
                 <Input
                   id="product-remark"
@@ -621,53 +714,97 @@ export default function ProductFormModal({
           </div>
         </div>
 
-        <div className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-3">
-          <div className="space-y-2">
-            <Label htmlFor="product-price">价格（元）</Label>
-            <Input
-              id="product-price"
-              value={values.price}
-              onChange={(event) => update("price", event.target.value)}
-            />
-            <span className="min-h-[18px] text-xs text-rose-500">
-              {errors.price}
+        <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-rose-50 text-xs font-semibold text-rose-500">
+              JD
             </span>
+            <span>京东数据</span>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="product-commission">佣金（元）</Label>
-            <Input id="product-commission" value={computedCommission} disabled />
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <Label htmlFor="product-price">价格</Label>
+              <Input
+                id="product-price"
+                value={values.price}
+                onChange={(event) => update("price", event.target.value)}
+              />
+              <span className="min-h-[18px] text-xs text-rose-500">
+                {errors.price}
+              </span>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="product-commission">佣金</Label>
+              <Input id="product-commission" value={computedCommission} disabled />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="product-rate">佣金比例</Label>
+              <Input
+                id="product-rate"
+                value={values.commissionRate}
+                onChange={(event) => update("commissionRate", event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="product-sales">30天销量</Label>
+              <Input
+                id="product-sales"
+                value={values.sales30}
+                onChange={(event) => update("sales30", event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="product-comments">评价数</Label>
+              <Input
+                id="product-comments"
+                value={values.comments}
+                onChange={(event) => update("comments", event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="product-shop">店铺</Label>
+              <Input
+                id="product-shop"
+                value={values.shopName}
+                onChange={(event) => update("shopName", event.target.value)}
+              />
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="product-rate">佣金比例（%）</Label>
-            <Input
-              id="product-rate"
-              value={values.commissionRate}
-              onChange={(event) => update("commissionRate", event.target.value)}
-            />
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-amber-50 text-xs font-semibold text-amber-500">
+              TB
+            </span>
+            <span>淘宝数据</span>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="product-sales">30天销量</Label>
-            <Input
-              id="product-sales"
-              value={values.sales30}
-              onChange={(event) => update("sales30", event.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="product-comments">评价数</Label>
-            <Input
-              id="product-comments"
-              value={values.comments}
-              onChange={(event) => update("comments", event.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="product-shop">店铺</Label>
-            <Input
-              id="product-shop"
-              value={values.shopName}
-              onChange={(event) => update("shopName", event.target.value)}
-            />
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <Label htmlFor="tb-price">淘宝价格</Label>
+              <Input
+                id="tb-price"
+                value={values.tbPrice}
+                onChange={(event) => update("tbPrice", event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="tb-commission">淘宝佣金</Label>
+              <Input id="tb-commission" value={computedTbCommission} disabled />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="tb-rate">淘宝佣金比例</Label>
+              <Input
+                id="tb-rate"
+                value={values.tbCommissionRate}
+                onChange={(event) => update("tbCommissionRate", event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="tb-sales">淘宝30天销量</Label>
+              <Input
+                id="tb-sales"
+                value={values.tbSales}
+                onChange={(event) => update("tbSales", event.target.value)}
+              />
+            </div>
           </div>
         </div>
 

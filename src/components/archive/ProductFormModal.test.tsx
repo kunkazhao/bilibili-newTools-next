@@ -32,15 +32,40 @@ describe("ProductFormModal", () => {
     commission: "8.8",
     commissionRate: "10",
     sales30: "",
+    tbPrice: "",
+    tbCommissionRate: "",
+    tbSales: "",
     comments: "",
     image: "",
     blueLink: "https://item.jd.com/123.html",
+    taobaoLink: "",
     categoryId: "cat-1",
     accountName: "",
     shopName: "",
     remark: "",
     params: {},
   }
+
+  it("defaults category to provided value when creating", () => {
+    render(
+      <ToastProvider>
+        <ProductFormModal
+          isOpen
+          categories={[
+            { label: "???", value: "cat-1" },
+            { label: "???", value: "cat-2" },
+          ]}
+          presetFields={[]}
+          defaultCategoryId="cat-2"
+          onClose={vi.fn()}
+          onSubmit={vi.fn()}
+        />
+      </ToastProvider>
+    )
+
+    const combo = screen.getByRole("combobox")
+    expect(combo.textContent).toContain("???")
+  })
 
   it("renders JD and Taobao link inputs", () => {
     render(
@@ -95,7 +120,7 @@ describe("ProductFormModal", () => {
     )
   })
 
-  it("keeps existing title and image when parsing promo link", async () => {
+  it("keeps existing title and image when parsing JD promo link", async () => {
     const user = userEvent.setup()
     const mockApi = vi.mocked(apiRequest)
     mockApi.mockResolvedValueOnce({
@@ -130,12 +155,12 @@ describe("ProductFormModal", () => {
       </ToastProvider>
     )
 
-    const promoInput = screen.getByLabelText("推广链接") as HTMLInputElement
+    const promoInput = screen.getByLabelText("京东推广链接") as HTMLInputElement
     fireEvent.change(promoInput, {
       target: { value: "https://item.jd.com/123.html" },
     })
 
-    const parseButton = screen.getByRole("button", { name: "解析" })
+    const parseButton = screen.getByTestId("parse-jd")
     await user.click(parseButton)
 
     await waitFor(() => {
@@ -192,12 +217,12 @@ describe("ProductFormModal", () => {
       </ToastProvider>
     )
 
-    const promoInput = screen.getByLabelText("推广链接") as HTMLInputElement
+    const promoInput = screen.getByLabelText("京东推广链接") as HTMLInputElement
     fireEvent.change(promoInput, {
       target: { value: "https://union-click.jd.com/jdc?e=abc" },
     })
 
-    const parseButton = screen.getByRole("button", { name: "解析" })
+    const parseButton = screen.getByTestId("parse-jd")
     await user.click(parseButton)
 
     await waitFor(() => {
@@ -223,7 +248,7 @@ describe("ProductFormModal", () => {
     expect(secondCall).toBe("/api/jd/product")
   })
 
-  it("parses taobao promo link and fills fields", async () => {
+  it("parses taobao link and fills TB metrics", async () => {
     const user = userEvent.setup()
     const mockApi = vi.mocked(apiRequest)
     mockApi.mockImplementation((path: string) => {
@@ -236,6 +261,7 @@ describe("ProductFormModal", () => {
           cover: "https://example.com/taobao.png",
           price: "9.9",
           commissionRate: "12.3%",
+          sales30: 1234,
           shopName: "淘宝店铺",
           materialUrl: "https://item.taobao.com/item.htm?id=123",
         })
@@ -256,6 +282,9 @@ describe("ProductFormModal", () => {
             commission: "",
             commissionRate: "",
             sales30: "",
+            tbPrice: "",
+            tbCommissionRate: "",
+            tbSales: "",
             comments: "",
             image: "",
             blueLink: "",
@@ -272,8 +301,8 @@ describe("ProductFormModal", () => {
       </ToastProvider>
     )
 
-    const promoInput = screen.getByLabelText("推广链接") as HTMLInputElement
-    fireEvent.change(promoInput, {
+    const taobaoInput = screen.getByLabelText("淘宝链接") as HTMLInputElement
+    fireEvent.change(taobaoInput, {
       target: { value: "https://item.taobao.com/item.htm?id=123" },
     })
     const titleInput = screen.getByLabelText("商品标题") as HTMLInputElement
@@ -282,7 +311,7 @@ describe("ProductFormModal", () => {
       (screen.getByLabelText("商品标题") as HTMLInputElement).value
     ).toBe("")
 
-    const parseButton = screen.getByRole("button", { name: "解析" })
+    const parseButton = screen.getByTestId("parse-taobao")
     await user.click(parseButton)
 
     await waitFor(() => {
@@ -305,7 +334,7 @@ describe("ProductFormModal", () => {
       expect(payload?.title).toBe("淘宝商品")
     }
     await waitFor(() => {
-      expect(showToast).toHaveBeenCalledWith("推广链接解析成功", "success")
+      expect(showToast).toHaveBeenCalledWith("解析成功", "success")
     })
 
     await waitFor(() => {
@@ -322,8 +351,20 @@ describe("ProductFormModal", () => {
 
     await waitFor(() => {
       expect(
-        (screen.getByLabelText(/佣金比例/) as HTMLInputElement).value
-      ).toBe("12.3%")
+        (screen.getByLabelText("淘宝佣金比例") as HTMLInputElement).value
+      ).toBe("12.3")
+    }, { timeout: 3000 })
+
+    await waitFor(() => {
+      expect(
+        (screen.getByLabelText("淘宝价格") as HTMLInputElement).value
+      ).toBe("9.9")
+    }, { timeout: 3000 })
+
+    await waitFor(() => {
+      expect(
+        (screen.getByLabelText("淘宝30天销量") as HTMLInputElement).value
+      ).toBe("1234")
     }, { timeout: 3000 })
   })
 
