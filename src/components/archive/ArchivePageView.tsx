@@ -24,7 +24,7 @@ import {
   resolveListViewportHeight,
   resolveRowHeight,
 } from "@/components/archive/virtualList"
-import type { CategoryItem } from "@/components/archive/types"
+import type { CategoryItem, SpecField } from "@/components/archive/types"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -104,6 +104,9 @@ interface ArchivePageViewProps {
   onToggleFocus: (id: string) => void
   onDragStart: (id: string) => void
   onDrop: (id: string) => void
+  onAddToScheme?: (id: string) => void
+  onOpenLink?: (link: string) => void
+  onCoverClick?: (id: string) => void
   onSelectCategory: (id: string) => void
   onClearList: () => void
   onDownloadImages: () => void
@@ -116,8 +119,9 @@ interface ArchivePageViewProps {
   isPresetFieldsOpen: boolean
   onOpenPresetFields: () => void
   onClosePresetFields: () => void
-  onSavePresetFields: (categoryId: string, fields: { key: string }[]) => void
+  onSavePresetFields: (categoryId: string, fields: SpecField[]) => void
   isProductFormOpen: boolean
+  autoOpenCoverPicker?: boolean
   onCloseProductForm: () => void
   onSubmitProductForm: (values: {
     promoLink: string
@@ -166,6 +170,7 @@ type ArchiveRowProps = {
   index: number
   style: CSSProperties
   ariaAttributes?: HTMLAttributes<HTMLDivElement>
+  items: ArchiveItemView[]
 }
 
 const CategorySkeleton = () => (
@@ -180,7 +185,7 @@ const CategorySkeleton = () => (
 )
 
 const ListSkeleton = () => (
-  <div className="space-y-4">
+  <div className="space-y-4" data-testid="archive-list-skeleton">
     {Array.from({ length: 6 }).map((_, index) => (
       <div key={index} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
         <div className="flex gap-4">
@@ -240,6 +245,9 @@ export default function ArchivePageView({
   onToggleFocus,
   onDragStart,
   onDrop,
+  onAddToScheme,
+  onOpenLink,
+  onCoverClick,
   onSelectCategory,
   onClearList,
   onDownloadImages,
@@ -254,6 +262,7 @@ export default function ArchivePageView({
   onClosePresetFields,
   onSavePresetFields,
   isProductFormOpen,
+  autoOpenCoverPicker,
   onCloseProductForm,
   onSubmitProductForm,
   productFormInitialValues,
@@ -271,23 +280,27 @@ export default function ArchivePageView({
   const [minInput, setMinInput] = useState(isPriceUnset ? "" : String(priceRange[0]))
   const [maxInput, setMaxInput] = useState(isPriceUnset ? "" : String(priceRange[1]))
   const disableLoadMoreResolved = Boolean(disableLoadMore)
-  const itemsRef = useRef(items)
   const onToggleFocusRef = useRef(onToggleFocus)
   const onEditRef = useRef(onEdit)
   const onDeleteRef = useRef(onDelete)
   const onDragStartRef = useRef(onDragStart)
   const onDropRef = useRef(onDrop)
+  const onAddToSchemeRef = useRef(onAddToScheme)
+  const onOpenLinkRef = useRef(onOpenLink)
+  const onCoverClickRef = useRef(onCoverClick)
   const onLoadMoreRef = useRef(onLoadMore)
   const hasMoreRef = useRef(hasMore)
   const disableLoadMoreRef = useRef(disableLoadMoreResolved)
   const isLoadingMoreRef = useRef(isLoadingMore)
 
-  itemsRef.current = items
   onToggleFocusRef.current = onToggleFocus
   onEditRef.current = onEdit
   onDeleteRef.current = onDelete
   onDragStartRef.current = onDragStart
   onDropRef.current = onDrop
+  onAddToSchemeRef.current = onAddToScheme
+  onOpenLinkRef.current = onOpenLink
+  onCoverClickRef.current = onCoverClick
   onLoadMoreRef.current = onLoadMore
   hasMoreRef.current = hasMore
   disableLoadMoreRef.current = disableLoadMoreResolved
@@ -359,10 +372,9 @@ export default function ArchivePageView({
   }, [items.length, listHeight, rowHeight])
 
   const showCategorySkeleton = isCategoryLoading && categories.length === 0
-  const showListSkeleton = isListLoading && !isUsingCache
+  const showListSkeleton = isListLoading && (!isUsingCache || items.length === 0)
   const rowRenderer = useCallback(
-    ({ index, style, ariaAttributes }: ArchiveRowProps) => {
-      const currentItems = itemsRef.current
+    ({ index, style, ariaAttributes, items: currentItems }: ArchiveRowProps) => {
       const currentHasMore = hasMoreRef.current
       const currentDisableLoadMore = disableLoadMoreRef.current
       const currentIsLoadingMore = isLoadingMoreRef.current
@@ -426,6 +438,9 @@ export default function ArchivePageView({
             onDelete={onDeleteRef.current}
             onDragStart={onDragStartRef.current}
             onDrop={onDropRef.current}
+            onAddToScheme={onAddToSchemeRef.current}
+            onCoverClick={() => onCoverClickRef.current?.(item.id)}
+            onCardClick={() => onOpenLinkRef.current?.(item.blueLink)}
           />
         </div>
       )
@@ -602,7 +617,7 @@ export default function ArchivePageView({
                 rowCount={virtualItemCount}
                 rowHeight={rowHeight}
                 rowComponent={rowRenderer}
-                rowProps={{}}
+                rowProps={{ items }}
                 onRowsRendered={({ stopIndex }) => {
                   if (!canLoadMore || isLoadingMore) return
                   if (stopIndex >= items.length) {
@@ -645,6 +660,7 @@ export default function ArchivePageView({
           }))}
           presetFields={presetFields}
           initialValues={productFormInitialValues}
+          autoOpenCoverPicker={autoOpenCoverPicker}
           onClose={onCloseProductForm}
           onSubmit={onSubmitProductForm}
         />

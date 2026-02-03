@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button"
+import { InteractiveCard } from "@/components/ui/interactive-card"
 import { GripVertical, Pencil, Star, Trash2 } from "lucide-react"
 
 interface ParamEntry {
@@ -28,6 +29,9 @@ interface ArchiveListCardProps {
   onDelete: (id: string) => void
   onDragStart: (id: string) => void
   onDrop: (id: string) => void
+  onAddToScheme?: (id: string) => void
+  onCoverClick?: () => void
+  onCardClick?: () => void
 }
 
 const TEXT = {
@@ -87,9 +91,18 @@ export default function ArchiveListCard({
   onDelete,
   onDragStart,
   onDrop,
+  onAddToScheme,
+  onCoverClick,
+  onCardClick,
 }: ArchiveListCardProps) {
   const normalizedMissingTips = missingTips.map((tip) => decodeUnicodeEscapes(tip))
   const hasMissing = normalizedMissingTips.length > 0
+  const coverCursorClass = onCoverClick ? "cursor-pointer" : ""
+  const isInteractive = Boolean(onCardClick)
+  const handleAddToScheme = () => {
+    if (!onAddToScheme) return
+    onAddToScheme(id)
+  }
   const handleDragStart = (event: React.DragEvent<HTMLSpanElement>) => {
     const card = event.currentTarget.closest("[data-archive-card]")
     if (card && event.dataTransfer?.setDragImage) {
@@ -102,15 +115,23 @@ export default function ArchiveListCard({
   }
 
   return (
-    <div
+    <InteractiveCard
+      interactive={isInteractive}
       className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card"
       data-archive-card
+      data-testid="archive-card-body"
       onDragOver={(event) => event.preventDefault()}
       onDrop={() => onDrop(id)}
+      onClick={onCardClick}
     >
       <div className="flex gap-5">
         <div
-          className="relative h-[140px] w-[120px] overflow-hidden rounded-xl border border-slate-200 bg-slate-100"
+          className={`relative h-[140px] w-[120px] overflow-hidden rounded-xl border border-slate-200 bg-slate-100 ${coverCursorClass}`}
+          data-testid="archive-card-cover"
+          onClick={(event) => {
+            event.stopPropagation()
+            onCoverClick?.()
+          }}
         >
           {image ? (
             <img
@@ -130,7 +151,10 @@ export default function ArchiveListCard({
                 ? "absolute left-2 top-2 h-7 w-7 bg-brand text-white"
                 : "absolute left-2 top-2 h-7 w-7 bg-white text-slate-400"
             }
-            onClick={() => onToggleFocus(id)}
+            onClick={(event) => {
+              event.stopPropagation()
+              onToggleFocus(id)
+            }}
           >
             <Star className="h-4 w-4" />
           </Button>
@@ -188,16 +212,32 @@ export default function ArchiveListCard({
                 role="img"
                 aria-label="Drag handle"
                 draggable
+                onClick={(event) => event.stopPropagation()}
                 onDragStart={handleDragStart}
               >
                 <GripVertical className="h-4 w-4" aria-hidden="true" />
               </span>
               <Button
                 type="button"
+                variant="outline"
+                size="sm"
+                data-testid="archive-add-scheme"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  handleAddToScheme()
+                }}
+              >
+                加入方案
+              </Button>
+              <Button
+                type="button"
                 variant="ghost"
                 size="icon"
                 className="text-slate-500"
-                onClick={() => onEdit(id)}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onEdit(id)
+                }}
               >
                 <Pencil className="h-4 w-4" />
               </Button>
@@ -206,7 +246,10 @@ export default function ArchiveListCard({
                 variant="ghost"
                 size="icon"
                 className="text-rose-500"
-                onClick={() => onDelete(id)}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onDelete(id)
+                }}
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -231,7 +274,15 @@ export default function ArchiveListCard({
               </div>
             ))}
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={() => onEdit(id)}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={(event) => {
+              event.stopPropagation()
+              onEdit(id)
+            }}
+          >
             {TEXT.matchParams}
           </Button>
         </div>
@@ -245,6 +296,6 @@ export default function ArchiveListCard({
           </div>
         ) : null}
       </div>
-    </div>
+    </InteractiveCard>
   )
 }
