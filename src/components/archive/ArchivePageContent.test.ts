@@ -4,6 +4,7 @@ import {
   fetchSchemeFilterItemsBatch,
   filterSchemesByCategory,
   isFixSortDisabled,
+  resolveSchemeFilterCacheItems,
   resolvePriceRange,
   resolveSortValueAfterLoad,
 } from "./ArchivePageContent"
@@ -136,5 +137,16 @@ describe("fetchSchemeFilterItemsBatch", () => {
       "/api/sourcing/items/by-ids",
     ])
     expect(result.items.map((item) => item.id)).toEqual(["item-1", "item-2"])
+  })
+})
+
+describe("resolveSchemeFilterCacheItems", () => {
+  it("returns cached items within ttl and evicts after ttl", () => {
+    const cache = new Map<string, { items: Array<{ id: string }>; timestamp: number }>()
+    cache.set("scheme-1", { items: [{ id: "item-1" }], timestamp: 1000 })
+
+    expect(resolveSchemeFilterCacheItems(cache, "scheme-1", 3000, 5000)).toHaveLength(1)
+    expect(resolveSchemeFilterCacheItems(cache, "scheme-1", 7000, 5000)).toBeNull()
+    expect(cache.has("scheme-1")).toBe(false)
   })
 })

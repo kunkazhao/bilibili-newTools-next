@@ -137,6 +137,28 @@ export const isFixSortDisabled = (params: {
 
 type ApiRequestFn = <T>(url: string, options?: RequestInit) => Promise<T>
 
+type SchemeFilterCacheEntry = {
+  items: ArchiveItem[]
+  timestamp: number
+}
+
+const SCHEME_FILTER_CACHE_TTL_MS = 5 * 60 * 1000
+
+export const resolveSchemeFilterCacheItems = (
+  cache: Map<string, SchemeFilterCacheEntry>,
+  key: string,
+  now: number,
+  ttlMs: number
+) => {
+  const cached = cache.get(key)
+  if (!cached) return null
+  if (now - cached.timestamp > ttlMs) {
+    cache.delete(key)
+    return null
+  }
+  return cached.items
+}
+
 export const fetchSchemeFilterItemsBatch = async (
   schemeId: string,
   request: ApiRequestFn
@@ -325,7 +347,7 @@ export default function ArchivePage() {
   const hasHydratedCategoriesRef = useRef(false)
   const chunkTimerRef = useRef<number | null>(null)
   const softRefreshOrderRef = useRef<string[] | null>(null)
-  const schemeFilterCacheRef = useRef<Map<string, ArchiveItem[]>>(new Map())
+  const schemeFilterCacheRef = useRef<Map<string, SchemeFilterCacheEntry>>(new Map())
   const schemeFilterTokenRef = useRef(0)
   const skipNextLoadRef = useRef(false)
   const lastFetchOffsetRef = useRef(0)
@@ -729,7 +751,12 @@ export default function ArchivePage() {
       }
       const cacheKey = String(schemeId)
       if (!options?.force) {
-        const cached = schemeFilterCacheRef.current.get(cacheKey)
+        const cached = resolveSchemeFilterCacheItems(
+          schemeFilterCacheRef.current,
+          cacheKey,
+          Date.now(),
+          SCHEME_FILTER_CACHE_TTL_MS
+        )
         if (cached) {
           setSchemeFilterItems(cached)
           return
@@ -757,7 +784,10 @@ export default function ArchivePage() {
           if (!uniqueIds.length) {
             if (token === schemeFilterTokenRef.current) {
               setSchemeFilterItems([])
-              schemeFilterCacheRef.current.set(cacheKey, [])
+              schemeFilterCacheRef.current.set(cacheKey, {
+                items: [],
+                timestamp: Date.now(),
+              })
             }
             return
           }
@@ -791,7 +821,10 @@ export default function ArchivePage() {
         if (token !== schemeFilterTokenRef.current) return
         if (schemeFilterId !== schemeId) return
         setSchemeFilterItems(ordered)
-        schemeFilterCacheRef.current.set(cacheKey, ordered)
+        schemeFilterCacheRef.current.set(cacheKey, {
+          items: ordered,
+          timestamp: Date.now(),
+        })
       } catch (error) {
         if (token !== schemeFilterTokenRef.current) return
         setSchemeFilterItems([])
@@ -861,7 +894,10 @@ export default function ArchivePage() {
         item.id === id ? { ...item, isFocused: !item.isFocused } : item
       )
       if (schemeFilterId) {
-        schemeFilterCacheRef.current.set(String(schemeFilterId), next)
+        schemeFilterCacheRef.current.set(String(schemeFilterId), {
+          items: next,
+          timestamp: Date.now(),
+        })
       }
       return next
     })
@@ -946,7 +982,10 @@ export default function ArchivePage() {
     setSchemeFilterItems((prev) => {
       const next = prev.filter((item) => !deleteIds.has(item.id))
       if (schemeFilterId) {
-        schemeFilterCacheRef.current.set(String(schemeFilterId), next)
+        schemeFilterCacheRef.current.set(String(schemeFilterId), {
+          items: next,
+          timestamp: Date.now(),
+        })
       }
       return next
     })
@@ -966,7 +1005,10 @@ export default function ArchivePage() {
       setManualOrder(snapshotOrder)
       setSchemeFilterItems(snapshotSchemeItems)
       if (schemeFilterId) {
-        schemeFilterCacheRef.current.set(String(schemeFilterId), snapshotSchemeItems)
+        schemeFilterCacheRef.current.set(String(schemeFilterId), {
+          items: snapshotSchemeItems,
+          timestamp: Date.now(),
+        })
       }
       showToast("清空失败", "error")
     } finally {
@@ -1218,7 +1260,10 @@ export default function ArchivePage() {
       setItems(nextItems)
       setSchemeFilterItems(nextSchemeItems)
       if (schemeFilterId) {
-        schemeFilterCacheRef.current.set(String(schemeFilterId), nextSchemeItems)
+        schemeFilterCacheRef.current.set(String(schemeFilterId), {
+          items: nextSchemeItems,
+          timestamp: Date.now(),
+        })
       }
 
       const request = updateItem(editingItemId, {
@@ -1256,10 +1301,10 @@ export default function ArchivePage() {
             setItems(nextItemsFromServer)
             setSchemeFilterItems(nextSchemeFromServer)
             if (schemeFilterId) {
-              schemeFilterCacheRef.current.set(
-                String(schemeFilterId),
-                nextSchemeFromServer
-              )
+              schemeFilterCacheRef.current.set(String(schemeFilterId), {
+                items: nextSchemeFromServer,
+                timestamp: Date.now(),
+              })
             }
           }
         })
@@ -1267,10 +1312,10 @@ export default function ArchivePage() {
           setItems(prevItemsSnapshot)
           setSchemeFilterItems(prevSchemeSnapshot)
           if (schemeFilterId) {
-            schemeFilterCacheRef.current.set(
-              String(schemeFilterId),
-              prevSchemeSnapshot
-            )
+            schemeFilterCacheRef.current.set(String(schemeFilterId), {
+              items: prevSchemeSnapshot,
+              timestamp: Date.now(),
+            })
           }
           throw error
         })
