@@ -839,6 +839,16 @@ def parse_bili_count(value: Any) -> Optional[int]:
         return None
 
 
+def pick_first_value(*values: Any) -> Any:
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        return value
+    return None
+
+
 def parse_duration_to_seconds(value: Any) -> Optional[int]:
     if value is None:
         return None
@@ -1117,21 +1127,29 @@ def build_account_video_payload(
             pub_time = None
     stat_src = stat if isinstance(stat, dict) else {}
     stats = {
-        "view": parse_bili_count(stat_src.get("view") or item.get("play") or item.get("view")),
-        "like": parse_bili_count(stat_src.get("like") or item.get("like")),
-        "favorite": parse_bili_count(
-            stat_src.get("favorite")
-            or stat_src.get("fav")
-            or stat_src.get("favorites")
-            or item.get("favorite")
-            or item.get("favorites")
+        "view": parse_bili_count(
+            pick_first_value(stat_src.get("view"), item.get("play"), item.get("view"))
         ),
-        "reply": parse_bili_count(stat_src.get("reply") or item.get("comment") or item.get("reply")),
+        "like": parse_bili_count(pick_first_value(stat_src.get("like"), item.get("like"))),
+        "favorite": parse_bili_count(
+            pick_first_value(
+                stat_src.get("favorite"),
+                stat_src.get("fav"),
+                stat_src.get("favorites"),
+                item.get("favorite"),
+                item.get("favorites"),
+            )
+        ),
+        "reply": parse_bili_count(
+            pick_first_value(stat_src.get("reply"), item.get("comment"), item.get("reply"))
+        ),
         "danmaku": parse_bili_count(
-            stat_src.get("danmaku")
-            or stat_src.get("video_review")
-            or item.get("video_review")
-            or item.get("danmaku")
+            pick_first_value(
+                stat_src.get("danmaku"),
+                stat_src.get("video_review"),
+                item.get("video_review"),
+                item.get("danmaku"),
+            )
         ),
     }
     if all(value is None for value in stats.values()):
@@ -1193,26 +1211,36 @@ async def fetch_account_video_stat(bvid: str) -> Optional[Dict[str, Any]]:
     trimmed = str(bvid).strip()
     if not trimmed:
         return None
-    url = "https://api.bilibili.com/x/web-interface/archive/stat"
-    params = {"bvid": trimmed}
     headers = build_bilibili_headers({"Referer": "https://www.bilibili.com/"})
-    for attempt in range(2):
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    url,
-                    headers=headers,
-                    params=params,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as resp:
-                    data = await resp.json()
-                    if data.get("code") != 0:
-                        return None
-                    return data.get("data") or None
-        except Exception:
-            if attempt == 0:
-                continue
-            return None
+    stat_url = "https://api.bilibili.com/x/web-interface/archive/stat"
+    view_url = "https://api.bilibili.com/x/web-interface/view"
+
+    async def fetch_data(url: str) -> Optional[Dict[str, Any]]:
+        for attempt in range(2):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        url,
+                        headers=headers,
+                        params={"bvid": trimmed},
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as resp:
+                        data = await resp.json()
+                        if data.get("code") != 0:
+                            return None
+                        return data.get("data") or None
+            except Exception:
+                if attempt == 0:
+                    continue
+                return None
+        return None
+
+    stat_data = await fetch_data(stat_url)
+    if stat_data:
+        return stat_data
+    view_data = await fetch_data(view_url)
+    if isinstance(view_data, dict):
+        return view_data.get("stat") or None
     return None
 
 
@@ -1859,6 +1887,7 @@ async def taobao_item_details(item_id: str) -> Dict[str, Any]:
         "cover": item.get("pict_url") or "",
         "price": item.get("zk_final_price") or item.get("price") or "",
         "commissionRate": normalize_taobao_commission_rate(income.get("commission_rate")),
+        "sales30": item.get("volume") or "",
         "shopName": item.get("shop_title") or item.get("seller_nick") or "",
         "materialUrl": item.get("item_url") or item.get("url") or "",
     }
@@ -5915,6 +5944,22 @@ class SourcingItemCreate(BaseModel):
 
     commission_rate: Optional[float] = None
 
+    jd_price: Optional[float] = None
+
+    jd_commission: Optional[float] = None
+
+    jd_commission_rate: Optional[float] = None
+
+    jd_sales: Optional[float] = None
+
+    tb_price: Optional[float] = None
+
+    tb_commission: Optional[float] = None
+
+    tb_commission_rate: Optional[float] = None
+
+    tb_sales: Optional[float] = None
+
     source_type: Optional[str] = "manual"
 
     source_ref: Optional[str] = None
@@ -5944,6 +5989,22 @@ class SourcingItemBatchItem(BaseModel):
     commission: Optional[float] = None
 
     commission_rate: Optional[float] = None
+
+    jd_price: Optional[float] = None
+
+    jd_commission: Optional[float] = None
+
+    jd_commission_rate: Optional[float] = None
+
+    jd_sales: Optional[float] = None
+
+    tb_price: Optional[float] = None
+
+    tb_commission: Optional[float] = None
+
+    tb_commission_rate: Optional[float] = None
+
+    tb_sales: Optional[float] = None
 
     source_type: Optional[str] = "manual"
 
@@ -5991,6 +6052,22 @@ class SourcingItemUpdate(BaseModel):
     commission: Optional[float] = None
 
     commission_rate: Optional[float] = None
+
+    jd_price: Optional[float] = None
+
+    jd_commission: Optional[float] = None
+
+    jd_commission_rate: Optional[float] = None
+
+    jd_sales: Optional[float] = None
+
+    tb_price: Optional[float] = None
+
+    tb_commission: Optional[float] = None
+
+    tb_commission_rate: Optional[float] = None
+
+    tb_sales: Optional[float] = None
 
     source_type: Optional[str] = None
 
@@ -6281,6 +6358,24 @@ def normalize_sourcing_item(row: Dict[str, Any]) -> Dict[str, Any]:
 
         tags = []
 
+    price = decimal_to_float(row.get("price"))
+    commission = decimal_to_float(row.get("commission"))
+    commission_rate = decimal_to_float(row.get("commission_rate"))
+    jd_price = decimal_to_float(row.get("jd_price"))
+    jd_commission = decimal_to_float(row.get("jd_commission"))
+    jd_commission_rate = decimal_to_float(row.get("jd_commission_rate"))
+    jd_sales = decimal_to_float(row.get("jd_sales"))
+    tb_price = decimal_to_float(row.get("tb_price"))
+    tb_commission = decimal_to_float(row.get("tb_commission"))
+    tb_commission_rate = decimal_to_float(row.get("tb_commission_rate"))
+    tb_sales = decimal_to_float(row.get("tb_sales"))
+    if jd_price is None:
+        jd_price = price
+    if jd_commission is None:
+        jd_commission = commission
+    if jd_commission_rate is None:
+        jd_commission_rate = commission_rate
+
     return {
 
         "id": row.get("id"),
@@ -6295,11 +6390,27 @@ def normalize_sourcing_item(row: Dict[str, Any]) -> Dict[str, Any]:
 
         "taobao_link": row.get("taobao_link"),
 
-        "price": decimal_to_float(row.get("price")),
+        "price": price,
 
-        "commission": decimal_to_float(row.get("commission")),
+        "commission": commission,
 
-        "commission_rate": decimal_to_float(row.get("commission_rate")),
+        "commission_rate": commission_rate,
+
+        "jd_price": jd_price,
+
+        "jd_commission": jd_commission,
+
+        "jd_commission_rate": jd_commission_rate,
+
+        "jd_sales": jd_sales,
+
+        "tb_price": tb_price,
+
+        "tb_commission": tb_commission,
+
+        "tb_commission_rate": tb_commission_rate,
+
+        "tb_sales": tb_sales,
 
         "cover_url": row.get("cover_url"),
 
@@ -6372,6 +6483,14 @@ SCHEME_SYNC_FIELDS = (
     "price",
     "commission",
     "commission_rate",
+    "jd_price",
+    "jd_commission",
+    "jd_commission_rate",
+    "jd_sales",
+    "tb_price",
+    "tb_commission",
+    "tb_commission_rate",
+    "tb_sales",
     "cover_url",
     "remark",
     "spec",
@@ -6789,7 +6908,25 @@ SOURCING_LIST_FIELDS = ",".join([
 
     "commission_rate",
 
+    "jd_price",
+
+    "jd_commission",
+
+    "jd_commission_rate",
+
+    "jd_sales",
+
+    "tb_price",
+
+    "tb_commission",
+
+    "tb_commission_rate",
+
+    "tb_sales",
+
     "link",
+
+    "taobao_link",
 
     "remark",
 
@@ -7515,6 +7652,16 @@ async def create_sourcing_item(payload: SourcingItemCreate, request: Request):
 
     merged_spec = merge_spec_payload(payload.spec, raw_spec)
 
+    jd_price = payload.jd_price if payload.jd_price is not None else payload.price
+    jd_commission = (
+        payload.jd_commission if payload.jd_commission is not None else payload.commission
+    )
+    jd_commission_rate = (
+        payload.jd_commission_rate
+        if payload.jd_commission_rate is not None
+        else payload.commission_rate
+    )
+
     body = {
 
         "category_id": payload.category_id,
@@ -7527,11 +7674,27 @@ async def create_sourcing_item(payload: SourcingItemCreate, request: Request):
 
         "taobao_link": payload.taobao_link or None,
 
-        "price": decimal_str(payload.price),
+        "price": decimal_str(jd_price),
 
-        "commission": decimal_str(payload.commission),
+        "commission": decimal_str(jd_commission),
 
-        "commission_rate": decimal_str(payload.commission_rate),
+        "commission_rate": decimal_str(jd_commission_rate),
+
+        "jd_price": decimal_str(jd_price),
+
+        "jd_commission": decimal_str(jd_commission),
+
+        "jd_commission_rate": decimal_str(jd_commission_rate),
+
+        "jd_sales": decimal_str(payload.jd_sales),
+
+        "tb_price": decimal_str(payload.tb_price),
+
+        "tb_commission": decimal_str(payload.tb_commission),
+
+        "tb_commission_rate": decimal_str(payload.tb_commission_rate),
+
+        "tb_sales": decimal_str(payload.tb_sales),
 
         "source_type": payload.source_type or "manual",
 
@@ -7638,7 +7801,7 @@ async def create_sourcing_items_batch(payload: SourcingItemBatchCreate, request:
 
                 "sourcing_items",
 
-                params={"select": "id,category_id,uid,title,link,taobao_link,price,commission,commission_rate,source_type,source_ref,cover_url,remark,spec,tags"}
+                params={"select": "id,category_id,uid,title,link,taobao_link,price,commission,commission_rate,jd_price,jd_commission,jd_commission_rate,jd_sales,tb_price,tb_commission,tb_commission_rate,tb_sales,source_type,source_ref,cover_url,remark,spec,tags"}
 
             )
 
@@ -7720,6 +7883,16 @@ async def create_sourcing_items_batch(payload: SourcingItemBatchCreate, request:
 
                     spec["_temp_id"] = existing_spec.get("_temp_id")
 
+            jd_price = item.jd_price if item.jd_price is not None else item.price
+            jd_commission = (
+                item.jd_commission if item.jd_commission is not None else item.commission
+            )
+            jd_commission_rate = (
+                item.jd_commission_rate
+                if item.jd_commission_rate is not None
+                else item.commission_rate
+            )
+
             updates = {
 
                 "title": title,
@@ -7728,11 +7901,27 @@ async def create_sourcing_items_batch(payload: SourcingItemBatchCreate, request:
 
                 "taobao_link": item.taobao_link or None,
 
-                "price": decimal_str(item.price),
+                "price": decimal_str(jd_price),
 
-                "commission": decimal_str(item.commission),
+                "commission": decimal_str(jd_commission),
 
-                "commission_rate": decimal_str(item.commission_rate),
+                "commission_rate": decimal_str(jd_commission_rate),
+
+                "jd_price": decimal_str(jd_price),
+
+                "jd_commission": decimal_str(jd_commission),
+
+                "jd_commission_rate": decimal_str(jd_commission_rate),
+
+                "jd_sales": decimal_str(item.jd_sales),
+
+                "tb_price": decimal_str(item.tb_price),
+
+                "tb_commission": decimal_str(item.tb_commission),
+
+                "tb_commission_rate": decimal_str(item.tb_commission_rate),
+
+                "tb_sales": decimal_str(item.tb_sales),
 
                 "remark": item.remark or None,
 
@@ -7776,6 +7965,16 @@ async def create_sourcing_items_batch(payload: SourcingItemBatchCreate, request:
 
         uid = f"{prefix}{str(counter).zfill(3)}"
 
+        jd_price = item.jd_price if item.jd_price is not None else item.price
+        jd_commission = (
+            item.jd_commission if item.jd_commission is not None else item.commission
+        )
+        jd_commission_rate = (
+            item.jd_commission_rate
+            if item.jd_commission_rate is not None
+            else item.commission_rate
+        )
+
         rows.append({
 
             "category_id": payload.category_id,
@@ -7788,11 +7987,27 @@ async def create_sourcing_items_batch(payload: SourcingItemBatchCreate, request:
 
             "taobao_link": item.taobao_link or None,
 
-            "price": decimal_str(item.price),
+            "price": decimal_str(jd_price),
 
-            "commission": decimal_str(item.commission),
+            "commission": decimal_str(jd_commission),
 
-            "commission_rate": decimal_str(item.commission_rate),
+            "commission_rate": decimal_str(jd_commission_rate),
+
+            "jd_price": decimal_str(jd_price),
+
+            "jd_commission": decimal_str(jd_commission),
+
+            "jd_commission_rate": decimal_str(jd_commission_rate),
+
+            "jd_sales": decimal_str(item.jd_sales),
+
+            "tb_price": decimal_str(item.tb_price),
+
+            "tb_commission": decimal_str(item.tb_commission),
+
+            "tb_commission_rate": decimal_str(item.tb_commission_rate),
+
+            "tb_sales": decimal_str(item.tb_sales),
 
             "source_type": item.source_type or "manual",
 
@@ -8038,14 +8253,47 @@ async def patch_sourcing_item(item_id: str, payload: SourcingItemUpdate, request
     if payload.price is not None:
 
         updates["price"] = decimal_str(payload.price)
+        if payload.jd_price is None:
+            updates["jd_price"] = decimal_str(payload.price)
 
     if payload.commission is not None:
 
         updates["commission"] = decimal_str(payload.commission)
+        if payload.jd_commission is None:
+            updates["jd_commission"] = decimal_str(payload.commission)
 
     if payload.commission_rate is not None:
 
         updates["commission_rate"] = decimal_str(payload.commission_rate)
+        if payload.jd_commission_rate is None:
+            updates["jd_commission_rate"] = decimal_str(payload.commission_rate)
+
+    if payload.jd_price is not None:
+        updates["jd_price"] = decimal_str(payload.jd_price)
+        updates["price"] = decimal_str(payload.jd_price)
+
+    if payload.jd_commission is not None:
+        updates["jd_commission"] = decimal_str(payload.jd_commission)
+        updates["commission"] = decimal_str(payload.jd_commission)
+
+    if payload.jd_commission_rate is not None:
+        updates["jd_commission_rate"] = decimal_str(payload.jd_commission_rate)
+        updates["commission_rate"] = decimal_str(payload.jd_commission_rate)
+
+    if payload.jd_sales is not None:
+        updates["jd_sales"] = decimal_str(payload.jd_sales)
+
+    if payload.tb_price is not None:
+        updates["tb_price"] = decimal_str(payload.tb_price)
+
+    if payload.tb_commission is not None:
+        updates["tb_commission"] = decimal_str(payload.tb_commission)
+
+    if payload.tb_commission_rate is not None:
+        updates["tb_commission_rate"] = decimal_str(payload.tb_commission_rate)
+
+    if payload.tb_sales is not None:
+        updates["tb_sales"] = decimal_str(payload.tb_sales)
 
     if payload.source_ref is not None:
 
