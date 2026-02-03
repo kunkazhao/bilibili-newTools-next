@@ -187,6 +187,10 @@ BILIBILI_COOKIE = os.getenv("BILIBILI_COOKIE", "")
 # 淘宝 Cookie
 
 TAOBAO_COOKIE = os.getenv("TAOBAO_COOKIE", "")
+TAOBAO_APP_KEY = os.getenv("TAOBAO_APP_KEY")
+TAOBAO_APP_SECRET = os.getenv("TAOBAO_APP_SECRET")
+TAOBAO_SESSION = os.getenv("TAOBAO_SESSION")
+TAOBAO_ADZONE_ID = os.getenv("TAOBAO_ADZONE_ID")
 
 
 
@@ -1110,7 +1114,8 @@ def build_account_video_payload(account_id: str, item: Dict[str, Any]) -> Option
     stats = {
         "view": parse_bili_count(item.get("play") or item.get("view")),
         "like": parse_bili_count(item.get("like")),
-        "reply": parse_bili_count(item.get("comment") or item.get("video_review") or item.get("reply")),
+        "reply": parse_bili_count(item.get("comment") or item.get("reply")),
+        "danmaku": parse_bili_count(item.get("video_review") or item.get("danmaku")),
     }
     if all(value is None for value in stats.values()):
         stats = None
@@ -1722,151 +1727,119 @@ async def jd_main_image(request: JdImageRequest):
 
 
 
-@app.post("/api/taobao/product")
 
-async def taobao_product_info(request: dict):
+TAOBAO_API_BASE = "https://eco.taobao.com/router/rest"
 
-    """获取淘宝商品标题（通过解析页面HTML）"""
 
+def _taobao_timestamp() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def build_taobao_signed_params(method: str, params: Dict[str, Any]) -> Dict[str, str]:
+    if not TAOBAO_APP_KEY or not TAOBAO_APP_SECRET:
+        raise HTTPException(status_code=500, detail="??????? app_key/app_secret")
+    payload: Dict[str, Any] = {
+        "app_key": TAOBAO_APP_KEY,
+        "method": method,
+        "format": "json",
+        "v": "2.0",
+        "sign_method": "md5",
+        "timestamp": _taobao_timestamp(),
+    }
+    if TAOBAO_SESSION:
+        payload["session"] = TAOBAO_SESSION
+    for key, value in (params or {}).items():
+        if value is None:
+            continue
+        payload[key] = value
+    sign_base = TAOBAO_APP_SECRET + ''.join(
+        f"{k}{payload[k]}" for k in sorted(payload.keys())
+    ) + TAOBAO_APP_SECRET
+    payload["sign"] = hashlib.md5(sign_base.encode("utf-8")).hexdigest().upper()
+    return {k: str(v) for k, v in payload.items()}
+
+
+def normalize_taobao_commission_rate(value: Any) -> str:
+    if value is None or value == "":
+        return ""
     try:
-
-        url = request.get("url")
-
-        if not url:
-
-            raise HTTPException(status_code=400, detail="缺少 url 参数")
-
-
-
-        print(f"[淘宝API] 获取商品信息: {url[:80]}...")
-
-
-
-        headers = {
-
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-
-            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-
-        }
-
-
-
-        # 添加淘宝 Cookie（如果配置了）
-
-        if TAOBAO_COOKIE:
-
-            headers["Cookie"] = TAOBAO_COOKIE
-
-            print(f"[淘宝API] 使用已配置的 Cookie")
-
-
-
-        async with aiohttp.ClientSession() as session:
-
-            async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
-
-                if response.status != 200:
-
-                    print(f"[淘宝API] 请求失败: {response.status}")
-
-                    return {"title": None, "error": f"请求失败: {response.status}"}
-
-
-
-                html = await response.text(errors='ignore')
-
-
-
-                # 尝试多种方式提取商品标题
-
-                title = None
-
-
-
-                # 方式1: 从meta标签提取 (最常见)
-
-                meta_patterns = [
-
-                    r'<meta property="og:title" content="([^"]*)"',
-
-                    r'<meta name="title" content="([^"]*)"',
-
-                    r'<title>([^<]+)</title>',
-
-                ]
-
-                for pattern in meta_patterns:
-
-                    match = re.search(pattern, html)
-
-                    if match:
-
-                        title = match.group(1).strip()
-
-                        # 清理标题中的网站名
-
-                        title = re.sub(r'\s*-\s*淘宝网\s*$', '', title)
-
-                        title = re.sub(r'\s*-\s*天猫Tmall\.com\s*$', '', title)
-
-                        title = re.sub(r'\s*-\s*天猫超市\s*$', '', title)
-
-                        title = re.sub(r'\s*【.*?】\s*$', '', title)  # 去除后缀标签
-
-                        if title:
-
-                            break
-
-
-
-                # 方式2: 从JSON数据中提取 (新版淘宝页面)
-
-                if not title:
-
-                    # 淘宝商品信息通常在页面脚本中
-
-                    data_pattern = r'"title":"([^"]+)"'
-
-                    match = re.search(data_pattern, html)
-
-                    if match:
-
-                        title = match.group(1).strip()
-
-                        # 处理Unicode转义
-
-                        title = title.encode('utf-8').decode('unicode_escape')
-
-
-
-                if title:
-
-                    print(f"[淘宝API] 成功获取标题: {title[:50]}...")
-
-                    return {"title": title}
-
-                else:
-
-                    print(f"[淘宝API] 未能提取标题")
-
-                    return {"title": None, "error": "未能提取商品标题"}
-
-
-
-    except Exception as e:
-
-        print(f"[淘宝API] 错误: {e}")
-
-        import traceback
-
-        traceback.print_exc()
-
-        return {"title": None, "error": str(e)}
-
-
+        dec = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return ""
+    percent = dec / Decimal("100")
+    if percent == percent.to_integral():
+        return f"{int(percent)}%"
+    formatted = f"{percent:.2f}".rstrip("0").rstrip(".")
+    return f"{formatted}%"
+
+
+async def taobao_api_request(method: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    payload = build_taobao_signed_params(method, params)
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            TAOBAO_API_BASE,
+            data=payload,
+            timeout=aiohttp.ClientTimeout(total=15),
+        ) as response:
+            data = await response.json(content_type=None)
+            return data if isinstance(data, dict) else {}
+
+
+async def taobao_click_extract(url: str) -> Dict[str, Any]:
+    params: Dict[str, Any] = {"click_url": url}
+    if TAOBAO_ADZONE_ID:
+        params["adzone_id"] = TAOBAO_ADZONE_ID
+    data = await taobao_api_request("taobao.tbk.item.click.extract", params)
+    payload = data.get("tbk_item_click_extract_response", {})
+    result = payload.get("data") or {}
+    return {
+        "itemId": result.get("item_id") or "",
+        "openIid": result.get("open_iid") or "",
+        "sourceLink": url,
+    }
+
+
+async def taobao_item_details(item_id: str) -> Dict[str, Any]:
+    params: Dict[str, Any] = {"item_id": item_id}
+    data = await taobao_api_request("taobao.tbk.item.details.upgrade.get", params)
+    payload = data.get("tbk_item_details_upgrade_get_response", {})
+    results = payload.get("results", {})
+    items = results.get("n_tbk_item", []) if isinstance(results, dict) else []
+    item = items[0] if items else {}
+    publish = item.get("publish_info") or {}
+    income = publish.get("income_info") or {}
+    return {
+        "title": item.get("title") or "",
+        "cover": item.get("pict_url") or "",
+        "price": item.get("zk_final_price") or item.get("price") or "",
+        "commissionRate": normalize_taobao_commission_rate(income.get("commission_rate")),
+        "shopName": item.get("shop_title") or item.get("seller_nick") or "",
+        "materialUrl": item.get("item_url") or item.get("url") or "",
+    }
+
+
+@app.post("/api/taobao/resolve")
+async def taobao_resolve(request: dict):
+    """????/????????ID"""
+    url = (request or {}).get("url") or ""
+    url = str(url).strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="?? url ??")
+    return await taobao_click_extract(url)
+
+
+@app.post("/api/taobao/product")
+async def taobao_product_info(request: dict):
+    """??????????????????"""
+    item_id = (request or {}).get("item_id") or ""
+    open_iid = (request or {}).get("open_iid") or ""
+    item_id = str(item_id).strip()
+    open_iid = str(open_iid).strip()
+    if not item_id and not open_iid:
+        raise HTTPException(status_code=400, detail="?? item_id ? open_iid ??")
+    if not item_id and open_iid:
+        item_id = open_iid
+    return await taobao_item_details(item_id)
 
 
 
@@ -6565,7 +6538,7 @@ async def ai_fill_product_params(
             )
         # 确保只包含预设字段
         for key in list(item.keys()):
-            if key not in spec_fields + ["name"]:
+            if key not in field_keys + ["name"]:
                 del item[key]
 
     return result
@@ -8425,19 +8398,11 @@ async def get_my_account_state(account_id: Optional[str] = None):
     }
 
 
-@app.post("/api/my-accounts/sync")
-async def sync_my_account_videos(payload: MyAccountSyncPayload):
-    client = ensure_supabase()
-    account_id = payload.account_id.strip()
-    if not account_id:
-        raise HTTPException(status_code=400, detail="账号不能为空")
-
-    existing_accounts = await client.select("comment_accounts", {"id": f"eq.{account_id}"})
-    if not existing_accounts:
-        raise HTTPException(status_code=404, detail="账号不存在")
-
-    account = existing_accounts[0]
-    homepage_link = account.get("homepage_link") or ""
+async def sync_account_videos_for_account(
+    client: SupabaseClient,
+    account_id: str,
+    homepage_link: str,
+) -> Tuple[int, int]:
     mid = extract_mid_from_homepage_link(homepage_link)
     if not mid:
         raise HTTPException(status_code=400, detail="请先填写正确的账号主页链接")
@@ -8465,6 +8430,26 @@ async def sync_my_account_videos(payload: MyAccountSyncPayload):
     if rows:
         await client.upsert("account_videos", rows, on_conflict="account_id,bvid")
 
+    return added, updated
+
+
+@app.post("/api/my-accounts/sync")
+async def sync_my_account_videos(payload: MyAccountSyncPayload):
+    client = ensure_supabase()
+    account_id = payload.account_id.strip()
+    if not account_id:
+        raise HTTPException(status_code=400, detail="账号不能为空")
+
+    existing_accounts = await client.select("comment_accounts", {"id": f"eq.{account_id}"})
+    if not existing_accounts:
+        raise HTTPException(status_code=404, detail="账号不存在")
+
+    account = existing_accounts[0]
+    homepage_link = account.get("homepage_link") or ""
+    added, updated = await sync_account_videos_for_account(
+        client, account_id, homepage_link
+    )
+
     videos = await client.select(
         "account_videos",
         params={
@@ -8477,6 +8462,77 @@ async def sync_my_account_videos(payload: MyAccountSyncPayload):
         "added": added,
         "updated": updated,
         "videos": [normalize_account_video(item) for item in videos],
+    }
+
+
+@app.post("/api/my-accounts/sync-all")
+async def sync_my_account_videos_all():
+    client = ensure_supabase()
+    accounts = await client.select("comment_accounts", params={"order": "created_at.asc"})
+    results: List[Dict[str, Any]] = []
+    total_added = 0
+    total_updated = 0
+    failed = 0
+
+    for account in accounts:
+        account_id = account.get("id") or ""
+        name = account.get("name") or ""
+        if not account_id:
+            failed += 1
+            results.append(
+                {
+                    "account_id": account_id,
+                    "name": name,
+                    "added": 0,
+                    "updated": 0,
+                    "error": "账号ID缺失",
+                }
+            )
+            continue
+        try:
+            homepage_link = account.get("homepage_link") or ""
+            added, updated = await sync_account_videos_for_account(
+                client, account_id, homepage_link
+            )
+            total_added += added
+            total_updated += updated
+            results.append(
+                {
+                    "account_id": account_id,
+                    "name": name,
+                    "added": added,
+                    "updated": updated,
+                }
+            )
+        except HTTPException as exc:
+            failed += 1
+            results.append(
+                {
+                    "account_id": account_id,
+                    "name": name,
+                    "added": 0,
+                    "updated": 0,
+                    "error": str(exc.detail),
+                }
+            )
+        except Exception as exc:
+            failed += 1
+            results.append(
+                {
+                    "account_id": account_id,
+                    "name": name,
+                    "added": 0,
+                    "updated": 0,
+                    "error": str(exc),
+                }
+            )
+
+    return {
+        "total_accounts": len(accounts),
+        "added": total_added,
+        "updated": total_updated,
+        "failed": failed,
+        "results": results,
     }
 
 
