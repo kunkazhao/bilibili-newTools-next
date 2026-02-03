@@ -814,6 +814,54 @@ def extract_mid_from_homepage_link(link: Optional[str]) -> str:
     return ""
 
 
+def parse_bili_count(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    text = str(value).strip()
+    if not text:
+        return None
+    multiplier = 1
+    if text.endswith("万"):
+        multiplier = 10000
+        text = text[:-1]
+    elif text.endswith("亿"):
+        multiplier = 100000000
+        text = text[:-1]
+    try:
+        return int(float(text) * multiplier)
+    except ValueError:
+        return None
+
+
+def parse_duration_to_seconds(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    text = str(value).strip()
+    if not text:
+        return None
+    if ":" not in text:
+        try:
+            return int(float(text))
+        except ValueError:
+            return None
+    parts = [p for p in text.split(":") if p != ""]
+    if not parts:
+        return None
+    try:
+        numbers = [int(part) for part in parts]
+    except ValueError:
+        return None
+    if len(numbers) == 3:
+        return numbers[0] * 3600 + numbers[1] * 60 + numbers[2]
+    if len(numbers) == 2:
+        return numbers[0] * 60 + numbers[1]
+    return numbers[0]
+
+
 
 
 
@@ -1027,6 +1075,93 @@ async def fetch_wbi_subtitle_list(
 
             break
 
+    return []
+
+
+def build_bilibili_video_link(bvid: Optional[str]) -> str:
+    if not bvid:
+        return ""
+    trimmed = str(bvid).strip()
+    if not trimmed:
+        return ""
+    if trimmed.lower().startswith("bv"):
+        return f"https://www.bilibili.com/video/{trimmed}"
+    return f"https://www.bilibili.com/video/BV{trimmed}"
+
+
+def build_account_video_payload(account_id: str, item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    if not isinstance(item, dict):
+        return None
+    bvid = item.get("bvid") or item.get("bvid_str") or ""
+    bvid = str(bvid).strip()
+    if not bvid:
+        return None
+    title = item.get("title") or ""
+    cover = item.get("pic") or item.get("cover") or ""
+    author = item.get("author") or item.get("owner", {}).get("name") or ""
+    duration = parse_duration_to_seconds(item.get("length") or item.get("duration"))
+    pub_ts = item.get("created") or item.get("pubdate")
+    pub_time = None
+    if pub_ts:
+        try:
+            pub_time = datetime.fromtimestamp(int(pub_ts), tz=timezone.utc).isoformat()
+        except Exception:
+            pub_time = None
+    stats = {
+        "view": parse_bili_count(item.get("play") or item.get("view")),
+        "like": parse_bili_count(item.get("like")),
+        "reply": parse_bili_count(item.get("comment") or item.get("video_review") or item.get("reply")),
+    }
+    if all(value is None for value in stats.values()):
+        stats = None
+    return {
+        "account_id": account_id,
+        "bvid": bvid,
+        "title": title,
+        "link": build_bilibili_video_link(bvid),
+        "cover": cover,
+        "author": author,
+        "duration": duration,
+        "pub_time": pub_time,
+        "stats": stats,
+        "payload": item,
+        "updated_at": utc_now_iso(),
+    }
+
+
+async def fetch_account_videos_from_bili(mid: str, page: int = 1, page_size: int = 20) -> List[Dict[str, Any]]:
+    keys = await fetch_wbi_keys()
+    if not keys:
+        raise HTTPException(status_code=500, detail="无法获取 B 站 WBI 密钥")
+    url = "https://api.bilibili.com/x/space/wbi/arc/search"
+    params: Dict[str, str] = {
+        "mid": str(mid),
+        "pn": str(page),
+        "ps": str(page_size),
+        "order": "pubdate",
+    }
+    headers = build_bilibili_headers({"Referer": "https://www.bilibili.com/"})
+    for attempt in range(2):
+        signed_params = encode_wbi_params(params, keys.get("img_key", ""), keys.get("sub_key", ""))
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url,
+                    headers=headers,
+                    params=signed_params,
+                    timeout=aiohttp.ClientTimeout(total=12),
+                ) as resp:
+                    data = await resp.json()
+                    if data.get("code") != 0:
+                        message = data.get("message") or "获取账号视频失败"
+                        raise RuntimeError(message)
+                    vlist = data.get("data", {}).get("list", {}).get("vlist", []) or []
+                    return vlist
+        except Exception as e:
+            if attempt == 0:
+                keys = await fetch_wbi_keys(force=True)
+                continue
+            raise HTTPException(status_code=500, detail=f"获取账号视频失败: {e}")
     return []
 
 
@@ -5884,6 +6019,10 @@ class CommentCategoryPayload(BaseModel):
     color: Optional[str] = None
 
 
+class MyAccountSyncPayload(BaseModel):
+    account_id: str
+
+
 
 
 
@@ -6490,6 +6629,24 @@ def normalize_comment_combo(row: Dict[str, Any]) -> Dict[str, Any]:
 
         "updated_at": row.get("updated_at"),
 
+    }
+
+
+def normalize_account_video(row: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "id": row.get("id"),
+        "account_id": row.get("account_id"),
+        "bvid": row.get("bvid"),
+        "title": row.get("title"),
+        "link": row.get("link"),
+        "cover": row.get("cover"),
+        "author": row.get("author"),
+        "duration": row.get("duration"),
+        "pub_time": row.get("pub_time"),
+        "stats": row.get("stats"),
+        "payload": row.get("payload"),
+        "created_at": row.get("created_at"),
+        "updated_at": row.get("updated_at"),
     }
 
 
@@ -8264,6 +8421,80 @@ async def delete_comment_account(account_id: str):
     await client.delete("comment_accounts", {"id": f"eq.{account_id}"})
 
     return {"status": "ok"}
+
+
+@app.get("/api/my-accounts/state")
+async def get_my_account_state(account_id: Optional[str] = None):
+    client = ensure_supabase()
+    accounts = await client.select("comment_accounts", params={"order": "created_at.asc"})
+    videos: List[Dict[str, Any]] = []
+    if account_id:
+        videos = await client.select(
+            "account_videos",
+            params={
+                "account_id": f"eq.{account_id}",
+                "order": "pub_time.desc.nullslast,updated_at.desc",
+            },
+        )
+    return {
+        "accounts": [normalize_comment_account(item) for item in accounts],
+        "videos": [normalize_account_video(item) for item in videos],
+    }
+
+
+@app.post("/api/my-accounts/sync")
+async def sync_my_account_videos(payload: MyAccountSyncPayload):
+    client = ensure_supabase()
+    account_id = payload.account_id.strip()
+    if not account_id:
+        raise HTTPException(status_code=400, detail="账号不能为空")
+
+    existing_accounts = await client.select("comment_accounts", {"id": f"eq.{account_id}"})
+    if not existing_accounts:
+        raise HTTPException(status_code=404, detail="账号不存在")
+
+    account = existing_accounts[0]
+    homepage_link = account.get("homepage_link") or ""
+    mid = extract_mid_from_homepage_link(homepage_link)
+    if not mid:
+        raise HTTPException(status_code=400, detail="请先填写正确的账号主页链接")
+
+    vlist = await fetch_account_videos_from_bili(mid)
+    existing_rows = await client.select(
+        "account_videos",
+        params={"select": "bvid", "account_id": f"eq.{account_id}"},
+    )
+    existing_set = {row.get("bvid") for row in existing_rows if row.get("bvid")}
+
+    rows: List[Dict[str, Any]] = []
+    added = 0
+    updated = 0
+    for item in vlist:
+        payload_row = build_account_video_payload(account_id, item)
+        if not payload_row:
+            continue
+        if payload_row["bvid"] in existing_set:
+            updated += 1
+        else:
+            added += 1
+        rows.append(payload_row)
+
+    if rows:
+        await client.upsert("account_videos", rows, on_conflict="account_id,bvid")
+
+    videos = await client.select(
+        "account_videos",
+        params={
+            "account_id": f"eq.{account_id}",
+            "order": "pub_time.desc.nullslast,updated_at.desc",
+        },
+    )
+
+    return {
+        "added": added,
+        "updated": updated,
+        "videos": [normalize_account_video(item) for item in videos],
+    }
 
 
 
