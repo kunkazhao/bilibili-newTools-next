@@ -212,6 +212,14 @@ const normalizeNumber = (value: unknown) => {
   return Number.isFinite(numeric) ? numeric : undefined
 }
 
+const normalizePercent = (value: unknown) => {
+  if (value === null || value === undefined) return undefined
+  const raw = String(value).trim()
+  if (!raw) return undefined
+  const numeric = Number(raw.replace("%", ""))
+  return Number.isFinite(numeric) ? numeric : undefined
+}
+
 const ensureHttp = (value: string) => {
   if (!value) return ""
   if (value.startsWith("http://") || value.startsWith("https://")) return value
@@ -257,6 +265,20 @@ const resolveJdUrl = async (url: string) => {
   }
 }
 
+const resolveTaobaoLink = async (url: string) => {
+  const data = await apiRequest<{ itemId?: string; openIid?: string }>(
+    "/api/taobao/resolve",
+    {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    }
+  )
+  return {
+    itemId: data.itemId || "",
+    openIid: data.openIid || "",
+  }
+}
+
 const fetchJdProduct = async (keyword: string, originalLink: string) => {
   const data = await apiRequest<Record<string, any>>("/api/jd/product", {
     method: "POST",
@@ -278,6 +300,24 @@ const fetchJdProduct = async (keyword: string, originalLink: string) => {
     image: pickImageUrl(product),
     shopName: (product?.shopInfo?.shopName as string) || "",
     materialUrl,
+  }
+}
+
+const fetchTaobaoProduct = async (itemId: string, openIid?: string) => {
+  const data = await apiRequest<Record<string, any>>("/api/taobao/product", {
+    method: "POST",
+    body: JSON.stringify({
+      item_id: itemId || undefined,
+      open_iid: openIid || undefined,
+    }),
+  })
+  return {
+    title: String(data?.title || ""),
+    price: normalizeNumber(data?.price),
+    commissionRate: normalizePercent(data?.commissionRate),
+    image: String(data?.cover || ""),
+    shopName: String(data?.shopName || ""),
+    materialUrl: String(data?.materialUrl || ""),
   }
 }
 
@@ -305,6 +345,21 @@ const formatPercent = (value: number) => {
 }
 
 const fetchCommissionProduct = async (link: string) => {
+  if (isTaobaoLink(link)) {
+    const resolved = await resolveTaobaoLink(link)
+    const itemId = resolved.itemId || resolved.openIid
+    if (!itemId) {
+      throw new Error("未能解析淘宝商品ID")
+    }
+    const product = await fetchTaobaoProduct(itemId, resolved.openIid)
+    const materialUrl = product.materialUrl || link
+    return {
+      ...product,
+      materialUrl,
+      standardUrl: materialUrl,
+      originalLink: link,
+    }
+  }
   const keyword = extractJdKeyword(link)
   const product = await fetchJdProduct(keyword, link)
   const materialUrl = product.materialUrl || link
@@ -674,7 +729,7 @@ export default function CommissionPage() {
     })
     const tracker = { total: 0, processed: 0 }
 
-    const addJdLinks = async (
+    const addProductLinks = async (
       links: string[],
       context: { sourceLink?: string; sourceAuthor?: string }
     ) => {
@@ -739,7 +794,7 @@ export default function CommissionPage() {
         const taobaoLinks = uniqueLinks.filter((item) => isTaobaoLink(item))
         summary.jdLinks += jdLinks.length
         summary.taobaoLinks += taobaoLinks.length
-        await addJdLinks(jdLinks, { sourceLink: link, sourceAuthor })
+        await addProductLinks([...jdLinks, ...taobaoLinks], { sourceLink: link, sourceAuthor })
       } catch (error) {
         const message = error instanceof Error ? error.message : "解析视频失败"
         summary.failedLinks.push({ link, reason: message })
@@ -761,16 +816,18 @@ export default function CommissionPage() {
     }
     const lines = parseLines(inputValue)
     const jdLinks = lines.filter((line) => isJdLink(line))
-    if (!jdLinks.length) {
-      showToast("请粘贴有效的京东推广链接", "error")
+    const taobaoLinks = lines.filter((line) => isTaobaoLink(line))
+    const uniqueLinks = Array.from(new Set([...jdLinks, ...taobaoLinks]))
+    if (!uniqueLinks.length) {
+      showToast("请粘贴有效的推广链接", "error")
       return
     }
     startProcessing("正在解析推广链接...")
     setProgressMessage("正在获取商品信息...")
     const summary = {
-      totalLinks: jdLinks.length,
+      totalLinks: uniqueLinks.length,
       jdLinks: jdLinks.length,
-      taobaoLinks: 0,
+      taobaoLinks: taobaoLinks.length,
       newCount: 0,
       duplicateCount: 0,
       failedLinks: [] as { link: string; reason: string }[],
@@ -785,9 +842,9 @@ export default function CommissionPage() {
       )
       if (key) dedupeMap.set(key, item)
     })
-    const tracker = { total: jdLinks.length, processed: 0 }
+    const tracker = { total: uniqueLinks.length, processed: 0 }
     setProgress({ current: 0, total: tracker.total })
-    for (const link of jdLinks) {
+    for (const link of uniqueLinks) {
       try {
         const product = await fetchCommissionProduct(link)
         const promoLink = product.standardUrl || product.materialUrl || product.originalLink || link
@@ -971,6 +1028,16 @@ export default function CommissionPage() {
     [filteredBenchmarkVideos]
   )
 
+  const handleCardClick = (id: string) => {
+    const target = items.find((item) => item.id === id)
+    if (!target) return
+    const link = String(
+      target.spec?.[META_KEYS.promoLink] || target.spec?.[META_KEYS.sourceLink] || ""
+    ).trim()
+    if (!link) return
+    window.open(link, "_blank")
+  }
+
   return (
     <>
       <CommissionPageView
@@ -1009,6 +1076,7 @@ export default function CommissionPage() {
           updateLocalItems((prev) => prev.filter((item) => item.id !== id))
           showToast("删除成功", "success")
         }}
+        onCardClick={handleCardClick}
         onClearAll={handleClearAll}
         onExport={handleExport}
         onDownloadImages={() => showToast("下载图片功能待迁移", "info")}
