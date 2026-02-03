@@ -33,7 +33,7 @@ import {
   updateItem,
 } from "@/components/archive/archiveApi"
 import type { ItemResponse } from "@/components/archive/archiveApi"
-import type { CategoryItem } from "@/components/archive/types"
+import type { CategoryItem, SpecField } from "@/components/archive/types"
 import { getDefaultArchiveCategoryId } from "@/components/archive/archiveCategoryUtils"
 
 interface ArchiveItem {
@@ -133,6 +133,40 @@ export const isFixSortDisabled = (params: {
     Math.abs(params.priceRange[0] - params.priceBounds[0]) > epsilon ||
     Math.abs(params.priceRange[1] - params.priceBounds[1]) > epsilon
   return hasSearch || hasScheme || priceFiltered
+}
+
+type ApiRequestFn = <T>(url: string, options?: RequestInit) => Promise<T>
+
+export const fetchSchemeFilterItemsBatch = async (
+  schemeId: string,
+  request: ApiRequestFn
+) => {
+  const data = await request<{ scheme: Scheme }>(`/api/schemes/${schemeId}`)
+  const scheme = data?.scheme
+  const entries = Array.isArray(scheme?.items) ? scheme.items : []
+  const rawIds = entries
+    .map((entry) => entry?.source_id || entry?.id)
+    .filter(Boolean)
+    .map((id) => String(id))
+  const uniqueIds = Array.from(new Set(rawIds))
+  if (!uniqueIds.length) {
+    return { scheme, items: [] as ArchiveItem[], rawIds }
+  }
+  const itemsData = await request<{ items: ItemResponse[] }>(
+    "/api/sourcing/items/by-ids",
+    {
+      method: "POST",
+      body: JSON.stringify({ ids: uniqueIds }),
+    }
+  )
+  const fetched = (itemsData?.items ?? []).map((item) =>
+    normalizeArchiveItem(item as ItemResponse)
+  )
+  const itemMap = new Map(fetched.map((item) => [item.id, item]))
+  const ordered = rawIds
+    .map((id) => itemMap.get(id))
+    .filter(Boolean) as ArchiveItem[]
+  return { scheme, items: ordered, rawIds }
 }
 
 const normalizeArchiveItem = (item: {
@@ -270,6 +304,7 @@ export default function ArchivePage() {
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false)
   const [isPresetFieldsOpen, setIsPresetFieldsOpen] = useState(false)
   const [isProductFormOpen, setIsProductFormOpen] = useState(false)
+  const [autoOpenCoverPicker, setAutoOpenCoverPicker] = useState(false)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const [isClearOpen, setIsClearOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title?: string } | null>(
@@ -704,49 +739,57 @@ export default function ArchivePage() {
       setSchemeErrorMessage(undefined)
       const token = ++schemeFilterTokenRef.current
       try {
-        const data = await apiRequest<{ scheme: Scheme }>(`/api/schemes/${schemeId}`)
-        const scheme = data?.scheme
+        let scheme: Scheme | undefined
+        let ordered: ArchiveItem[] = []
+        try {
+          const batchResult = await fetchSchemeFilterItemsBatch(schemeId, apiRequest)
+          scheme = batchResult.scheme
+          ordered = batchResult.items
+        } catch {
+          const data = await apiRequest<{ scheme: Scheme }>(`/api/schemes/${schemeId}`)
+          scheme = data?.scheme
+          const entries = Array.isArray(scheme?.items) ? scheme.items : []
+          const rawIds = entries
+            .map((entry) => entry?.source_id || entry?.id)
+            .filter(Boolean)
+            .map((id) => String(id))
+          const uniqueIds = Array.from(new Set(rawIds))
+          if (!uniqueIds.length) {
+            if (token === schemeFilterTokenRef.current) {
+              setSchemeFilterItems([])
+              schemeFilterCacheRef.current.set(cacheKey, [])
+            }
+            return
+          }
+          const fetched: ArchiveItem[] = []
+          const batchSize = 4
+          for (let i = 0; i < uniqueIds.length; i += batchSize) {
+            const batch = uniqueIds.slice(i, i + batchSize)
+            const results = await Promise.all(
+              batch.map(async (id) => {
+                try {
+                  const itemData = await apiRequest<{ item: ItemResponse }>(
+                    `/api/sourcing/items/${id}`
+                  )
+                  if (!itemData?.item) return null
+                  return normalizeArchiveItem(itemData.item)
+                } catch {
+                  return null
+                }
+              })
+            )
+            fetched.push(...results.filter(Boolean) as ArchiveItem[])
+          }
+          const itemMap = new Map(fetched.map((item) => [item.id, item]))
+          ordered = rawIds
+            .map((id) => itemMap.get(id))
+            .filter(Boolean) as ArchiveItem[]
+        }
         if (scheme) {
           upsertScheme(scheme)
         }
-        const entries = Array.isArray(scheme?.items) ? scheme.items : []
-        const rawIds = entries
-          .map((entry) => entry?.source_id || entry?.id)
-          .filter(Boolean)
-          .map((id) => String(id))
-        const uniqueIds = Array.from(new Set(rawIds))
-        if (!uniqueIds.length) {
-          if (token === schemeFilterTokenRef.current) {
-            setSchemeFilterItems([])
-            schemeFilterCacheRef.current.set(cacheKey, [])
-          }
-          return
-        }
-        const fetched: ArchiveItem[] = []
-        const batchSize = 4
-        for (let i = 0; i < uniqueIds.length; i += batchSize) {
-          const batch = uniqueIds.slice(i, i + batchSize)
-          const results = await Promise.all(
-            batch.map(async (id) => {
-              try {
-                const itemData = await apiRequest<{ item: ItemResponse }>(
-                  `/api/sourcing/items/${id}`
-                )
-                if (!itemData?.item) return null
-                return normalizeArchiveItem(itemData.item)
-              } catch {
-                return null
-              }
-            })
-          )
-          fetched.push(...results.filter(Boolean) as ArchiveItem[])
-        }
         if (token !== schemeFilterTokenRef.current) return
         if (schemeFilterId !== schemeId) return
-        const itemMap = new Map(fetched.map((item) => [item.id, item]))
-        const ordered = rawIds
-          .map((id) => itemMap.get(id))
-          .filter(Boolean) as ArchiveItem[]
         setSchemeFilterItems(ordered)
         schemeFilterCacheRef.current.set(cacheKey, ordered)
       } catch (error) {
@@ -1058,8 +1101,21 @@ export default function ArchivePage() {
   }
 
   const openEdit = (id: string) => {
+    setAutoOpenCoverPicker(false)
     setEditingItemId(id)
     setIsProductFormOpen(true)
+  }
+
+  const handleCoverClick = (id: string) => {
+    setEditingItemId(id)
+    setAutoOpenCoverPicker(true)
+    setIsProductFormOpen(true)
+  }
+
+  const handleOpenLink = (link: string) => {
+    const trimmed = String(link || "").trim()
+    if (!trimmed) return
+    window.open(trimmed, "_blank")
   }
 
   const productFormInitialValues = useMemo(() => {
@@ -1165,7 +1221,7 @@ export default function ArchivePage() {
         schemeFilterCacheRef.current.set(String(schemeFilterId), nextSchemeItems)
       }
 
-      updateItem(editingItemId, {
+      const request = updateItem(editingItemId, {
         title: values.title,
         price: priceValue,
         commission: commissionValue,
@@ -1206,9 +1262,8 @@ export default function ArchivePage() {
               )
             }
           }
-          showToast("商品已更新", "success")
         })
-        .catch(() => {
+        .catch((error) => {
           setItems(prevItemsSnapshot)
           setSchemeFilterItems(prevSchemeSnapshot)
           if (schemeFilterId) {
@@ -1217,8 +1272,10 @@ export default function ArchivePage() {
               prevSchemeSnapshot
             )
           }
-          showToast("更新失败", "error")
+          throw error
         })
+      setEditingItemId(null)
+      return request
     } else {
       const specPayload = {
         [META_KEYS.blueLink]: values.blueLink,
@@ -1228,7 +1285,7 @@ export default function ArchivePage() {
         [META_KEYS.comments]: values.comments,
         ...values.params,
       }
-      createItem({
+      const request = createItem({
         category_id: values.categoryId,
         title: values.title,
         price: priceValue,
@@ -1241,12 +1298,14 @@ export default function ArchivePage() {
         spec: specPayload,
       })
         .then(() => {
-          showToast("商品已新增", "success")
           refreshItems()
         })
-        .catch(() => showToast("新增失败", "error"))
+        .catch((error) => {
+          throw error
+        })
+      setEditingItemId(null)
+      return request
     }
-    setEditingItemId(null)
   }
 
   const handleSaveCategories = (next: CategoryItem[]) => {
@@ -1284,11 +1343,12 @@ export default function ArchivePage() {
 
   const handleSavePresetFields = (
     categoryId: string,
-    fields: { key: string }[]
+    fields: SpecField[]
   ) => {
     updateCategory(categoryId, { spec_fields: fields })
       .then(() => {
         showToast("预设参数已保存", "success")
+        loadCategories({ force: true })
         refreshItems()
       })
       .catch(() => showToast("预设参数保存失败", "error"))
@@ -1360,6 +1420,7 @@ export default function ArchivePage() {
       onSortChange={handleSortChange}
       onCreate={() => {
         setEditingItemId(null)
+        setAutoOpenCoverPicker(false)
         setIsProductFormOpen(true)
       }}
       onEdit={openEdit}
@@ -1370,6 +1431,8 @@ export default function ArchivePage() {
       onToggleFocus={handleToggleFocus}
       onDragStart={handleDragStart}
       onDrop={handleDrop}
+      onOpenLink={handleOpenLink}
+      onCoverClick={handleCoverClick}
       onSelectCategory={(id) => setCategoryValue(id)}
       onClearList={() => {
         if (!filteredItems.length) {
@@ -1390,7 +1453,11 @@ export default function ArchivePage() {
       onClosePresetFields={() => setIsPresetFieldsOpen(false)}
       onSavePresetFields={handleSavePresetFields}
       isProductFormOpen={isProductFormOpen}
-      onCloseProductForm={() => setIsProductFormOpen(false)}
+      onCloseProductForm={() => {
+        setIsProductFormOpen(false)
+        setAutoOpenCoverPicker(false)
+      }}
+      autoOpenCoverPicker={autoOpenCoverPicker}
       onSubmitProductForm={handleSubmitProductForm}
       productFormInitialValues={productFormInitialValues}
       presetFields={

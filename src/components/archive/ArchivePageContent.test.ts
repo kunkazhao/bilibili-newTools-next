@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   buildSortOrderUpdates,
+  fetchSchemeFilterItemsBatch,
   filterSchemesByCategory,
   isFixSortDisabled,
   resolvePriceRange,
@@ -101,5 +102,39 @@ describe("resolveSortValueAfterLoad", () => {
 describe("resolvePriceRange", () => {
   it("returns bounds when range is unset", () => {
     expect(resolvePriceRange([10, 100], [0, 0])).toEqual([10, 100])
+  })
+})
+
+describe("fetchSchemeFilterItemsBatch", () => {
+  it("uses batch endpoint and preserves scheme item order", async () => {
+    const calls: Array<{ url: string; options?: RequestInit }> = []
+    const request = async (url: string, options?: RequestInit) => {
+      calls.push({ url, options })
+      if (url === "/api/schemes/scheme-1") {
+        return {
+          scheme: {
+            id: "scheme-1",
+            items: [{ source_id: "item-1" }, { source_id: "item-2" }],
+          },
+        }
+      }
+      if (url === "/api/sourcing/items/by-ids") {
+        return {
+          items: [
+            { id: "item-2", category_id: "cat-1", title: "B" },
+            { id: "item-1", category_id: "cat-1", title: "A" },
+          ],
+        }
+      }
+      throw new Error(`unexpected url ${url}`)
+    }
+
+    const result = await fetchSchemeFilterItemsBatch("scheme-1", request)
+
+    expect(calls.map((entry) => entry.url)).toEqual([
+      "/api/schemes/scheme-1",
+      "/api/sourcing/items/by-ids",
+    ])
+    expect(result.items.map((item) => item.id)).toEqual(["item-1", "item-2"])
   })
 })
