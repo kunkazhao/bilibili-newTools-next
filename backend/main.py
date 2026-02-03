@@ -1093,7 +1093,11 @@ def build_bilibili_video_link(bvid: Optional[str]) -> str:
     return f"https://www.bilibili.com/video/BV{trimmed}"
 
 
-def build_account_video_payload(account_id: str, item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def build_account_video_payload(
+    account_id: str,
+    item: Dict[str, Any],
+    stat: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
     if not isinstance(item, dict):
         return None
     bvid = item.get("bvid") or item.get("bvid_str") or ""
@@ -1111,11 +1115,24 @@ def build_account_video_payload(account_id: str, item: Dict[str, Any]) -> Option
             pub_time = datetime.fromtimestamp(int(pub_ts), tz=timezone.utc).isoformat()
         except Exception:
             pub_time = None
+    stat_src = stat if isinstance(stat, dict) else {}
     stats = {
-        "view": parse_bili_count(item.get("play") or item.get("view")),
-        "like": parse_bili_count(item.get("like")),
-        "reply": parse_bili_count(item.get("comment") or item.get("reply")),
-        "danmaku": parse_bili_count(item.get("video_review") or item.get("danmaku")),
+        "view": parse_bili_count(stat_src.get("view") or item.get("play") or item.get("view")),
+        "like": parse_bili_count(stat_src.get("like") or item.get("like")),
+        "favorite": parse_bili_count(
+            stat_src.get("favorite")
+            or stat_src.get("fav")
+            or stat_src.get("favorites")
+            or item.get("favorite")
+            or item.get("favorites")
+        ),
+        "reply": parse_bili_count(stat_src.get("reply") or item.get("comment") or item.get("reply")),
+        "danmaku": parse_bili_count(
+            stat_src.get("danmaku")
+            or stat_src.get("video_review")
+            or item.get("video_review")
+            or item.get("danmaku")
+        ),
     }
     if all(value is None for value in stats.values()):
         stats = None
@@ -1168,6 +1185,35 @@ async def fetch_account_videos_from_bili(mid: str, page: int = 1, page_size: int
                 continue
             raise HTTPException(status_code=500, detail=f"获取账号视频失败: {e}")
     return []
+
+
+async def fetch_account_video_stat(bvid: str) -> Optional[Dict[str, Any]]:
+    if not bvid:
+        return None
+    trimmed = str(bvid).strip()
+    if not trimmed:
+        return None
+    url = "https://api.bilibili.com/x/web-interface/archive/stat"
+    params = {"bvid": trimmed}
+    headers = build_bilibili_headers({"Referer": "https://www.bilibili.com/"})
+    for attempt in range(2):
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url,
+                    headers=headers,
+                    params=params,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    data = await resp.json()
+                    if data.get("code") != 0:
+                        return None
+                    return data.get("data") or None
+        except Exception:
+            if attempt == 0:
+                continue
+            return None
+    return None
 
 
 
@@ -5925,6 +5971,13 @@ class SourcingItemBatchCreate(BaseModel):
 
 
 
+class SourcingItemsByIdsRequest(BaseModel):
+
+    ids: List[str] = Field(default_factory=list)
+
+
+
+
 class SourcingItemUpdate(BaseModel):
 
     title: Optional[str] = None
@@ -6591,6 +6644,15 @@ def normalize_comment_combo(row: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def normalize_account_video(row: Dict[str, Any]) -> Dict[str, Any]:
+    payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+    raw_stats = row.get("stats")
+    stats = raw_stats if isinstance(raw_stats, dict) else {}
+    if stats.get("danmaku") in (None, ""):
+        fallback = parse_bili_count(payload.get("video_review"))
+        if fallback is not None:
+            stats["danmaku"] = fallback
+    if not stats:
+        stats = None
     return {
         "id": row.get("id"),
         "account_id": row.get("account_id"),
@@ -6601,8 +6663,8 @@ def normalize_account_video(row: Dict[str, Any]) -> Dict[str, Any]:
         "author": row.get("author"),
         "duration": row.get("duration"),
         "pub_time": row.get("pub_time"),
-        "stats": row.get("stats"),
-        "payload": row.get("payload"),
+        "stats": stats,
+        "payload": payload if payload else row.get("payload"),
         "created_at": row.get("created_at"),
         "updated_at": row.get("updated_at"),
     }
@@ -7207,6 +7269,52 @@ async def get_sourcing_item(item_id: str):
     return {"item": normalize_sourcing_item(rows[0])}
 
 
+
+
+
+@app.post("/api/sourcing/items/by-ids")
+
+async def get_sourcing_items_by_ids(payload: SourcingItemsByIdsRequest):
+
+    ids = [item_id for item_id in (payload.ids or []) if item_id]
+
+    if not ids:
+
+        return {"items": []}
+
+    seen = set()
+
+    ordered_ids = []
+
+    for item_id in ids:
+
+        if item_id in seen:
+
+            continue
+
+        seen.add(item_id)
+
+        ordered_ids.append(item_id)
+
+    quoted = ",".join([f'"{item_id}"' for item_id in ordered_ids])
+
+    client = ensure_supabase()
+
+    try:
+
+        rows = await client.select("sourcing_items", params={"id": f"in.({quoted})"})
+
+    except SupabaseError as exc:
+
+        raise HTTPException(status_code=500, detail=str(exc.message))
+
+    items = [normalize_sourcing_item(row) for row in rows]
+
+    item_map = {item.get("id"): item for item in items if item.get("id")}
+
+    ordered_items = [item_map[item_id] for item_id in ordered_ids if item_id in item_map]
+
+    return {"items": ordered_items}
 
 
 
@@ -8418,7 +8526,8 @@ async def sync_account_videos_for_account(
     added = 0
     updated = 0
     for item in vlist:
-        payload_row = build_account_video_payload(account_id, item)
+        stat = await fetch_account_video_stat(item.get("bvid") or item.get("bvid_str") or "")
+        payload_row = build_account_video_payload(account_id, item, stat)
         if not payload_row:
             continue
         if payload_row["bvid"] in existing_set:
