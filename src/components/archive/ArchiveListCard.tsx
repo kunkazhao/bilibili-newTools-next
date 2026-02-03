@@ -13,6 +13,14 @@ interface ArchiveListCardProps {
   price: string
   commission: string
   commissionRate: string
+  jdPrice?: string
+  jdCommission?: string
+  jdCommissionRate?: string
+  jdSales?: string
+  tbPrice?: string
+  tbCommission?: string
+  tbCommissionRate?: string
+  tbSales?: string
   sales30: string
   comments: string
   image: string
@@ -69,12 +77,27 @@ const truncateTitle = (value: string) => {
   return value.length > 15 ? `${value.slice(0, 15)}...` : value
 }
 
+const resolveMetric = (value?: string, fallback?: string) => {
+  const trimmed = String(value ?? "").trim()
+  if (trimmed) return trimmed
+  const fallbackText = String(fallback ?? "").trim()
+  return fallbackText || "--"
+}
+
 export default function ArchiveListCard({
   id,
   title,
   price,
   commission,
   commissionRate,
+  jdPrice,
+  jdCommission,
+  jdCommissionRate,
+  jdSales,
+  tbPrice,
+  tbCommission,
+  tbCommissionRate,
+  tbSales,
   sales30,
   comments,
   image,
@@ -112,6 +135,18 @@ export default function ArchiveListCard({
       event.dataTransfer.setData("text/plain", id)
     }
     onDragStart(id)
+  }
+  const jdMetrics = {
+    price: resolveMetric(jdPrice, price),
+    commission: resolveMetric(jdCommission, commission),
+    commissionRate: resolveMetric(jdCommissionRate, commissionRate),
+    sales: resolveMetric(jdSales, sales30),
+  }
+  const tbMetrics = {
+    price: resolveMetric(tbPrice),
+    commission: resolveMetric(tbCommission),
+    commissionRate: resolveMetric(tbCommissionRate),
+    sales: resolveMetric(tbSales),
   }
 
   return (
@@ -166,35 +201,81 @@ export default function ArchiveListCard({
               <h3 className="text-lg font-semibold text-slate-900">
                 {truncateTitle(decodeUnicodeEscapes(title))}
               </h3>
-              <div className="mt-4 grid gap-4 text-xs text-slate-500 md:grid-cols-5">
-                <div>
-                  <div className="text-sm text-slate-400">{TEXT.price}</div>
-                  <div className="mt-1 text-base font-semibold text-slate-900">
-                    {price === "--" ? "--" : `${price}${TEXT.yuan}`}
+              <div className="mt-4 space-y-3 text-xs text-slate-500">
+                <div
+                  className="flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2"
+                  data-testid="archive-metrics-jd"
+                >
+                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-rose-50 text-xs font-semibold text-rose-500">
+                    JD
+                  </span>
+                  <div className="grid flex-1 gap-4 md:grid-cols-4">
+                    <div>
+                      <div className="text-sm text-slate-400">{TEXT.price}</div>
+                      <div className="mt-1 text-base font-semibold text-slate-900">
+                        {jdMetrics.price === "--"
+                          ? "--"
+                          : `${jdMetrics.price}${TEXT.yuan}`}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-slate-400">{TEXT.commission}</div>
+                      <div className="mt-1 text-base font-semibold text-emerald-600">
+                        {jdMetrics.commission === "--"
+                          ? "--"
+                          : `${jdMetrics.commission}${TEXT.yuan}`}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-slate-400">{TEXT.commissionRate}</div>
+                      <div className="mt-1 text-base font-semibold text-rose-500">
+                        {jdMetrics.commissionRate || "--"}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-slate-400">{TEXT.sales30}</div>
+                      <div className="mt-1 text-base font-semibold text-slate-900">
+                        {jdMetrics.sales || "--"}
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div>
-                  <div className="text-sm text-slate-400">{TEXT.commission}</div>
-                  <div className="mt-1 text-base font-semibold text-emerald-600">
-                    {commission === "--" ? "--" : `${commission}${TEXT.yuan}`}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm text-slate-400">{TEXT.commissionRate}</div>
-                  <div className="mt-1 text-base font-semibold text-rose-500">
-                    {commissionRate || "--"}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm text-slate-400">{TEXT.sales30}</div>
-                  <div className="mt-1 text-base font-semibold text-slate-900">
-                    {sales30 || "--"}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm text-slate-400">{TEXT.comments}</div>
-                  <div className="mt-1 text-base font-semibold text-slate-900">
-                    {comments || "--"}
+                <div
+                  className="flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2"
+                  data-testid="archive-metrics-tb"
+                >
+                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50 text-xs font-semibold text-amber-500">
+                    TB
+                  </span>
+                  <div className="grid flex-1 gap-4 md:grid-cols-4">
+                    <div>
+                      <div className="text-sm text-slate-400">{TEXT.price}</div>
+                      <div className="mt-1 text-base font-semibold text-slate-900">
+                        {tbMetrics.price === "--"
+                          ? "--"
+                          : `${tbMetrics.price}${TEXT.yuan}`}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-slate-400">{TEXT.commission}</div>
+                      <div className="mt-1 text-base font-semibold text-emerald-600">
+                        {tbMetrics.commission === "--"
+                          ? "--"
+                          : `${tbMetrics.commission}${TEXT.yuan}`}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-slate-400">{TEXT.commissionRate}</div>
+                      <div className="mt-1 text-base font-semibold text-rose-500">
+                        {tbMetrics.commissionRate || "--"}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-slate-400">{TEXT.sales30}</div>
+                      <div className="mt-1 text-base font-semibold text-slate-900">
+                        {tbMetrics.sales || "--"}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
