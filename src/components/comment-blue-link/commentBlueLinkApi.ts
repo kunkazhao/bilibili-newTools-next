@@ -1,9 +1,10 @@
 import { apiRequest } from "@/lib/api"
-import type { CommentAccount, CommentCategory, CommentCombo } from "./types"
+import type { CommentAccount, CommentCombo } from "./types"
 
-export const fetchCommentBlueLinkState = () =>
+const COMMENT_STATE_V2 = "/api/comment/blue-links/state-v2"
+
+export const fetchCommentBlueLinkState = async () =>
   apiRequest<{
     accounts: CommentAccount[]
-    categories: CommentCategory[]
     combos: CommentCombo[]
-  }>("/api/comment/blue-links/state-v2")
+  }>(COMMENT_STATE_V2)

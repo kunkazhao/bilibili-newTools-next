@@ -262,13 +262,13 @@ WBI_KEY_TIMESTAMP = 0
 
 MIXIN_KEY_ENC_TAB = [
 
-    46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 28,
+    46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35,
 
-    19, 54, 25, 1, 38, 29, 13, 55, 48, 41, 21, 35, 56, 4, 7, 20,
+    27, 43, 5, 49, 33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13,
 
-    16, 42, 0, 39, 49, 52, 43, 11, 5, 26, 33, 40, 57, 9, 17, 24,
+    37, 48, 7, 16, 24, 55, 40, 61, 26, 17, 0, 1, 60, 51, 30, 4,
 
-    44, 6, 12, 51, 59, 14, 27, 34, 22, 30, 37, 36
+    22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11, 36, 20, 34, 44, 52
 
 ]
 
@@ -6010,15 +6010,6 @@ class CommentAccountUpdate(BaseModel):
 
 
 
-class CommentCategoryPayload(BaseModel):
-
-    account_id: str
-
-    name: str
-
-    color: Optional[str] = None
-
-
 class MyAccountSyncPayload(BaseModel):
     account_id: str
 
@@ -6030,7 +6021,6 @@ class CommentComboCreate(BaseModel):
 
     account_id: str
 
-    category_id: str
 
     name: str
 
@@ -6058,7 +6048,6 @@ class CommentComboUpdate(BaseModel):
 
     source_type: Optional[str] = None
 
-    category_id: Optional[str] = None
 
 
 
@@ -6428,15 +6417,20 @@ def normalize_spec_fields(spec_fields: Any) -> List[Dict[str, str]]:
     for field in spec_fields:
         key = ""
         value = ""
+        example = ""
         if isinstance(field, dict):
             key = str(field.get("key") or field.get("name") or "").strip()
             value = str(field.get("value") or "").strip()
+            example = str(field.get("example") or "").strip()
         else:
             key = str(field or "").strip()
         if not key or key in seen:
             continue
         seen.add(key)
-        normalized.append({"key": key, "value": value})
+        result = {"key": key, "value": value}
+        if example:
+            result["example"] = example
+        normalized.append(result)
     return normalized
 
 
@@ -6462,7 +6456,7 @@ def normalize_sourcing_category(row: Dict[str, Any], spec_fields: Optional[List[
 
 async def ai_fill_product_params(
     category_name: str,
-    spec_fields: List[str],
+    spec_fields: List[Dict[str, Any]],
     product_names: List[str]
 ) -> List[Dict[str, str]]:
     """
@@ -6470,7 +6464,7 @@ async def ai_fill_product_params(
 
     Args:
         category_name: 品类名称
-        spec_fields: 预设参数字段列表
+        spec_fields: 预设参数字段列表，每项包含 key 和 example
         product_names: 商品名称列表
 
     Returns:
@@ -6485,9 +6479,21 @@ async def ai_fill_product_params(
     if not product_names:
         raise HTTPException(status_code=400, detail="商品列表为空")
 
-    # 构建极简 prompt
-    fields_str = "、".join(spec_fields)
+    # 构建带格式示例的 prompt
+    field_descriptions = []
+    for field in spec_fields:
+        key = field.get("key", "")
+        example = field.get("example", "")
+        if example:
+            field_descriptions.append(f"{key}(格式:{example})")
+        else:
+            field_descriptions.append(key)
+
+    fields_str = "、".join(field_descriptions)
     products_str = "\n".join(f"- {p}" for p in product_names)
+
+    # 提取纯字段名用于返回格式
+    field_keys = [f.get("key", "") for f in spec_fields if f.get("key")]
 
     prompt = f"""你是商品参数提取助手。请联网搜索以下商品的参数信息。
 
@@ -6500,10 +6506,10 @@ async def ai_fill_product_params(
 要求：
 1. 严格返回JSON数组，不要markdown代码块，不要任何解释
 2. 只使用预设字段，不要添加新字段
-3. 参数值要简洁，如未知用空字符串""
+3. 参数值要简洁，按照格式示例的格式返回，如未知用空字符串""
 
 返回格式：
-[{{"name":"商品1","{spec_fields[0]}":"值1","{spec_fields[1]}":"值1"}},...]"""
+[{{"name":"商品1","{field_keys[0]}":"值1","{field_keys[1]}":"值1"}},...]"""
 
     response = Generation.call(
         api_key=DASHSCOPE_API_KEY,
@@ -6585,26 +6591,6 @@ def normalize_comment_account(row: Dict[str, Any]) -> Dict[str, Any]:
 
 
 
-def normalize_comment_category(row: Dict[str, Any]) -> Dict[str, Any]:
-
-    return {
-
-        "id": row.get("id"),
-
-        "account_id": row.get("account_id"),
-
-        "name": row.get("name"),
-
-        "color": row.get("color"),
-
-        "created_at": row.get("created_at")
-
-    }
-
-
-
-
-
 def normalize_comment_combo(row: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
@@ -6613,7 +6599,6 @@ def normalize_comment_combo(row: Dict[str, Any]) -> Dict[str, Any]:
 
         "account_id": row.get("account_id"),
 
-        "category_id": row.get("category_id"),
 
         "name": row.get("name"),
 
@@ -6992,7 +6977,6 @@ async def fetch_comment_snapshot() -> Dict[str, Any]:
 
     accounts = await client.select("comment_accounts", params={"order": "created_at.asc"})
 
-    categories = await client.select("comment_categories", params={"order": "created_at.asc"})
 
     combos = await client.select("comment_combos", params={"order": "updated_at.desc"})
 
@@ -7000,7 +6984,6 @@ async def fetch_comment_snapshot() -> Dict[str, Any]:
 
         "accounts": [normalize_comment_account(item) for item in accounts],
 
-        "categories": [normalize_comment_category(item) for item in categories],
 
         "combos": [normalize_comment_combo(item) for item in combos],
 
@@ -7824,12 +7807,13 @@ async def ai_fill_sourcing_items(payload: AiFillRequest, request: Request):
     category = categories[0]
     category_name = category.get("name", "")
 
-    # 获取预设字段
+    # 获取预设字段（保留完整结构，包含 example）
     spec_fields_raw = category.get("spec_fields") or []
-    spec_fields = [f.get("key") for f in spec_fields_raw if f.get("key")]
-
-    if not spec_fields:
+    if not spec_fields_raw:
         raise HTTPException(status_code=400, detail="该品类没有预设参数字段")
+
+    # 提取字段名用于返回
+    spec_field_keys = [f.get("key") for f in spec_fields_raw if f.get("key")]
 
     # 获取商品列表
     product_names: List[str] = []
@@ -7855,12 +7839,12 @@ async def ai_fill_sourcing_items(payload: AiFillRequest, request: Request):
     if not product_names:
         raise HTTPException(status_code=404, detail="没有找到商品")
 
-    # 调用 AI 获取参数
-    result = await ai_fill_product_params(category_name, spec_fields, product_names)
+    # 调用 AI 获取参数（传入完整的 spec_fields_raw）
+    result = await ai_fill_product_params(category_name, spec_fields_raw, product_names)
 
     return {
         "preview": result,
-        "spec_fields": spec_fields,
+        "spec_fields": spec_field_keys,
         "count": len(result)
     }
 
@@ -8416,7 +8400,6 @@ async def delete_comment_account(account_id: str):
 
     await client.delete("comment_combos", {"account_id": f"eq.{account_id}"})
 
-    await client.delete("comment_categories", {"account_id": f"eq.{account_id}"})
 
     await client.delete("comment_accounts", {"id": f"eq.{account_id}"})
 
@@ -8500,68 +8483,6 @@ async def sync_my_account_videos(payload: MyAccountSyncPayload):
 
 
 
-@app.post("/api/comment/categories")
-
-async def create_comment_category(payload: CommentCategoryPayload):
-
-    client = ensure_supabase()
-
-    name = payload.name.strip()
-
-    if not name:
-
-        raise HTTPException(status_code=400, detail="分类名称不能为空")
-
-    body = {
-
-        "account_id": payload.account_id,
-
-        "name": name,
-
-        "color": payload.color,
-
-        "created_at": utc_now_iso()
-
-    }
-
-    try:
-
-        record = await client.insert("comment_categories", body)
-
-    except SupabaseError as exc:
-
-        status = 400 if exc.status_code in (400, 409) else 500
-
-        raise HTTPException(status_code=status, detail=str(exc.message))
-
-    return {"category": normalize_comment_category(record[0])}
-
-
-
-
-
-@app.delete("/api/comment/categories/{category_id}")
-
-async def delete_comment_category(category_id: str):
-
-    client = ensure_supabase()
-
-    existing = await client.select("comment_categories", {"id": f"eq.{category_id}"})
-
-    if not existing:
-
-        raise HTTPException(status_code=404, detail="分类不存在")
-
-    await client.delete("comment_combos", {"category_id": f"eq.{category_id}"})
-
-    await client.delete("comment_categories", {"id": f"eq.{category_id}"})
-
-    return {"status": "ok"}
-
-
-
-
-
 @app.post("/api/comment/combos")
 
 async def create_comment_combo(payload: CommentComboCreate):
@@ -8575,8 +8496,6 @@ async def create_comment_combo(payload: CommentComboCreate):
     body = {
 
         "account_id": payload.account_id,
-
-        "category_id": payload.category_id,
 
         "name": payload.name.strip(),
 
@@ -8644,9 +8563,7 @@ async def patch_comment_combo(combo_id: str, payload: CommentComboUpdate):
 
         updates["source_type"] = payload.source_type
 
-    if payload.category_id is not None:
 
-        updates["category_id"] = payload.category_id
 
     if not updates:
 

@@ -33,7 +33,6 @@ describe("CommentBlueLinkPageView", () => {
       id: "c1",
       name: "组合",
       account_id: "a1",
-      category_id: "",
       content: longText,
       remark: "",
     } as CommentCombo
@@ -56,7 +55,6 @@ describe("CommentBlueLinkPageView", () => {
       id: "c1",
       name: "组合",
       account_id: "a1",
-      category_id: "",
       content: longText,
       remark: "",
     } as CommentCombo
@@ -79,7 +77,7 @@ describe("CommentBlueLinkPageView", () => {
 
     expect(screen.getByText("评论账号")).not.toBeNull()
     expect(screen.getByText("新增组合")).not.toBeNull()
-    expect(screen.getByText("空状态")).not.toBeNull()
+    expect(screen.queryByText("空状态")).toBeNull()
     expect(screen.getByText("暂无蓝链组合")).not.toBeNull()
     expect(screen.getByText("请先新增蓝链评论组合")).not.toBeNull()
     expect(screen.getByText("新增")).not.toBeNull()
@@ -100,7 +98,6 @@ describe("CommentBlueLinkPageView", () => {
       id: "c1",
       name: "组合",
       account_id: "a1",
-      category_id: "",
       content: "完整版内容",
       remark: "",
       source_link: "https://b23.tv/abc",
@@ -136,7 +133,6 @@ describe("CommentBlueLinkPageView", () => {
       id: "c1",
       name: "组合",
       account_id: "a1",
-      category_id: "",
       content: "完整版内容",
       remark: "",
       source_link: "https://b23.tv/abc",

@@ -46,13 +46,11 @@ describe("CommentBlueLinkPageContent product_content", () => {
 
   it("uses product_content without calling getPinnedComments", async () => {
     const accounts = [{ id: "a1", name: "Account" }]
-    const categories: [] = []
     const combos = [
       {
         id: "c1",
         name: "Combo",
         account_id: "a1",
-        category_id: "",
         content: "Full content",
         remark: "",
         source_link: "https://b23.tv/abc",
@@ -63,13 +61,13 @@ describe("CommentBlueLinkPageContent product_content", () => {
     const cacheKey = buildListCacheKey("comment-blue-link", filterHash)
     setListCache(cacheKey, {
       data: {
-        items: [{ accounts, categories, combos }],
+        items: [{ accounts, combos }],
         pagination: { hasMore: false, nextOffset: 1 },
       },
       timestamp: Date.now(),
       filters: { scope: "all" },
     })
-    vi.mocked(fetchCommentBlueLinkState).mockResolvedValue({ accounts, categories, combos })
+    vi.mocked(fetchCommentBlueLinkState).mockResolvedValue({ accounts, combos })
 
     const user = userEvent.setup()
 
@@ -94,13 +92,11 @@ describe("CommentBlueLinkPageContent product_content", () => {
 
   it("copies combo content when clicking copy button", async () => {
     const accounts = [{ id: "a1", name: "Account" }]
-    const categories: [] = []
     const combos = [
       {
         id: "c1",
         name: "Combo",
         account_id: "a1",
-        category_id: "",
         content: "Full content",
         remark: "",
         source_link: "https://b23.tv/abc",
@@ -111,13 +107,13 @@ describe("CommentBlueLinkPageContent product_content", () => {
     const cacheKey = buildListCacheKey("comment-blue-link", filterHash)
     setListCache(cacheKey, {
       data: {
-        items: [{ accounts, categories, combos }],
+        items: [{ accounts, combos }],
         pagination: { hasMore: false, nextOffset: 1 },
       },
       timestamp: Date.now(),
       filters: { scope: "all" },
     })
-    vi.mocked(fetchCommentBlueLinkState).mockResolvedValue({ accounts, categories, combos })
+    vi.mocked(fetchCommentBlueLinkState).mockResolvedValue({ accounts, combos })
 
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, "clipboard", {
@@ -145,7 +141,6 @@ describe("CommentBlueLinkPageContent product_content", () => {
   it("loads state from v2 endpoint", async () => {
     vi.mocked(fetchCommentBlueLinkState).mockResolvedValue({
       accounts: [],
-      categories: [],
       combos: [],
     })
 
@@ -160,13 +155,11 @@ describe("CommentBlueLinkPageContent product_content", () => {
 
   it("renders cached combos while refresh is in-flight", async () => {
     const accounts = [{ id: "a1", name: "Account" }]
-    const categories: [] = []
     const combos = [
       {
         id: "c1",
         name: "Combo",
         account_id: "a1",
-        category_id: "",
         content: "Full content",
         remark: "",
         source_link: "https://b23.tv/abc",
@@ -181,7 +174,6 @@ describe("CommentBlueLinkPageContent product_content", () => {
         items: [
           {
             accounts,
-            categories,
             combos,
           },
         ],
@@ -191,7 +183,7 @@ describe("CommentBlueLinkPageContent product_content", () => {
       filters: { scope: "all" },
     })
 
-    let resolveFetch: ((value: { accounts: []; categories: []; combos: [] }) => void) | null =
+    let resolveFetch: ((value: { accounts: []; combos: [] }) => void) | null =
       null
     vi.mocked(fetchCommentBlueLinkState).mockImplementation(
       () =>
@@ -208,6 +200,48 @@ describe("CommentBlueLinkPageContent product_content", () => {
 
     expect(await screen.findByText("Combo")).not.toBeNull()
 
-    resolveFetch?.({ accounts: [], categories: [], combos: [] })
+    resolveFetch?.({ accounts: [], combos: [] })
+  })
+
+
+  it("creates combos without category payload", async () => {
+    const user = userEvent.setup()
+    const accounts = [{ id: "a1", name: "Account" }]
+    const combos: [] = []
+
+    vi.mocked(fetchCommentBlueLinkState).mockResolvedValue({ accounts, combos })
+    const mockApi = vi.mocked(apiRequest)
+    mockApi.mockResolvedValue({
+      combo: {
+        id: "c1",
+        account_id: "a1",
+        name: "Combo",
+        content: "Content",
+        remark: "",
+      },
+    })
+
+    render(
+      <ToastProvider>
+        <CommentBlueLinkPageContent />
+      </ToastProvider>
+    )
+
+    const createButton = await screen.findByRole("button", { name: "新增组合" })
+    await user.click(createButton)
+
+    await user.type(screen.getByLabelText("Group name"), "Combo")
+    await user.type(screen.getByLabelText("Comment content"), "Content")
+
+    await user.click(screen.getByText("保存"))
+
+    expect(mockApi).toHaveBeenCalled()
+    const createCall = mockApi.mock.calls.find(
+      (call) => call[0] === "/api/comment/combos"
+    )
+    if (!createCall) throw new Error("create api not called")
+
+    const body = JSON.parse(String(createCall[1]?.body || "{}"))
+    expect(body.category_id).toBeUndefined()
   })
 })

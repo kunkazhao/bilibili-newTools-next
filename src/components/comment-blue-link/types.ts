@@ -2,17 +2,9 @@ import type { Account } from "@/types/account"
 
 export type CommentAccount = Account
 
-export interface CommentCategory {
-  id: string
-  account_id: string
-  name: string
-  color?: string | null
-}
-
 export interface CommentCombo {
   id: string
   account_id: string
-  category_id?: string | null
   name: string
   source_link?: string
   content?: string

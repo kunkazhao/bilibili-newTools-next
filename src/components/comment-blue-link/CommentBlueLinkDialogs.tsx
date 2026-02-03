@@ -16,15 +16,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import type { CommentAccount, CommentCategory } from "./types"
+import type { CommentAccount } from "./types"
 
 interface CommentBlueLinkDialogsProps {
   modalOpen: boolean
   editing: boolean
   accounts: CommentAccount[]
-  categories: CommentCategory[]
   formAccountId: string
-  formCategoryId: string
   formName: string
   formSourceLink: string
   formContent: string
@@ -32,7 +30,6 @@ interface CommentBlueLinkDialogsProps {
   extracting: boolean
   onModalOpenChange: (open: boolean) => void
   onAccountChange: (value: string) => void
-  onCategoryChange: (value: string) => void
   onNameChange: (value: string) => void
   onSourceLinkChange: (value: string) => void
   onContentChange: (value: string) => void
@@ -45,9 +42,7 @@ export default function CommentBlueLinkDialogs({
   modalOpen,
   editing,
   accounts,
-  categories,
   formAccountId,
-  formCategoryId,
   formName,
   formSourceLink,
   formContent,
@@ -55,7 +50,6 @@ export default function CommentBlueLinkDialogs({
   extracting,
   onModalOpenChange,
   onAccountChange,
-  onCategoryChange,
   onNameChange,
   onSourceLinkChange,
   onContentChange,
@@ -83,23 +77,6 @@ export default function CommentBlueLinkDialogs({
                     {account.name}
                   </SelectItem>
                 ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-slate-600">分类</label>
-            <Select value={formCategoryId} onValueChange={onCategoryChange} disabled={editing}>
-              <SelectTrigger aria-label="Select category">
-                <SelectValue placeholder="选择分类" />
-              </SelectTrigger>
-              <SelectContent>
-                {categories
-                  .filter((item) => item.account_id === formAccountId)
-                  .map((category) => (
-                    <SelectItem key={category.id} value={category.id}>
-                      {category.name}
-                    </SelectItem>
-                  ))}
               </SelectContent>
             </Select>
           </div>
