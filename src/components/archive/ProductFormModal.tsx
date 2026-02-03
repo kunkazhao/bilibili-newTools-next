@@ -41,8 +41,9 @@ interface ProductFormModalProps {
   categories: CategoryOption[]
   presetFields: { key: string }[]
   initialValues?: ProductFormValues
+  autoOpenCoverPicker?: boolean
   onClose: () => void
-  onSubmit: (values: ProductFormValues) => void
+  onSubmit: (values: ProductFormValues) => void | Promise<void>
 }
 
 const emptyValues: ProductFormValues = {
@@ -74,6 +75,15 @@ type JdProductInfo = {
   shopName?: string
   materialUrl?: string
   standardUrl?: string
+}
+
+type TaobaoProductInfo = {
+  title: string
+  price?: string
+  commissionRate?: string
+  image?: string
+  shopName?: string
+  materialUrl?: string
 }
 
 const parseMaybeJson = (value: unknown) => {
@@ -136,6 +146,9 @@ const extractJdKeyword = (url: string) => {
   return url
 }
 
+const isTaobaoLink = (url: string) =>
+  /taobao\.com|tmall\.com|tmall\.hk|click\.taobao|uland\.taobao/i.test(url)
+
 const resolveJdUrl = async (url: string) => {
   if (!url || url.includes("item.jd.com")) return url
   try {
@@ -146,6 +159,20 @@ const resolveJdUrl = async (url: string) => {
     return data.resolvedUrl || url
   } catch {
     return url
+  }
+}
+
+const resolveTaobaoLink = async (url: string) => {
+  const data = await apiRequest<{ itemId?: string; openIid?: string }>(
+    "/api/taobao/resolve",
+    {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    }
+  )
+  return {
+    itemId: data.itemId || "",
+    openIid: data.openIid || "",
   }
 }
 
@@ -183,11 +210,31 @@ const fetchJdProduct = async (keyword: string, originalLink: string) => {
   } as JdProductInfo
 }
 
+const fetchTaobaoProduct = async (itemId: string, openIid?: string) => {
+  const data = await apiRequest<Record<string, any>>("/api/taobao/product", {
+    method: "POST",
+    body: JSON.stringify({
+      item_id: itemId || undefined,
+      open_iid: openIid || undefined,
+    }),
+  })
+  return {
+    title: String(data?.title || ""),
+    price: data?.price !== undefined ? String(data.price) : "",
+    commissionRate:
+      data?.commissionRate !== undefined ? String(data.commissionRate) : "",
+    image: String(data?.cover || ""),
+    shopName: String(data?.shopName || ""),
+    materialUrl: String(data?.materialUrl || ""),
+  } as TaobaoProductInfo
+}
+
 export default function ProductFormModal({
   isOpen,
   categories,
   presetFields,
   initialValues,
+  autoOpenCoverPicker,
   onClose,
   onSubmit,
 }: ProductFormModalProps) {
@@ -200,11 +247,23 @@ export default function ProductFormModal({
   const baseId = useId()
   const coverInputId = `${baseId}-cover`
   const categorySelectId = `${baseId}-category`
+  const initialValuesKey = useMemo(
+    () => JSON.stringify(initialValues ?? {}),
+    [initialValues]
+  )
 
   useEffect(() => {
     setValues({ ...emptyValues, ...(initialValues ?? {}) })
     setErrors({})
-  }, [initialValues, isOpen])
+  }, [initialValuesKey, isOpen])
+
+  useEffect(() => {
+    if (!isOpen || !autoOpenCoverPicker) return
+    const timer = window.setTimeout(() => {
+      coverInputRef.current?.click()
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [autoOpenCoverPicker, isOpen])
 
   const computedCommission = useMemo(() => {
     const price = Number(values.price || 0)
@@ -212,6 +271,7 @@ export default function ProductFormModal({
     if (!Number.isFinite(price) || !Number.isFinite(rate)) return ""
     return ((price * rate) / 100).toFixed(2)
   }, [values.price, values.commissionRate])
+
 
   const update = (key: keyof ProductFormValues, value: string) => {
     setValues((prev) => ({ ...prev, [key]: value }))
@@ -250,36 +310,75 @@ export default function ProductFormModal({
     setIsParsing(true)
     update("promoLink", trimmed)
     try {
-      const product = await fetchJdProduct(extractJdKeyword(trimmed), trimmed)
-      const materialUrl = product.materialUrl || trimmed
-      const standardUrl = materialUrl.includes("item.jd.com")
-        ? materialUrl
-        : await resolveJdUrl(materialUrl)
-      setValues((prev) => ({
-        ...prev,
-        title: product.title || prev.title,
-        blueLink: standardUrl || prev.blueLink,
-        price:
-          product.price !== undefined ? String(product.price) : prev.price,
-        commission:
-          product.commission !== undefined
-            ? String(product.commission)
-            : prev.commission,
-        commissionRate:
-          product.commissionRate !== undefined
-            ? String(product.commissionRate)
-            : prev.commissionRate,
-        sales30:
-          product.sales30Days !== undefined
-            ? String(product.sales30Days)
-            : prev.sales30,
-        comments:
-          product.comments !== undefined
-            ? String(product.comments)
-            : prev.comments,
-        shopName: product.shopName || prev.shopName,
-        image: product.image || prev.image,
-      }))
+      if (isTaobaoLink(trimmed)) {
+        const resolved = await resolveTaobaoLink(trimmed)
+        const itemId = resolved.itemId || resolved.openIid
+        if (!itemId) {
+          throw new Error("未能解析淘宝商品ID")
+        }
+        const product = await fetchTaobaoProduct(itemId, resolved.openIid)
+        setValues((prev) => {
+          const hasTitle = Boolean(prev.title?.trim())
+          const hasImage = Boolean(prev.image?.trim())
+          const nextTitle = hasTitle ? prev.title : product.title || prev.title
+          return {
+            ...prev,
+            title: nextTitle,
+            taobaoLink: product.materialUrl || prev.taobaoLink || trimmed,
+            price: product.price ? String(product.price) : prev.price,
+            commissionRate: product.commissionRate || prev.commissionRate,
+            shopName: product.shopName || prev.shopName,
+            image: hasImage ? prev.image : product.image || prev.image,
+          }
+        })
+        showToast("推广链接解析成功", "success")
+        return
+      }
+      const resolvedInput = await resolveJdUrl(trimmed)
+      const keywordSource =
+        trimmed.includes("union-click.jd.com") ||
+        trimmed.includes("jdc.jd.com") ||
+        trimmed.includes("jingfen.jd.com")
+          ? trimmed
+          : resolvedInput
+      const keyword = extractJdKeyword(keywordSource)
+      const product = await fetchJdProduct(keyword, trimmed)
+      const materialUrl = product.materialUrl || resolvedInput || trimmed
+      let standardUrl = materialUrl
+      if (!standardUrl.includes("item.jd.com")) {
+        standardUrl = resolvedInput.includes("item.jd.com")
+          ? resolvedInput
+          : await resolveJdUrl(materialUrl)
+      }
+      setValues((prev) => {
+        const hasTitle = Boolean(prev.title?.trim())
+        const hasImage = Boolean(prev.image?.trim())
+        return {
+          ...prev,
+          title: hasTitle ? prev.title : product.title || prev.title,
+          blueLink: standardUrl || prev.blueLink,
+          price:
+            product.price !== undefined ? String(product.price) : prev.price,
+          commission:
+            product.commission !== undefined
+              ? String(product.commission)
+              : prev.commission,
+          commissionRate:
+            product.commissionRate !== undefined
+              ? String(product.commissionRate)
+              : prev.commissionRate,
+          sales30:
+            product.sales30Days !== undefined
+              ? String(product.sales30Days)
+              : prev.sales30,
+          comments:
+            product.comments !== undefined
+              ? String(product.comments)
+              : prev.comments,
+          shopName: product.shopName || prev.shopName,
+          image: hasImage ? prev.image : product.image || prev.image,
+        }
+      })
       showToast("推广链接解析成功", "success")
     } catch (error) {
       showToast(
@@ -300,10 +399,22 @@ export default function ProductFormModal({
     if (!values.title.trim()) nextErrors.title = "必填"
     if (!values.price.trim()) nextErrors.price = "必填"
     if (!values.categoryId) nextErrors.categoryId = "必填"
-    if (!values.blueLink.trim()) nextErrors.blueLink = "必填"
+    if (!values.blueLink.trim() && !values.taobaoLink.trim()) {
+      nextErrors.blueLink = "必填"
+    }
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length > 0) return
-    onSubmit({ ...values, commission: computedCommission })
+    const result = onSubmit({ ...values, commission: computedCommission })
+    if (result && typeof (result as Promise<void>).then === "function") {
+      const successMessage = initialValues ? "商品已更新" : "商品已新增"
+      const errorMessage = initialValues ? "更新失败" : "新增失败"
+      ;(result as Promise<void>)
+        .then(() => showToast(successMessage, "success"))
+        .catch((error) => {
+          const message = error instanceof Error ? error.message : errorMessage
+          showToast(message, "error")
+        })
+    }
     onClose()
   }
 
