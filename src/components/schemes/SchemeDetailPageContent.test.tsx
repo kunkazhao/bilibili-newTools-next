@@ -2,12 +2,15 @@
 import { describe, expect, it, vi, afterEach } from "vitest"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
-import SchemeDetailPageContent from "./SchemeDetailPageContent"
+import html2canvas from "html2canvas"
+import SchemeDetailPageContent, { mergeSchemeItemWithSource } from "./SchemeDetailPageContent"
 import { fetchBlueLinkMapState } from "@/components/blue-link-map/blueLinkMapApi"
+import { apiRequest } from "@/lib/api"
 
 const schemeDetailViewCapture = vi.hoisted(() => ({
   props: null as null | {
-    productList: { totalCount: number }
+    header: { onExportJson: () => void }
+    productList: { totalCount: number; onGenerateImage: (id: string) => void }
     sidebar: { image: { activeTemplateId: string; onGenerate: () => Promise<void> | void } }
   },
 }))
@@ -21,6 +24,11 @@ vi.mock("@/components/schemes/SchemeDetailDialogs", () => ({
 vi.mock("@/components/ProgressDialog", () => ({
   default: (props: { open?: boolean; title?: string }) =>
     props.open ? <div>{`progress-open:${props.title}`}</div> : null,
+}))
+
+vi.mock("@/components/LoadingDialog", () => ({
+  default: (props: { open?: boolean; title?: string; message?: string }) =>
+    props.open ? <div>{`loading-open:${props.title}:${props.message}`}</div> : null,
 }))
 
 vi.mock("@/components/schemes/SchemeDetailPageView", () => ({
@@ -91,6 +99,15 @@ vi.mock("@/lib/api", () => ({
 }))
 
 describe("SchemeDetailPageContent", () => {
+  it("prefers source item fields when merging", () => {
+    const merged = mergeSchemeItemWithSource(
+      { id: "item-1", title: "old", price: 1 },
+      { id: "item-1", title: "new", price: 2 }
+    )
+    expect(merged.title).toBe("new")
+    expect(merged.price).toBe(2)
+  })
+
   afterEach(() => {
     cleanup()
     vi.clearAllMocks()
@@ -167,6 +184,118 @@ describe("SchemeDetailPageContent", () => {
     createElementSpy.mockRestore()
   })
 
+  it("exports json using source link only", async () => {
+    const apiMock = vi.mocked(apiRequest)
+    const baseImpl = apiMock.getMockImplementation()
+    apiMock.mockImplementation((path: string, options?: RequestInit) => {
+      if (path.startsWith("/api/schemes/")) {
+        return Promise.resolve({
+          scheme: {
+            id: "s1",
+            name: "Scheme",
+            category_id: "cat-1",
+            category_name: "Category",
+            items: [
+              {
+                id: "item-1",
+                source_id: "p1",
+                title: "Product A",
+                link: "https://union-click.jd.com/jdc?e=promo",
+                spec: {
+                  _source_link: "https://item.jd.com/123.html",
+                  _promo_link: "https://union-click.jd.com/jdc?e=promo",
+                },
+              },
+            ],
+          },
+        })
+      }
+      return baseImpl ? baseImpl(path, options) : Promise.resolve({})
+    })
+
+    const originalCreateElement = document.createElement.bind(document)
+    const createElementSpy = vi.spyOn(document, "createElement").mockImplementation((tagName: string) => {
+      const el = originalCreateElement(tagName)
+      if (tagName.toLowerCase() === "a") {
+        ;(el as HTMLAnchorElement).click = vi.fn()
+      }
+      return el
+    })
+
+    if (!("createObjectURL" in URL)) {
+      Object.defineProperty(URL, "createObjectURL", { value: () => "blob:mock", writable: true })
+    }
+    if (!("revokeObjectURL" in URL)) {
+      Object.defineProperty(URL, "revokeObjectURL", { value: () => {}, writable: true })
+    }
+
+    let capturedBlob: Blob | null = null
+    const createUrlSpy = vi.spyOn(URL, "createObjectURL").mockImplementation((blob: Blob) => {
+      capturedBlob = blob
+      return "blob:mock"
+    })
+    const revokeUrlSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {})
+
+    render(<SchemeDetailPageContent schemeId="s1" onBack={() => {}} />)
+
+    await waitFor(() => {
+      expect(schemeDetailViewCapture.props?.productList.totalCount).toBe(1)
+      expect(schemeDetailViewCapture.props?.header.onExportJson).toBeDefined()
+    })
+
+    schemeDetailViewCapture.props?.header.onExportJson()
+
+    await waitFor(() => {
+      expect(capturedBlob).not.toBeNull()
+    })
+
+    const text = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result ?? ""))
+      reader.onerror = () => reject(reader.error)
+      reader.readAsText(capturedBlob as Blob)
+    })
+    const payload = JSON.parse(text) as Array<Record<string, string>>
+    const jdLinkKey = "\u4eac\u4e1c\u94fe\u63a5"
+    expect(payload[0][jdLinkKey]).toBe("https://item.jd.com/123.html")
+
+    revokeUrlSpy.mockRestore()
+    createUrlSpy.mockRestore()
+    createElementSpy.mockRestore()
+    apiMock.mockImplementation(baseImpl ?? (() => Promise.resolve({})))
+  })
+
+  it("uses reduced scale when generating images", async () => {
+    const html2canvasMock = vi.mocked(html2canvas)
+    const boundingSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({
+        width: 100,
+        height: 100,
+        top: 0,
+        left: 0,
+        right: 100,
+        bottom: 100,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect)
+    render(<SchemeDetailPageContent schemeId="s1" onBack={() => {}} />)
+
+    await waitFor(() => {
+      expect(schemeDetailViewCapture.props?.sidebar.image.activeTemplateId).toBe("tpl-1")
+      expect(schemeDetailViewCapture.props?.productList.totalCount).toBe(1)
+    })
+
+    await schemeDetailViewCapture.props?.sidebar.image.onGenerate()
+
+    expect(html2canvasMock).toHaveBeenCalled()
+    const options = html2canvasMock.mock.calls[0]?.[1] as { scale?: number } | undefined
+    expect(options?.scale).toBe(1.5)
+
+    boundingSpy.mockRestore()
+  })
+
   it("opens progress dialog when generating images", async () => {
     render(<SchemeDetailPageContent schemeId="s1" onBack={() => {}} />)
 
@@ -179,5 +308,131 @@ describe("SchemeDetailPageContent", () => {
     await waitFor(() => {
       expect(screen.getByText("progress-open:生成图片进度")).not.toBeNull()
     })
+  })
+
+
+
+
+  it("opens loading dialog when generating a single image", async () => {
+    const html2canvasMock = vi.mocked(html2canvas)
+    let resolveCanvas: ((value: { toBlob: (cb: (blob: Blob | null) => void) => void }) => void) | null = null
+    const canvasPromise = new Promise<{ toBlob: (cb: (blob: Blob | null) => void) => void }>((resolve) => {
+      resolveCanvas = resolve
+    })
+    html2canvasMock.mockImplementationOnce(async () => canvasPromise)
+
+    const boundingSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({
+        width: 100,
+        height: 100,
+        top: 0,
+        left: 0,
+        right: 100,
+        bottom: 100,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect)
+
+    render(<SchemeDetailPageContent schemeId="s1" onBack={() => {}} />)
+
+    await waitFor(() => {
+      expect(schemeDetailViewCapture.props?.sidebar.image.activeTemplateId).toBe("tpl-1")
+    })
+
+    schemeDetailViewCapture.props?.productList.onGenerateImage("item-1")
+
+    await waitFor(() => {
+      expect(screen.getByText(/loading-open:/)).not.toBeNull()
+    })
+
+    resolveCanvas?.({
+      toBlob: (cb: (blob: Blob | null) => void) => cb(new Blob(["png"], { type: "image/png" })),
+    })
+
+    await waitFor(() => {
+      expect(html2canvasMock).toHaveBeenCalled()
+    })
+    const options = html2canvasMock.mock.calls[0]?.[1] as { scale?: number } | undefined
+    expect(options?.scale).toBe(1.5)
+
+    boundingSpy.mockRestore()
+  })
+
+  it("uses timeout when document is hidden to avoid raf stall", async () => {
+    const rafSpy = vi.fn((cb: FrameRequestCallback) => {
+      cb(0)
+      return 0
+    })
+    vi.stubGlobal("requestAnimationFrame", rafSpy)
+
+    const originalVisibility = Object.getOwnPropertyDescriptor(document, "visibilityState")
+    Object.defineProperty(document, "visibilityState", {
+      value: "hidden",
+      configurable: true,
+    })
+
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout")
+
+    render(<SchemeDetailPageContent schemeId="s1" onBack={() => {}} />)
+
+    await waitFor(() => {
+      expect(schemeDetailViewCapture.props?.sidebar.image.activeTemplateId).toBe("tpl-1")
+    })
+
+    await schemeDetailViewCapture.props?.sidebar.image.onGenerate()
+
+    expect(setTimeoutSpy).toHaveBeenCalled()
+    expect(rafSpy).not.toHaveBeenCalled()
+
+    setTimeoutSpy.mockRestore()
+    if (originalVisibility) {
+      Object.defineProperty(document, "visibilityState", originalVisibility)
+    } else {
+      Object.defineProperty(document, "visibilityState", {
+        value: "visible",
+        configurable: true,
+      })
+    }
+    vi.unstubAllGlobals()
+  })
+  it("yields before rendering images so progress can paint", async () => {
+    const rafSpy = vi.fn((cb: FrameRequestCallback) => {
+      cb(0)
+      return 0
+    })
+    vi.stubGlobal("requestAnimationFrame", rafSpy)
+
+    const boundingSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({
+        width: 100,
+        height: 100,
+        top: 0,
+        left: 0,
+        right: 100,
+        bottom: 100,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect)
+
+    render(<SchemeDetailPageContent schemeId="s1" onBack={() => {}} />)
+
+    await waitFor(() => {
+      expect(schemeDetailViewCapture.props?.sidebar.image.activeTemplateId).toBe("tpl-1")
+    })
+
+    await schemeDetailViewCapture.props?.sidebar.image.onGenerate()
+
+    const html2canvasMock = vi.mocked(html2canvas)
+    expect(rafSpy).toHaveBeenCalled()
+    expect(rafSpy.mock.invocationCallOrder[0]).toBeLessThan(
+      html2canvasMock.mock.invocationCallOrder[0]
+    )
+
+    boundingSpy.mockRestore()
+    vi.unstubAllGlobals()
   })
 })

@@ -3,6 +3,7 @@ import { apiRequest } from "@/lib/api"
 import { useToast } from "@/components/Toast"
 import Empty from "@/components/Empty"
 import ProgressDialog from "@/components/ProgressDialog"
+import LoadingDialog from "@/components/LoadingDialog"
 import SchemeDetailDialogs from "@/components/schemes/SchemeDetailDialogs"
 import SchemeDetailPageView from "@/components/schemes/SchemeDetailPageView"
 import { useListDataPipeline } from "@/hooks/useListDataPipeline"
@@ -186,6 +187,16 @@ function getDisplayCover(item: SchemeItem) {
   return item.cover_url || item.coverUrl || item.cover || item.image || PLACEHOLDER_COVER
 }
 
+export const mergeSchemeItemWithSource = (
+  item: SchemeItem,
+  sourceItem?: SchemeItem | null
+) => {
+  if (!sourceItem) return item
+  const resolvedId = item.id || sourceItem.id
+  const resolvedSourceId = item.source_id || sourceItem.source_id || resolvedId
+  return { ...item, ...sourceItem, id: resolvedId, source_id: resolvedSourceId }
+}
+
 function normalizePresetFields(fields: Array<string | { key?: string; name?: string }> = []) {
   const seen = new Set()
   const normalized: string[] = []
@@ -210,6 +221,11 @@ function buildSpecDetailText(params: Record<string, string>, separator = " / ", 
     .slice(0, limit)
     .map(([key, value]) => `${key}: ${value}`)
     .join(separator)
+}
+
+const buildSchemeItemReference = (item: SchemeItem) => {
+  const sourceId = String(item.source_id || item.id || "").trim()
+  return { id: sourceId, source_id: sourceId }
 }
 
 export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageProps) {
@@ -240,6 +256,18 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
   const state = stateItems[0] ?? EMPTY_DETAIL_STATE
   const scheme = state.scheme
   const items = state.items
+  const sourceItemIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          items
+            .map((item) => String(item.source_id || item.id))
+            .filter(Boolean)
+        )
+      ),
+    [items]
+  )
+  const sourceItemKey = useMemo(() => sourceItemIds.join("|"), [sourceItemIds])
   const lastErrorRef = useRef<string | null>(null)
   const updateState = useCallback(
     (updater: (prev: SchemeDetailState) => SchemeDetailState) => {
@@ -253,6 +281,18 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
 
   const [removeTarget, setRemoveTarget] = useState<SchemeItem | null>(null)
   const [sourceItems, setSourceItems] = useState<SchemeItem[]>([])
+  const sourceItemMap = useMemo(
+    () => new Map(sourceItems.map((item) => [String(item.id), item])),
+    [sourceItems]
+  )
+  const findSourceItem = useCallback(
+    (item: SchemeItem) => {
+      const sourceId = String(item.source_id || item.id || "")
+      if (!sourceId) return null
+      return sourceItemMap.get(sourceId) || null
+    },
+    [sourceItemMap]
+  )
   const [categoryOptions, setCategoryOptions] = useState<Array<{ label: string; value: string }>>([])
   const [isProductFormOpen, setIsProductFormOpen] = useState(false)
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null)
@@ -261,6 +301,11 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
   const [priceMin, setPriceMin] = useState("")
   const [priceMax, setPriceMax] = useState("")
   const [sortValue, setSortValue] = useState("price-asc")
+
+  const mergedItems = useMemo(
+    () => items.map((item) => mergeSchemeItemWithSource(item, findSourceItem(item))),
+    [items, findSourceItem]
+  )
 
   useEffect(() => {
     setFilters({ schemeId })
@@ -326,6 +371,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     Array<{ name: string; reason?: string; link?: string }>
   >([])
   const progressCancelRef = useRef(false)
+  const [singleImageLoadingOpen, setSingleImageLoadingOpen] = useState(false)
 
   const [feishuOpen, setFeishuOpen] = useState(false)
   const [feishuProductLink, setFeishuProductLink] = useState("")
@@ -338,7 +384,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
   const filteredItems = useMemo(() => {
     const min = priceMin.trim() ? Number(priceMin) : null
     const max = priceMax.trim() ? Number(priceMax) : null
-    let list = items.slice()
+    let list = mergedItems.slice()
     if (min !== null && !Number.isNaN(min)) {
       list = list.filter((item) => (item.price ?? 0) >= min)
     }
@@ -362,7 +408,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       })
     }
     return list
-  }, [items, priceMin, priceMax, sortValue])
+  }, [mergedItems, priceMin, priceMax, sortValue])
 
 
 
@@ -409,21 +455,25 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
 
   useEffect(() => {
     const loadSourceItems = async () => {
-      if (!scheme?.category_id) return
+      if (!sourceItemIds.length) {
+        setSourceItems([])
+        return
+      }
       try {
-        const params = new URLSearchParams()
-        params.set("limit", "50")
-        params.set("offset", "0")
-        params.set("fields", "list")
-        params.set("category_id", scheme.category_id)
-        const data = await apiRequest<{ items: SchemeItem[] }>(`/api/sourcing/items?${params.toString()}`)
+        const data = await apiRequest<{ items: SchemeItem[] }>(
+          "/api/sourcing/items/by-ids",
+          {
+            method: "POST",
+            body: JSON.stringify({ ids: sourceItemIds }),
+          }
+        )
         setSourceItems(Array.isArray(data.items) ? data.items : [])
       } catch {
         setSourceItems([])
       }
     }
     loadSourceItems().catch(() => {})
-  }, [scheme?.category_id])
+  }, [sourceItemKey, sourceItemIds])
 
   useEffect(() => {
     if (!items.length) return
@@ -436,10 +486,14 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
 
   const persistItems = async (nextItems: SchemeItem[], message?: string) => {
     try {
-      const response = await apiRequest<{ scheme: Scheme }>(`/api/schemes/${schemeId}`,
+      const payloadItems = nextItems
+        .map(buildSchemeItemReference)
+        .filter((entry) => entry.id)
+      const response = await apiRequest<{ scheme: Scheme }>(
+        `/api/schemes/${schemeId}`,
         {
           method: "PATCH",
-          body: JSON.stringify({ items: nextItems }),
+          body: JSON.stringify({ items: payloadItems }),
         }
       )
       updateState((prev) => ({
@@ -484,11 +538,6 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       remark: item.remark || "",
       params: stripMetaSpec(item.spec || {}),
     }
-  }
-
-  const findSourceItem = (item: SchemeItem) => {
-    const sourceId = item.source_id || item.id
-    return sourceItems.find((entry) => String(entry.id) === String(sourceId)) || null
   }
 
   const openEditItem = async (item: SchemeItem) => {
@@ -661,7 +710,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
   }
 
   const buildPromptItems = () =>
-    items.map((item) => {
+    mergedItems.map((item) => {
       const meta = getMeta(item.spec)
       return {
         title: item.title || "",
@@ -707,7 +756,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     type: "title" | "intro" | "vote",
     setOutput: (value: string) => void
   ) => {
-    if (!items.length) {
+    if (!mergedItems.length) {
       showToast("暂无选品可生成", "error")
       return
     }
@@ -914,9 +963,9 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       }))
       const missingLinks: string[] = []
 
-      items.forEach((item) => {
+      mergedItems.forEach((item) => {
         const sourceId = item.source_id || item.id
-        const latestItem = sourceItems.find((source) => source.id === sourceId) || item
+        const latestItem = findSourceItem(item) || item
         const price = Number(latestItem.price)
         const entry = map.get(sourceId)
         const link = entry?.source_link || ""
@@ -1187,6 +1236,18 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     setTemplateMissing(message)
   }
 
+  const waitForNextFrame = () =>
+    new Promise<void>((resolve) => {
+      const isHidden =
+        typeof document !== "undefined" &&
+        (document.hidden || document.visibilityState === "hidden")
+      if (!isHidden && typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => resolve())
+        return
+      }
+      setTimeout(resolve, 0)
+    })
+
   const generateImages = async () => {
     const template = imageTemplates.find((item) => item.id === activeTemplateId)
     if (!template?.html) {
@@ -1210,6 +1271,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     setProgressFailures([])
     setImageStatus({ message: "正在生成图片...", type: "info" })
     refreshTemplateMissing()
+    await waitForNextFrame()
 
     const zip = new JSZip()
     const parser = new DOMParser()
@@ -1249,13 +1311,14 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
         if (!rect.width || !rect.height) {
           recordFailure(item.title || `商品_${index}`, "模板尺寸为 0")
           index += 1
+          await waitForNextFrame()
           continue
         }
 
         const canvas = await html2canvas(wrapper, {
           useCORS: true,
           backgroundColor: null,
-          scale: 2,
+          scale: 1.5,
         })
         const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png", 1))
         if (blob) {
@@ -1266,6 +1329,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
           recordFailure(item.title || `商品_${index}`, "生成图片失败")
         }
         index += 1
+        await waitForNextFrame()
       }
 
       if (!successCount) {
@@ -1310,6 +1374,8 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     }
     setImageStatus({ message: "正在生成图片...", type: "info" })
     refreshTemplateMissing()
+    setSingleImageLoadingOpen(true)
+    await waitForNextFrame()
 
     const { item, template } = target
     const parser = new DOMParser()
@@ -1340,7 +1406,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       const canvas = await html2canvas(wrapper, {
         useCORS: true,
         backgroundColor: null,
-        scale: 2,
+        scale: 1.5,
       })
       const blob = await new Promise<Blob | null>((resolve) =>
         canvas.toBlob(resolve, "image/png", 1)
@@ -1363,6 +1429,8 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       setImageStatus({ message: "图片已生成并开始下载", type: "success" })
     } catch {
       setImageStatus({ message: "生成失败，请重试", type: "error" })
+    } finally {
+      setSingleImageLoadingOpen(false)
     }
   }
 
@@ -1390,11 +1458,11 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
   }
 
   const exportJsonTxt = () => {
-    if (!items.length) {
+    if (!mergedItems.length) {
       showToast("没有可导出的商品", "info")
       return
     }
-    const payload = items.map((item) => {
+    const payload = mergedItems.map((item) => {
       const spec = item.spec || {}
       const meta = getMeta(spec)
       return {
@@ -1402,7 +1470,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
         所有参数: stripMetaSpec(spec),
         remark: item.remark || "",
         重点标记: Boolean(spec._featured),
-        京东链接: (meta.promoLink || meta.sourceLink || item.link || "").trim(),
+        京东链接: (meta.sourceLink || "").trim(),
       }
     })
     const jsonText = JSON.stringify(payload, null, 2)
@@ -1633,14 +1701,12 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
 
 
   const productCards = filteredItems.map((item) => {
-    const sourceItem = findSourceItem(item)
-    const specSource = sourceItem?.spec ?? item.spec
+    const specSource = item.spec
     const meta = getMeta(specSource)
     const missingFields = getMissingPresetFields(specSource)
-    const remarkSource =
-      sourceItem || Object.prototype.hasOwnProperty.call(item, "remark")
-        ? (sourceItem?.remark ?? item.remark)
-        : undefined
+    const remarkSource = Object.prototype.hasOwnProperty.call(item, "remark")
+      ? item.remark
+      : undefined
     const remarkText = String(remarkSource ?? "").trim()
     const hasMissingRemark = remarkSource !== undefined && !remarkText
     const isMissing = missingFields.length > 0 || hasMissingRemark
@@ -1659,6 +1725,15 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       isMissing,
     }
   })
+
+  const handleProductCardClick = (id: string) => {
+    const target = filteredItems.find((item) => item.id === id)
+    if (!target) return
+    const meta = getMeta(target.spec)
+    const link = String(meta.blueLink || target.link || "").trim()
+    if (!link) return
+    window.open(link, "_blank")
+  }
 
   const handleAccountChange = (id: string) => {
     setSelectedAccountId(id)
@@ -1712,6 +1787,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
           },
           onDragStart: handleDragStart,
           onDrop: handleDrop,
+          onCardClick: handleProductCardClick,
         }}
         sidebar={{
           copywriting: {
@@ -1775,6 +1851,11 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       />
 
       <div ref={imageRenderRef} className="fixed left-[-9999px] top-[-9999px]" />
+      <LoadingDialog
+        open={singleImageLoadingOpen}
+        title="生成中"
+        message="正在生成图片..."
+      />
       <ProgressDialog
         open={progressOpen}
         title="生成图片进度"
