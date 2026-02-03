@@ -13,6 +13,22 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import * as XLSX from "xlsx"
 import { apiRequest } from "@/lib/api"
 import {
@@ -191,6 +207,14 @@ export const fetchSchemeFilterItemsBatch = async (
   return { scheme, items: ordered, rawIds }
 }
 
+export const buildSchemeItemReference = (item: {
+  id?: string
+  source_id?: string
+}) => {
+  const sourceId = String(item.source_id || item.id || "").trim()
+  return { id: sourceId, source_id: sourceId }
+}
+
 const normalizeArchiveItem = (item: {
   id: string
   category_id: string
@@ -335,6 +359,10 @@ export default function ArchivePage() {
   const [isClearing, setIsClearing] = useState(false)
   const [isFixSortSaving, setIsFixSortSaving] = useState(false)
   const [isImportOpen, setIsImportOpen] = useState(false)
+  const [isSchemeJoinOpen, setIsSchemeJoinOpen] = useState(false)
+  const [schemeJoinItemId, setSchemeJoinItemId] = useState<string | null>(null)
+  const [schemeJoinId, setSchemeJoinId] = useState("")
+  const [isSchemeJoinSaving, setIsSchemeJoinSaving] = useState(false)
   const [importState, setImportState] = useState({
     status: "idle" as "idle" | "running" | "done",
     total: 0,
@@ -483,6 +511,18 @@ export default function ArchivePage() {
     () => filterSchemesByCategory(schemes, categoryValue),
     [schemes, categoryValue]
   )
+
+  useEffect(() => {
+    if (!isSchemeJoinOpen) return
+    if (visibleSchemes.length === 0) {
+      if (schemeJoinId !== "") setSchemeJoinId("")
+      return
+    }
+    const hasSelected = visibleSchemes.some((scheme) => scheme.id === schemeJoinId)
+    if (!hasSelected) {
+      setSchemeJoinId(visibleSchemes[0].id)
+    }
+  }, [isSchemeJoinOpen, visibleSchemes, schemeJoinId])
 
   const priceBounds = useMemo<[number, number]>(() => {
     if (baseItems.length === 0) return [0, 0]
@@ -703,9 +743,15 @@ export default function ArchivePage() {
       if (!nextScheme?.id) return prev
       const exists = prev.some((scheme) => scheme.id === nextScheme.id)
       if (exists) {
-        return prev.map((scheme) => (scheme.id === nextScheme.id ? nextScheme : scheme))
+        const nextList = prev.map((scheme) =>
+          scheme.id === nextScheme.id ? nextScheme : scheme
+        )
+        setCache(SCHEME_CACHE_KEY, nextList)
+        return nextList
       }
-      return prev.concat(nextScheme)
+      const nextList = prev.concat(nextScheme)
+      setCache(SCHEME_CACHE_KEY, nextList)
+      return nextList
     })
   }, [])
 
@@ -880,6 +926,74 @@ export default function ArchivePage() {
     if (schemeFilterId) return
     await loadMoreItems()
   }, [schemeFilterId, loadMoreItems])
+
+  const closeSchemeJoinDialog = () => {
+    setIsSchemeJoinOpen(false)
+    setSchemeJoinItemId(null)
+    setSchemeJoinId("")
+  }
+
+  const openSchemeJoinDialog = (itemId: string) => {
+    setSchemeJoinItemId(itemId)
+    setIsSchemeJoinOpen(true)
+  }
+
+  const handleSchemeJoinConfirm = async () => {
+    if (isSchemeJoinSaving) return
+    if (!schemeJoinItemId) {
+      showToast("未找到商品", "error")
+      return
+    }
+    if (!schemeJoinId) {
+      showToast("请选择方案", "error")
+      return
+    }
+    const targetScheme = schemes.find((scheme) => scheme.id === schemeJoinId)
+    if (!targetScheme) {
+      showToast("未找到方案", "error")
+      return
+    }
+    const seen = new Set<string>()
+    const nextItems: SchemeItemRef[] = []
+    const existing = Array.isArray(targetScheme.items) ? targetScheme.items : []
+    existing.forEach((entry) => {
+      const ref = buildSchemeItemReference(entry)
+      if (!ref.id || seen.has(ref.id)) return
+      seen.add(ref.id)
+      nextItems.push(ref)
+    })
+    const newRef = buildSchemeItemReference({ id: schemeJoinItemId })
+    if (!newRef.id) {
+      showToast("未找到商品", "error")
+      return
+    }
+    if (seen.has(newRef.id)) {
+      showToast("方案已包含该商品", "info")
+      closeSchemeJoinDialog()
+      return
+    }
+    nextItems.push(newRef)
+    setIsSchemeJoinSaving(true)
+    try {
+      const data = await apiRequest<{ scheme: Scheme }>(`/api/schemes/${schemeJoinId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ items: nextItems }),
+      })
+      if (data?.scheme) {
+        upsertScheme(data.scheme)
+      }
+      if (schemeFilterId === schemeJoinId) {
+        loadSchemeFilterItems(schemeJoinId, { force: true })
+      }
+      showToast("已加入方案", "success")
+      closeSchemeJoinDialog()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "加入方案失败"
+      showToast(message, "error")
+    } finally {
+      setIsSchemeJoinSaving(false)
+    }
+  }
 
 
 
@@ -1473,6 +1587,7 @@ export default function ArchivePage() {
         const target = items.find((item) => item.id === id)
         setDeleteTarget({ id, title: target?.title })
       }}
+      onAddToScheme={openSchemeJoinDialog}
       onToggleFocus={handleToggleFocus}
       onDragStart={handleDragStart}
       onDrop={handleDrop}
@@ -1528,6 +1643,63 @@ export default function ArchivePage() {
         onClearOpenChange={setIsClearOpen}
         onConfirmClear={handleClearList}
       />
+      <Dialog
+        open={isSchemeJoinOpen}
+        onOpenChange={(open) => {
+          if (!open) closeSchemeJoinDialog()
+        }}
+      >
+        <DialogContent className="sm:max-w-[460px]">
+          <DialogHeader>
+            <DialogTitle>加入方案</DialogTitle>
+            <DialogDescription>选择一个方案，将当前商品加入其中。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="text-sm text-slate-600">选择方案</div>
+            <Select
+              value={schemeJoinId}
+              onValueChange={setSchemeJoinId}
+              disabled={visibleSchemes.length === 0 || isSchemeJoinSaving}
+            >
+              <SelectTrigger aria-label="Join scheme">
+                <SelectValue
+                  placeholder={visibleSchemes.length ? "请选择方案" : "暂无方案"}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {visibleSchemes.length === 0 ? (
+                  <SelectItem value="__empty" disabled>
+                    暂无方案
+                  </SelectItem>
+                ) : (
+                  visibleSchemes.map((scheme) => (
+                    <SelectItem key={scheme.id} value={scheme.id}>
+                      {scheme.name}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={closeSchemeJoinDialog}
+              disabled={isSchemeJoinSaving}
+            >
+              取消
+            </Button>
+            <Button
+              onClick={handleSchemeJoinConfirm}
+              disabled={
+                isSchemeJoinSaving || !schemeJoinId || visibleSchemes.length === 0
+              }
+            >
+              {isSchemeJoinSaving ? "加入中..." : "确认加入"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <AlertDialog
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   buildSortOrderUpdates,
+  buildSchemeItemReference,
   fetchSchemeFilterItemsBatch,
   filterSchemesByCategory,
   isFixSortDisabled,
@@ -137,6 +138,13 @@ describe("fetchSchemeFilterItemsBatch", () => {
       "/api/sourcing/items/by-ids",
     ])
     expect(result.items.map((item) => item.id)).toEqual(["item-1", "item-2"])
+  })
+})
+
+describe("buildSchemeItemReference", () => {
+  it("returns reference with id and source_id only", () => {
+    const ref = buildSchemeItemReference({ id: "item-1", title: "T", spec: { foo: "bar" } })
+    expect(ref).toEqual({ id: "item-1", source_id: "item-1" })
   })
 })
 
