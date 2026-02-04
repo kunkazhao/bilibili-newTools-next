@@ -1,4 +1,4 @@
-"""
+﻿"""
 
 B站电商创作工作台 - 后端服务
 
@@ -25,7 +25,7 @@ import time
 import hashlib
 import threading
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 
 from decimal import Decimal, InvalidOperation
 
@@ -33,7 +33,9 @@ from pathlib import Path
 
 from typing import List, Optional, Dict, Any, Tuple, Set, Literal
 
-from urllib.parse import urlencode, urlparse, parse_qs
+from urllib.parse import urlencode, urlparse, parse_qs, quote
+
+from zoneinfo import ZoneInfo
 
 
 
@@ -191,6 +193,14 @@ TAOBAO_APP_KEY = os.getenv("TAOBAO_APP_KEY")
 TAOBAO_APP_SECRET = os.getenv("TAOBAO_APP_SECRET")
 TAOBAO_SESSION = os.getenv("TAOBAO_SESSION")
 TAOBAO_ADZONE_ID = os.getenv("TAOBAO_ADZONE_ID")
+
+# 知乎 Cookie
+ZHIHU_COOKIE = os.getenv("ZHIHU_COOKIE", "")
+ZHIHU_UA = os.getenv(
+    "ZHIHU_UA",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+)
+ZHIHU_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 
 
@@ -575,6 +585,15 @@ def ensure_supabase() -> SupabaseClient:
 def utc_now_iso() -> str:
 
     return datetime.now(timezone.utc).isoformat()
+
+
+def shanghai_today() -> date:
+    return datetime.now(tz=ZHIHU_TIMEZONE).date()
+
+
+async def fetch_zhihu_keywords_map(client: SupabaseClient) -> Dict[str, str]:
+    rows = await client.select("zhihu_keywords", params={"select": "id,name"})
+    return {str(row.get("id")): row.get("name") or "" for row in rows}
 
 
 
@@ -6138,6 +6157,12 @@ class CommentAccountUpdate(BaseModel):
 class MyAccountSyncPayload(BaseModel):
     account_id: str
 
+class ZhihuKeywordPayload(BaseModel):
+    name: str
+
+class ZhihuKeywordUpdate(BaseModel):
+    name: Optional[str] = None
+
 
 
 
@@ -9023,6 +9048,108 @@ async def sync_my_account_videos_all():
 
 
 
+
+
+@app.get("/api/zhihu/keywords")
+async def list_zhihu_keywords():
+    client = ensure_supabase()
+    rows = await client.select("zhihu_keywords", params={"order": "created_at.asc"})
+    return {"keywords": rows}
+
+
+@app.post("/api/zhihu/keywords")
+async def create_zhihu_keyword(payload: ZhihuKeywordPayload):
+    client = ensure_supabase()
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="???????")
+    body = {"name": name, "created_at": utc_now_iso(), "updated_at": utc_now_iso()}
+    try:
+        record = await client.insert("zhihu_keywords", body)
+    except SupabaseError as exc:
+        status = 400 if exc.status_code in (400, 409) else 500
+        raise HTTPException(status_code=status, detail=str(exc.message))
+    return {"keyword": record[0]}
+
+
+@app.patch("/api/zhihu/keywords/{keyword_id}")
+async def update_zhihu_keyword(keyword_id: str, payload: ZhihuKeywordUpdate):
+    client = ensure_supabase()
+    updates: Dict[str, Any] = {}
+    if payload.name is not None:
+        if not payload.name.strip():
+            raise HTTPException(status_code=400, detail="???????")
+        updates["name"] = payload.name.strip()
+    if not updates:
+        return {"keyword": None}
+    updates["updated_at"] = utc_now_iso()
+    record = await client.update("zhihu_keywords", updates, {"id": f"eq.{keyword_id}"})
+    if not record:
+        raise HTTPException(status_code=404, detail="??????")
+    return {"keyword": record[0]}
+
+
+@app.delete("/api/zhihu/keywords/{keyword_id}")
+async def delete_zhihu_keyword(keyword_id: str):
+    client = ensure_supabase()
+    existing = await client.select("zhihu_keywords", {"id": f"eq.{keyword_id}"})
+    if not existing:
+        raise HTTPException(status_code=404, detail="??????")
+    await client.delete("zhihu_question_keywords", {"keyword_id": f"eq.{keyword_id}"})
+    await client.delete("zhihu_keywords", {"id": f"eq.{keyword_id}"})
+    await client.update("zhihu_questions", {"first_keyword_id": None}, {"first_keyword_id": f"eq.{keyword_id}"})
+    return {"status": "ok"}
+
+
+@app.get("/api/zhihu/questions")
+async def list_zhihu_questions(keyword_id: Optional[str] = None, q: Optional[str] = None, limit: int = 50, offset: int = 0):
+    client = ensure_supabase()
+    params = {"select": "id,title,url,first_keyword_id,created_at,updated_at,last_seen_at", "order": "updated_at.desc", "limit": limit, "offset": offset}
+    if q:
+        safe_q = q.replace("%", "").replace("*", "").strip()
+        if safe_q:
+            params["title"] = f"ilike.*{safe_q}*"
+    if keyword_id:
+        mapping = await client.select("zhihu_question_keywords", {"keyword_id": f"eq.{keyword_id}", "select": "question_id"})
+        ids = [row.get("question_id") for row in mapping if row.get("question_id")]
+        if not ids:
+            return {"items": [], "total": 0}
+        params["id"] = f"in.({','.join(ids)})"
+    questions = await client.select("zhihu_questions", params)
+
+    today = shanghai_today()
+    yesterday = today - timedelta(days=1)
+    ids = [row.get("id") for row in questions]
+    stats_today = await client.select("zhihu_question_stats", {"question_id": f"in.({','.join(ids)})", "stat_date": f"eq.{today}", "select": "question_id,view_count,answer_count"}) if ids else []
+    stats_yesterday = await client.select("zhihu_question_stats", {"question_id": f"in.({','.join(ids)})", "stat_date": f"eq.{yesterday}", "select": "question_id,view_count,answer_count"}) if ids else []
+
+    today_map = {row["question_id"]: row for row in stats_today}
+    yesterday_map = {row["question_id"]: row for row in stats_yesterday}
+    keyword_map = await fetch_zhihu_keywords_map(client)
+
+    items = []
+    for row in questions:
+        qid = row.get("id")
+        today_row = today_map.get(qid, {})
+        yesterday_row = yesterday_map.get(qid, {})
+        view_total = int(today_row.get("view_count") or 0)
+        answer_total = int(today_row.get("answer_count") or 0)
+        view_delta = view_total - int(yesterday_row.get("view_count") or 0)
+        answer_delta = answer_total - int(yesterday_row.get("answer_count") or 0)
+        items.append({**row, "first_keyword": keyword_map.get(str(row.get("first_keyword_id")) or "", "???"), "view_count_total": view_total, "answer_count_total": answer_total, "view_count_delta": view_delta, "answer_count_delta": answer_delta})
+    return {"items": items, "total": len(items)}
+
+
+@app.get("/api/zhihu/questions/{question_id}/stats")
+async def get_zhihu_question_stats(question_id: str, days: int = 15):
+    client = ensure_supabase()
+    rows = await client.select("zhihu_question_stats", {"question_id": f"eq.{question_id}", "order": "stat_date.asc", "limit": days})
+    return {"stats": rows}
+
+
+@app.post("/api/zhihu/scrape/run")
+async def run_zhihu_scrape():
+    return {"status": "not_implemented"}
 
 
 @app.post("/api/comment/combos")
