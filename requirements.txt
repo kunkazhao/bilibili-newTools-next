@@ -19,3 +19,5 @@ transformers>=4.36.0
 kornia>=0.7.2
 huggingface_hub>=0.23.0
 timm>=0.9.16
+apscheduler>=3.10.4
+playwright>=1.57.0

@@ -45,6 +45,10 @@ import aiofiles
 
 import httpx
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+from playwright.async_api import async_playwright
+
 from dashscope import MultiModalConversation, Generation
 
 from dotenv import load_dotenv
@@ -314,6 +318,9 @@ PROMPT_TEMPLATE_DEFAULTS = {
 
 supabase_client: Optional["SupabaseClient"] = None
 
+zhihu_scheduler: Optional[AsyncIOScheduler] = None
+zhihu_playwright = None
+zhihu_browser = None
 
 
 
@@ -596,6 +603,38 @@ async def fetch_zhihu_keywords_map(client: SupabaseClient) -> Dict[str, str]:
     return {str(row.get("id")): row.get("name") or "" for row in rows}
 
 
+async def ensure_zhihu_browser():
+    global zhihu_playwright, zhihu_browser
+    if zhihu_browser:
+        return zhihu_browser
+    zhihu_playwright = await async_playwright().start()
+    zhihu_browser = await zhihu_playwright.chromium.launch(headless=True)
+    return zhihu_browser
+
+
+async def close_zhihu_browser():
+    global zhihu_playwright, zhihu_browser
+    if zhihu_browser:
+        await zhihu_browser.close()
+        zhihu_browser = None
+    if zhihu_playwright:
+        await zhihu_playwright.stop()
+        zhihu_playwright = None
+
+
+async def zhihu_scrape_job():
+    return
+
+
+def init_zhihu_scheduler() -> None:
+    global zhihu_scheduler
+    if zhihu_scheduler:
+        return
+    zhihu_scheduler = AsyncIOScheduler(timezone=ZHIHU_TIMEZONE)
+    zhihu_scheduler.add_job(zhihu_scrape_job, CronTrigger(hour=5, minute=0))
+    zhihu_scheduler.start()
+
+
 
 
 
@@ -754,6 +793,8 @@ async def init_supabase_client() -> None:
 
         print("[Supabase] 未配置，相关模块将退化为本地模式")
 
+    init_zhihu_scheduler()
+
 
 
 
@@ -773,6 +814,10 @@ async def shutdown_supabase_client() -> None:
         await feishu_http_client.aclose()
 
         feishu_http_client = None
+
+    if zhihu_scheduler:
+        zhihu_scheduler.shutdown(wait=False)
+    await close_zhihu_browser()
 
 
 
@@ -9149,7 +9194,8 @@ async def get_zhihu_question_stats(question_id: str, days: int = 15):
 
 @app.post("/api/zhihu/scrape/run")
 async def run_zhihu_scrape():
-    return {"status": "not_implemented"}
+    asyncio.create_task(zhihu_scrape_job())
+    return {"status": "started"}
 
 
 @app.post("/api/comment/combos")
