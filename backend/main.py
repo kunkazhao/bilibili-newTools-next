@@ -31,7 +31,7 @@ from decimal import Decimal, InvalidOperation
 
 from pathlib import Path
 
-from typing import List, Optional, Dict, Any, Tuple, Set, Literal
+from typing import List, Optional, Dict, Any, Tuple, Set, Literal, Callable, Awaitable
 
 from urllib.parse import urlencode, urlparse, parse_qs, quote
 
@@ -603,6 +603,43 @@ async def fetch_zhihu_keywords_map(client: SupabaseClient) -> Dict[str, str]:
     return {str(row.get("id")): row.get("name") or "" for row in rows}
 
 
+def parse_cookie_header(cookie_value: str, domain: str) -> List[Dict[str, Any]]:
+    items: List[Dict[str, Any]] = []
+    if not cookie_value:
+        return items
+    for part in cookie_value.split(";"):
+        if "=" not in part:
+            continue
+        name, value = part.split("=", 1)
+        name = name.strip()
+        value = value.strip()
+        if not name:
+            continue
+        items.append({"name": name, "value": value, "domain": domain, "path": "/"})
+    return items
+
+
+def extract_zhihu_questions(items: List[Dict[str, Any]], limit: int = 50) -> List[Dict[str, str]]:
+    results: List[Dict[str, str]] = []
+    seen: Set[str] = set()
+    for item in items or []:
+        obj = item.get("object") or {}
+        if obj.get("type") != "question":
+            continue
+        question = obj.get("question") or {}
+        qid = str(question.get("id") or "").strip()
+        title = (question.get("title") or "").strip()
+        if not qid or not title:
+            continue
+        if qid in seen:
+            continue
+        seen.add(qid)
+        results.append({"id": qid, "title": title, "url": f"https://www.zhihu.com/question/{qid}"})
+        if len(results) >= limit:
+            break
+    return results
+
+
 async def ensure_zhihu_browser():
     global zhihu_playwright, zhihu_browser
     if zhihu_browser:
@@ -622,8 +659,165 @@ async def close_zhihu_browser():
         zhihu_playwright = None
 
 
-async def zhihu_scrape_job():
-    return
+async def fetch_search_results_for_keyword(
+    keyword: str,
+    response_fetcher: Optional[Callable[[int], Awaitable[Dict[str, Any]]]] = None,
+) -> List[Dict[str, Any]]:
+    offsets = [0, 20, 40]
+    results: List[Dict[str, Any]] = []
+    if response_fetcher:
+        for offset in offsets:
+            try:
+                payload = await response_fetcher(offset)
+            except Exception:
+                continue
+            results.extend(payload.get("data") or [])
+        return results
+
+    browser = await ensure_zhihu_browser()
+    context = await browser.new_context(user_agent=ZHIHU_UA)
+    if ZHIHU_COOKIE:
+        await context.add_cookies(parse_cookie_header(ZHIHU_COOKIE, ".zhihu.com"))
+    page = await context.new_page()
+    try:
+        search_url = f"https://www.zhihu.com/search?type=content&q={quote(keyword)}"
+        await page.goto(search_url, wait_until="domcontentloaded")
+        for offset in offsets:
+            try:
+                response = await page.wait_for_response(
+                    lambda r: "api/v4/search_v3" in r.url and f"offset={offset}" in r.url,
+                    timeout=15000,
+                )
+                payload = await response.json()
+                results.extend(payload.get("data") or [])
+                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                await page.wait_for_timeout(800)
+            except Exception:
+                continue
+    finally:
+        await context.close()
+    return results
+
+
+async def fetch_question_stats(
+    question_id: str,
+    response_fetcher: Optional[Callable[[], Awaitable[Dict[str, Any]]]] = None,
+) -> Optional[Dict[str, Any]]:
+    if response_fetcher:
+        return await response_fetcher()
+
+    browser = await ensure_zhihu_browser()
+    context = await browser.new_context(user_agent=ZHIHU_UA)
+    if ZHIHU_COOKIE:
+        await context.add_cookies(parse_cookie_header(ZHIHU_COOKIE, ".zhihu.com"))
+    page = await context.new_page()
+    try:
+        url = f"https://www.zhihu.com/question/{question_id}"
+        await page.goto(url, wait_until="domcontentloaded")
+        resp = await page.wait_for_response(
+            lambda r: f"/api/v4/questions/{question_id}" in r.url,
+            timeout=15000,
+        )
+        return await resp.json()
+    except Exception:
+        return None
+    finally:
+        await context.close()
+
+
+async def zhihu_scrape_job(
+    client: Optional["SupabaseClient"] = None,
+    search_fetcher: Optional[Callable[[str], Awaitable[List[Dict[str, Any]]]]] = None,
+    detail_fetcher: Optional[Callable[[str], Awaitable[Optional[Dict[str, Any]]]]] = None,
+    today: Optional[date] = None,
+    now: Optional[str] = None,
+) -> None:
+    client = client or ensure_supabase()
+    keywords = await client.select("zhihu_keywords", params={"order": "created_at.asc"})
+    if not keywords:
+        return
+
+    today_value = today or shanghai_today()
+    now_value = now or utc_now_iso()
+    search_fetcher = search_fetcher or fetch_search_results_for_keyword
+    detail_fetcher = detail_fetcher or fetch_question_stats
+
+    processed_questions: Set[str] = set()
+
+    for keyword in keywords:
+        name = (keyword.get("name") or "").strip()
+        keyword_id = keyword.get("id")
+        if not name or not keyword_id:
+            continue
+
+        raw_items = await search_fetcher(name)
+        questions = extract_zhihu_questions(raw_items, limit=50)
+
+        for question in questions:
+            qid = question.get("id")
+            if not qid:
+                continue
+
+            await client.request(
+                "POST",
+                "zhihu_question_keywords",
+                params={"on_conflict": "question_id,keyword_id"},
+                json_payload={
+                    "question_id": qid,
+                    "keyword_id": keyword_id,
+                    "first_seen_at": now_value,
+                    "last_seen_at": now_value,
+                },
+                prefer="resolution=merge-duplicates,return=representation",
+            )
+
+            if qid in processed_questions:
+                continue
+
+            existing = await client.select("zhihu_questions", {"id": f"eq.{qid}"})
+            first_keyword_id = existing[0].get("first_keyword_id") if existing else None
+            payload = {
+                "id": qid,
+                "title": question.get("title") or "",
+                "url": question.get("url") or f"https://www.zhihu.com/question/{qid}",
+                "first_keyword_id": first_keyword_id or keyword_id,
+                "updated_at": now_value,
+                "last_seen_at": now_value,
+            }
+            if not existing:
+                payload["created_at"] = now_value
+
+            await client.request(
+                "POST",
+                "zhihu_questions",
+                params={"on_conflict": "id"},
+                json_payload=payload,
+                prefer="resolution=merge-duplicates,return=representation",
+            )
+
+            detail = await detail_fetcher(qid)
+            if not detail:
+                processed_questions.add(qid)
+                continue
+
+            stat = {
+                "question_id": qid,
+                "stat_date": str(today_value),
+                "view_count": int(detail.get("visit_count") or 0),
+                "answer_count": int(detail.get("answer_count") or 0),
+                "fetched_at": now_value,
+            }
+            await client.request(
+                "POST",
+                "zhihu_question_stats",
+                params={"on_conflict": "question_id,stat_date"},
+                json_payload=stat,
+                prefer="resolution=merge-duplicates,return=representation",
+            )
+            processed_questions.add(qid)
+
+    cutoff = today_value - timedelta(days=15)
+    await client.delete("zhihu_question_stats", {"stat_date": f"lt.{cutoff}"})
 
 
 def init_zhihu_scheduler() -> None:
@@ -6173,6 +6367,7 @@ class AiFillRequest(BaseModel):
     category_id: str
     mode: str = Field(description="single | batch | selected")
     product_names: Optional[List[str]] = None
+    model: Optional[str] = None
 
 
 class AiConfirmRequest(BaseModel):
@@ -6703,7 +6898,8 @@ def normalize_sourcing_category(row: Dict[str, Any], spec_fields: Optional[List[
 async def ai_fill_product_params(
     category_name: str,
     spec_fields: List[Dict[str, Any]],
-    product_names: List[str]
+    product_names: List[str],
+    model_override: Optional[str] = None
 ) -> List[Dict[str, str]]:
     """
     调用千问联网搜索获取商品参数
@@ -6759,10 +6955,11 @@ async def ai_fill_product_params(
 
     response = Generation.call(
         api_key=DASHSCOPE_API_KEY,
-        model='qwen-plus-latest',
+        model=model_override or "qwen3-max-2026-01-23",
         enable_search=True,
+        search_options={"forced_search": True},
         prompt=prompt,
-        result_format='message'
+        result_format="message"
     )
 
     if response.status_code != 200:
@@ -8238,7 +8435,12 @@ async def ai_fill_sourcing_items(payload: AiFillRequest, request: Request):
         raise HTTPException(status_code=404, detail="没有找到商品")
 
     # 调用 AI 获取参数（传入完整的 spec_fields_raw）
-    result = await ai_fill_product_params(category_name, spec_fields_raw, product_names)
+    result = await ai_fill_product_params(
+        category_name,
+        spec_fields_raw,
+        product_names,
+        model_override=payload.model,
+    )
 
     return {
         "preview": result,
