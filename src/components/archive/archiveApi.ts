@@ -21,7 +21,7 @@ export type CategoryResponse = {
   id: string
   name: string
   sort_order: number | null
-  spec_fields: { key: string; value?: string }[]
+  spec_fields: { key: string; value?: string; example?: string }[]
   item_count?: number
 }
 
@@ -34,6 +34,16 @@ export type ItemResponse = {
   price?: number
   commission?: number
   commission_rate?: number
+  jd_price?: number
+  jd_commission?: number
+  jd_commission_rate?: number
+  jd_sales?: number
+  tb_price?: number
+  tb_commission?: number
+  tb_commission_rate?: number
+  tb_sales?: number
+  source_type?: string
+  source_ref?: string
   cover_url?: string
   remark?: string
   spec?: Record<string, string>
@@ -125,7 +135,7 @@ export async function updateCategory(
   payload: {
     name?: string
     sort_order?: number
-    spec_fields?: { key: string; value?: string }[]
+    spec_fields?: { key: string; value?: string; example?: string }[]
   }
 ) {
   return apiRequest<{ category: CategoryResponse }>(
@@ -151,6 +161,14 @@ export async function createItem(payload: {
   price?: number
   commission?: number
   commission_rate?: number
+  jd_price?: number
+  jd_commission?: number
+  jd_commission_rate?: number
+  jd_sales?: number
+  tb_price?: number
+  tb_commission?: number
+  tb_commission_rate?: number
+  tb_sales?: number
   cover_url?: string
   remark?: string
   spec?: Record<string, string>
@@ -170,6 +188,14 @@ export async function updateItem(
     price?: number
     commission?: number
     commission_rate?: number
+    jd_price?: number
+    jd_commission?: number
+    jd_commission_rate?: number
+    jd_sales?: number
+    tb_price?: number
+    tb_commission?: number
+    tb_commission_rate?: number
+    tb_sales?: number
     cover_url?: string
     remark?: string
     spec?: Record<string, string>

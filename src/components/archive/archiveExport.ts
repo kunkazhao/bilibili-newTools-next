@@ -1,4 +1,4 @@
-const META_KEYS = {
+﻿const META_KEYS = {
   promoLink: "_promo_link",
   sourceLink: "_source_link",
   shopName: "_shop_name",
@@ -64,5 +64,5 @@ export const formatArchivePriceForExport = (value: number | string) => {
   if (value === null || value === undefined || value === "") return ""
   const numeric = Number(value)
   if (Number.isNaN(numeric)) return String(value)
-  return `${Math.trunc(numeric)}Ԫ`
+  return `${Math.trunc(numeric)}元`
 }

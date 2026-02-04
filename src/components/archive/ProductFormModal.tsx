@@ -20,6 +20,7 @@ interface CategoryOption {
 
 interface ProductFormValues {
   promoLink: string
+  taobaoPromoLink: string
   title: string
   price: string
   commission: string
@@ -51,6 +52,7 @@ interface ProductFormModalProps {
 
 const emptyValues: ProductFormValues = {
   promoLink: "",
+  taobaoPromoLink: "",
   title: "",
   price: "",
   commission: "",
@@ -309,6 +311,13 @@ export default function ProductFormModal({
         return next
       })
     }
+    if (key === "taobaoPromoLink" && errors.taobaoPromoLink) {
+      setErrors((prev) => {
+        const next = { ...prev }
+        delete next.taobaoPromoLink
+        return next
+      })
+    }
     if (key === "taobaoLink" && errors.taobaoLink) {
       setErrors((prev) => {
         const next = { ...prev }
@@ -405,25 +414,25 @@ export default function ProductFormModal({
   }
 
   const handleParseTaobao = async () => {
-    const trimmed = values.taobaoLink.trim()
+    const trimmed = values.taobaoPromoLink.trim()
     if (!trimmed) {
-      setErrors((prev) => ({ ...prev, taobaoLink: "????" }))
+      setErrors((prev) => ({ ...prev, taobaoPromoLink: "必填" }))
       return
     }
     if (!isTaobaoLink(trimmed)) {
-      setErrors((prev) => ({ ...prev, taobaoLink: "????????/????" }))
+      setErrors((prev) => ({ ...prev, taobaoPromoLink: "请填写淘宝/天猫链接" }))
       return
     }
-    if (errors.taobaoLink) {
+    if (errors.taobaoPromoLink) {
       setErrors((prev) => {
         const next = { ...prev }
-        delete next.taobaoLink
+        delete next.taobaoPromoLink
         return next
       })
     }
     if (isTbParsing) return
     setIsTbParsing(true)
-    update("taobaoLink", trimmed)
+    update("taobaoPromoLink", trimmed)
     try {
       const resolved = await resolveTaobaoLink(trimmed)
       const itemId = resolved.itemId || resolved.openIid
@@ -467,17 +476,24 @@ export default function ProductFormModal({
       showToast("封面上传中，请稍候", "info")
       return
     }
+    const taobaoPromoLink = values.taobaoPromoLink.trim()
+    const resolvedTaobaoLink =
+      values.taobaoLink.trim() || taobaoPromoLink
     const nextErrors: Record<string, string> = {}
     if (!values.title.trim()) nextErrors.title = "必填"
     if (!values.price.trim()) nextErrors.price = "必填"
     if (!values.categoryId) nextErrors.categoryId = "必填"
-    if (!values.blueLink.trim() && !values.taobaoLink.trim()) {
+    if (!values.blueLink.trim() && !resolvedTaobaoLink) {
       nextErrors.blueLink = "必填"
       nextErrors.taobaoLink = "必填"
     }
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length > 0) return
-    const result = onSubmit({ ...values, commission: computedCommission })
+    const result = onSubmit({
+      ...values,
+      taobaoLink: resolvedTaobaoLink,
+      commission: computedCommission,
+    })
     if (result && typeof (result as Promise<void>).then === "function") {
       const successMessage = initialValues ? "商品已更新" : "商品已新增"
       const errorMessage = initialValues ? "更新失败" : "新增失败"
@@ -577,15 +593,15 @@ export default function ProductFormModal({
 
         <div className="space-y-2">
           <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <Label htmlFor="taobao-link" className="w-24">
-              淘宝链接
+            <Label htmlFor="taobao-promo-link" className="w-24">
+              淘宝推广链接
             </Label>
             <Input
-              id="taobao-link"
+              id="taobao-promo-link"
               className="flex-1"
               placeholder="粘贴淘宝/天猫推广链接"
-              value={values.taobaoLink}
-              onChange={(event) => update("taobaoLink", event.target.value)}
+              value={values.taobaoPromoLink}
+              onChange={(event) => update("taobaoPromoLink", event.target.value)}
             />
             <Button
               type="button"
@@ -598,7 +614,7 @@ export default function ProductFormModal({
             </Button>
           </div>
           <span className="min-h-[18px] text-xs text-rose-500">
-            {errors.taobaoLink}
+            {errors.taobaoPromoLink}
           </span>
         </div>
 
@@ -690,7 +706,7 @@ export default function ProductFormModal({
                   {errors.title}
                 </span>
               </div>
-              <div className="space-y-2 md:col-span-2">
+              <div className="space-y-2">
                 <Label htmlFor="product-link">京东链接</Label>
                 <Input
                   id="product-link"
@@ -701,7 +717,18 @@ export default function ProductFormModal({
                   {errors.blueLink}
                 </span>
               </div>
-<div className="space-y-2 md:col-span-2">
+              <div className="space-y-2">
+                <Label htmlFor="taobao-link">淘宝链接</Label>
+                <Input
+                  id="taobao-link"
+                  value={values.taobaoLink}
+                  onChange={(event) => update("taobaoLink", event.target.value)}
+                />
+                <span className="min-h-[18px] text-xs text-rose-500">
+                  {errors.taobaoLink}
+                </span>
+              </div>
+              <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="product-remark">总结</Label>
                 <Input
                   id="product-remark"

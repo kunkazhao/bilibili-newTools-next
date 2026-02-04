@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 
+import { StrictMode } from "react"
 import { useListDataPipeline } from "./useListDataPipeline"
 import { buildListCacheKey, setListCache } from "@/lib/listCache"
 import { stableStringify } from "@/lib/stableStringify"
@@ -76,5 +77,19 @@ describe("useListDataPipeline", () => {
     await waitFor(() => expect(fetcher).toHaveBeenCalled())
     await new Promise((resolve) => setTimeout(resolve, 50))
     expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+
+  it("loads items in StrictMode without getting stuck", async () => {
+    render(
+      <StrictMode>
+        <DemoList filters={{ q: "a" }} />
+      </StrictMode>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId("items").textContent).toBe("new")
+    })
+
+    expect(screen.getByTestId("status").textContent).toBe("ready")
   })
 })

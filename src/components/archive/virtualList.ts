@@ -1,5 +1,5 @@
-export const ARCHIVE_LIST_ROW_GAP = 14
-export const ARCHIVE_LIST_ROW_HEIGHT = 398
+export const ARCHIVE_LIST_ROW_GAP = 2
+export const ARCHIVE_LIST_ROW_HEIGHT = 362
 const MIN_LIST_HEIGHT = 320
 const LIST_BOTTOM_GAP = 24
 

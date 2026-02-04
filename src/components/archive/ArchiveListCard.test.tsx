@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from "vitest"
-import { fireEvent, render, screen } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import ArchiveListCard from "./ArchiveListCard"
 
 describe("ArchiveListCard", () => {
+  afterEach(() => {
+    cleanup()
+  })
+
   it("uses lazy loading for cover image", () => {
     const { container } = render(
       <ArchiveListCard
@@ -284,5 +288,168 @@ describe("ArchiveListCard", () => {
 
     expect(screen.getAllByTestId("archive-metrics-jd").length).toBeGreaterThan(0)
     expect(screen.getAllByTestId("archive-metrics-tb").length).toBeGreaterThan(0)
+    const jdBadge = screen.getByTestId("archive-metrics-badge-jd")
+    const tbBadge = screen.getByTestId("archive-metrics-badge-tb")
+    expect(jdBadge.className).toContain("h-[40px]")
+    expect(jdBadge.className).toContain("w-[60px]")
+    expect(jdBadge.className).toContain("justify-center")
+    expect(jdBadge.className).toContain("flex-none")
+    expect(jdBadge.className).toContain("min-w-[60px]")
+    expect(jdBadge.className).toContain("min-h-[40px]")
+    expect(jdBadge.className).toContain("self-start")
+    expect(tbBadge.className).toContain("h-[40px]")
+    expect(tbBadge.className).toContain("w-[60px]")
+    expect(tbBadge.className).toContain("justify-center")
+    expect(tbBadge.className).toContain("flex-none")
+    expect(tbBadge.className).toContain("min-w-[60px]")
+    expect(tbBadge.className).toContain("min-h-[40px]")
+    expect(tbBadge.className).toContain("self-start")
+  })
+
+  it("keeps metrics on a single row", () => {
+    render(
+      <ArchiveListCard
+        id="1"
+        title="商品"
+        price="100"
+        commission="10"
+        commissionRate="10%"
+        sales30="--"
+        comments="--"
+        image="https://example.com/cover.jpg"
+        shopName="店铺"
+        uid="uid"
+        source="source"
+        blueLink=""
+        params={[]}
+        remark=""
+        missingTips={[]}
+        isFocused={false}
+        onToggleFocus={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onDragStart={vi.fn()}
+        onDrop={vi.fn()}
+      />
+    )
+
+    const metricsRow = screen.getByTestId("archive-metrics-row")
+    expect(metricsRow.className).toContain("flex-nowrap")
+    expect(metricsRow.className).toContain("text-[16px]")
+  })
+
+  it("expands JD/TB metric blocks", () => {
+    render(
+      <ArchiveListCard
+        id="1"
+        title="鍟嗗搧"
+        price="100"
+        commission="10"
+        commissionRate="10%"
+        sales30="--"
+        comments="--"
+        image="https://example.com/cover.jpg"
+        shopName="搴楅摵"
+        uid="uid"
+        source="source"
+        blueLink=""
+        params={[]}
+        remark=""
+        missingTips={[]}
+        isFocused={false}
+        onToggleFocus={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onDragStart={vi.fn()}
+        onDrop={vi.fn()}
+      />
+    )
+
+    const jdBlock = screen.getByTestId("archive-metrics-jd")
+    const tbBlock = screen.getByTestId("archive-metrics-tb")
+    expect(jdBlock.className).toContain("min-w-[350px]")
+    expect(tbBlock.className).toContain("min-w-[350px]")
+    expect(jdBlock.className).toContain("px-7")
+    expect(tbBlock.className).toContain("px-7")
+    expect(jdBlock.className).toContain("items-start")
+    expect(tbBlock.className).toContain("items-start")
+    const metricLists = screen.getAllByTestId("archive-metrics-list")
+    expect(metricLists.length).toBeGreaterThan(0)
+    metricLists.forEach((list) => {
+      expect(list.className).toContain("gap-10")
+      expect(list.className).toContain("overflow-visible")
+    })
+  })
+
+  it("stacks metric labels and values vertically", () => {
+    render(
+      <ArchiveListCard
+        id="1"
+        title="鍟嗗搧"
+        price="100"
+        commission="10"
+        commissionRate="10%"
+        sales30="--"
+        comments="--"
+        image="https://example.com/cover.jpg"
+        shopName="搴楅摵"
+        uid="uid"
+        source="source"
+        blueLink=""
+        params={[]}
+        remark=""
+        missingTips={[]}
+        isFocused={false}
+        onToggleFocus={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onDragStart={vi.fn()}
+        onDrop={vi.fn()}
+      />
+    )
+
+    const metricItems = screen.getAllByTestId("archive-metric-item")
+    expect(metricItems.length).toBeGreaterThan(0)
+    metricItems.forEach((item) => {
+      expect(item.className).toContain("flex-col")
+    })
+    const metricLabels = screen.getAllByTestId("archive-metric-label")
+    expect(metricLabels.length).toBeGreaterThan(0)
+    metricLabels.forEach((label) => {
+      expect(label.className).toContain("tracking-wider")
+    })
+  })
+
+  it("removes shop label and shows only id/source row", () => {
+    render(
+      <ArchiveListCard
+        id="1"
+        title="商品"
+        price="100"
+        commission="10"
+        commissionRate="10%"
+        sales30="--"
+        comments="--"
+        image="https://example.com/cover.jpg"
+        shopName="店铺"
+        uid="SB051"
+        source="https://item.jd.com/100.html"
+        blueLink="https://item.jd.com/100.html"
+        params={[]}
+        remark=""
+        missingTips={[]}
+        isFocused={false}
+        onToggleFocus={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onDragStart={vi.fn()}
+        onDrop={vi.fn()}
+      />
+    )
+
+    expect(screen.queryByText(/店铺/)).toBeNull()
+    const metaRow = screen.getByTestId("archive-meta-row")
+    expect(metaRow.textContent).toContain("商品ID")
+    expect(metaRow.textContent).toContain("来源")
   })
 })

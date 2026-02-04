@@ -37,6 +37,7 @@ import {
   resolveArchiveProductId,
   resolveArchiveShopName,
 } from "@/components/archive/archiveExport"
+import { getArchiveSourceDisplay } from "@/components/archive/archiveSource"
 import {
   createCategory,
   createItem,
@@ -74,6 +75,8 @@ interface ArchiveItem {
   accountName: string
   remark: string
   isFocused: boolean
+  sourceType: string
+  sourceRef: string
   spec: Record<string, string>
 }
 
@@ -98,6 +101,7 @@ const META_KEYS = {
   comments: "_comments",
   sourceLink: "_source_link",
   promoLink: "_promo_link",
+  taobaoPromoLink: "_tb_promo_link",
 }
 
 const padSortOrder = (value: number) => String(value).padStart(6, "0")
@@ -270,6 +274,8 @@ const normalizeArchiveItem = (item: {
   price?: number
   commission?: number
   commission_rate?: number
+  source_type?: string
+  source_ref?: string
   cover_url?: string
   remark?: string
   spec?: Record<string, string>
@@ -309,6 +315,8 @@ const normalizeArchiveItem = (item: {
     accountName: spec[META_KEYS.shopName] || "",
     remark: item.remark ?? "",
     isFocused: Boolean(spec[META_KEYS.featured]),
+    sourceType: String(item.source_type ?? "").trim(),
+    sourceRef: String(item.source_ref ?? "").trim(),
     spec,
   }
 }
@@ -1354,6 +1362,7 @@ export default function ArchivePage() {
       image: target.image,
       blueLink: target.blueLink,
       taobaoLink: target.taobaoLink,
+      taobaoPromoLink: target.spec[META_KEYS.taobaoPromoLink] || "",
       categoryId: target.categoryId,
       accountName: target.accountName,
       shopName: target.spec[META_KEYS.shopName] || "",
@@ -1378,6 +1387,7 @@ export default function ArchivePage() {
     image: string
     blueLink: string
     taobaoLink: string
+    taobaoPromoLink: string
     categoryId: string
     accountName: string
     shopName: string
@@ -1393,6 +1403,7 @@ export default function ArchivePage() {
         [META_KEYS.blueLink]: values.blueLink,
         [META_KEYS.shopName]: values.shopName || values.accountName,
         [META_KEYS.promoLink]: values.promoLink,
+        [META_KEYS.taobaoPromoLink]: values.taobaoPromoLink,
         [META_KEYS.sales30]: values.sales30,
         [META_KEYS.comments]: values.comments,
         ...values.params,
@@ -1509,6 +1520,7 @@ export default function ArchivePage() {
         [META_KEYS.blueLink]: values.blueLink,
         [META_KEYS.shopName]: values.shopName || values.accountName,
         [META_KEYS.promoLink]: values.promoLink,
+        [META_KEYS.taobaoPromoLink]: values.taobaoPromoLink,
         [META_KEYS.sales30]: values.sales30,
         [META_KEYS.comments]: values.comments,
         ...values.params,
@@ -1632,7 +1644,11 @@ export default function ArchivePage() {
       missingTips: getMissingTips(item),
       shopName: item.spec[META_KEYS.shopName] || "",
       uid: item.uid || item.id,
-      source: item.spec[META_KEYS.sourceLink] || "",
+      source: getArchiveSourceDisplay({
+        sourceType: item.sourceType,
+        sourceRef: item.sourceRef,
+        spec: item.spec,
+      }),
     }
   })
 

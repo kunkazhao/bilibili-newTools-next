@@ -1,13 +1,4 @@
-﻿import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-  type HTMLAttributes,
-} from "react"
+﻿import { useEffect, useState } from "react"
 import Empty from "@/components/Empty"
 import PrimaryButton from "@/components/PrimaryButton"
 import ArchiveListCard from "@/components/archive/ArchiveListCard"
@@ -16,14 +7,6 @@ import ImportProgressModal from "@/components/archive/ImportProgressModal"
 import PresetFieldsModal from "@/components/archive/PresetFieldsModal"
 import ProductFormModal from "@/components/archive/ProductFormModal"
 import Skeleton from "@/components/Skeleton"
-import {
-  ARCHIVE_LIST_ROW_HEIGHT,
-  ARCHIVE_LIST_ROW_GAP,
-  getVirtualItemCount,
-  isLoadMoreRow,
-  resolveListViewportHeight,
-  resolveRowHeight,
-} from "@/components/archive/virtualList"
 import type { CategoryItem, SpecField } from "@/components/archive/types"
 import { Input } from "@/components/ui/input"
 import {
@@ -33,19 +16,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { List } from "react-window"
-
 interface ParamEntry {
   key: string
   value: string
 }
-
 interface ArchiveItemView {
   id: string
   title: string
   price: string
   commission: string
   commissionRate: string
+  jdPrice?: string
+  jdCommission?: string
+  jdCommissionRate?: string
+  jdSales?: string
+  tbPrice?: string
+  tbCommission?: string
+  tbCommissionRate?: string
+  tbSales?: string
   sales30: string
   comments: string
   image: string
@@ -60,7 +48,6 @@ interface ArchiveItemView {
   missingTips: string[]
   isFocused: boolean
 }
-
 interface ImportProgressState {
   status: "idle" | "running" | "done"
   total: number
@@ -73,7 +60,6 @@ interface ImportProgressState {
     reason: string
   }[]
 }
-
 interface ArchivePageViewProps {
   items: ArchiveItemView[]
   categories: CategoryItem[]
@@ -165,14 +151,6 @@ interface ArchivePageViewProps {
   isFixSortDisabled: boolean
   isFixSortSaving: boolean
 }
-
-type ArchiveRowProps = {
-  index: number
-  style: CSSProperties
-  ariaAttributes?: HTMLAttributes<HTMLDivElement>
-  items: ArchiveItemView[]
-}
-
 const CategorySkeleton = () => (
   <div className="space-y-3">
     {Array.from({ length: 6 }).map((_, index) => (
@@ -183,7 +161,6 @@ const CategorySkeleton = () => (
     ))}
   </div>
 )
-
 const ListSkeleton = () => (
   <div className="space-y-4" data-testid="archive-list-skeleton">
     {Array.from({ length: 6 }).map((_, index) => (
@@ -214,7 +191,6 @@ const ListSkeleton = () => (
     ))}
   </div>
 )
-
 export default function ArchivePageView({
   items,
   categories,
@@ -275,45 +251,12 @@ export default function ArchivePageView({
   isFixSortDisabled,
   isFixSortSaving,
 }: ArchivePageViewProps) {
-  const listContainerRef = useRef<HTMLDivElement | null>(null)
   const isPriceUnset = priceRange[0] === 0 && priceRange[1] === 0
   const [minInput, setMinInput] = useState(isPriceUnset ? "" : String(priceRange[0]))
   const [maxInput, setMaxInput] = useState(isPriceUnset ? "" : String(priceRange[1]))
   const disableLoadMoreResolved = Boolean(disableLoadMore)
-  const onToggleFocusRef = useRef(onToggleFocus)
-  const onEditRef = useRef(onEdit)
-  const onDeleteRef = useRef(onDelete)
-  const onDragStartRef = useRef(onDragStart)
-  const onDropRef = useRef(onDrop)
-  const onAddToSchemeRef = useRef(onAddToScheme)
-  const onOpenLinkRef = useRef(onOpenLink)
-  const onCoverClickRef = useRef(onCoverClick)
-  const onLoadMoreRef = useRef(onLoadMore)
-  const hasMoreRef = useRef(hasMore)
-  const disableLoadMoreRef = useRef(disableLoadMoreResolved)
-  const isLoadingMoreRef = useRef(isLoadingMore)
-
-  onToggleFocusRef.current = onToggleFocus
-  onEditRef.current = onEdit
-  onDeleteRef.current = onDelete
-  onDragStartRef.current = onDragStart
-  onDropRef.current = onDrop
-  onAddToSchemeRef.current = onAddToScheme
-  onOpenLinkRef.current = onOpenLink
-  onCoverClickRef.current = onCoverClick
-  onLoadMoreRef.current = onLoadMore
-  hasMoreRef.current = hasMore
-  disableLoadMoreRef.current = disableLoadMoreResolved
-  isLoadingMoreRef.current = isLoadingMore
-
   const canLoadMore = hasMore && !disableLoadMoreResolved
-  const virtualItemCount = useMemo(
-    () => getVirtualItemCount(items.length, hasMore, disableLoadMoreResolved),
-    [items.length, hasMore, disableLoadMoreResolved]
-  )
-  const [listHeight, setListHeight] = useState(ARCHIVE_LIST_ROW_HEIGHT)
-  const [rowHeight, setRowHeight] = useState(ARCHIVE_LIST_ROW_HEIGHT)
-
+  const listGap = 12
   useEffect(() => {
     if (priceRange[0] === 0 && priceRange[1] === 0) {
       setMinInput("")
@@ -323,14 +266,12 @@ export default function ArchivePageView({
     setMinInput(String(priceRange[0]))
     setMaxInput(String(priceRange[1]))
   }, [priceRange])
-
   const parsePriceInput = (value: string) => {
     const trimmed = value.trim()
     if (!trimmed) return null
     const parsed = Number(trimmed)
     return Number.isFinite(parsed) ? parsed : null
   }
-
   const commitPriceRange = () => {
     const minValue = parsePriceInput(minInput)
     const maxValue = parsePriceInput(maxInput)
@@ -343,111 +284,29 @@ export default function ArchivePageView({
     if (!Number.isFinite(nextMin) || !Number.isFinite(nextMax)) return
     onPriceRangeChange([nextMin, nextMax])
   }
-
-  useLayoutEffect(() => {
-    const updateHeight = () => {
-      if (!listContainerRef.current) return
-      const rect = listContainerRef.current.getBoundingClientRect()
-      setListHeight(resolveListViewportHeight(window.innerHeight, rect.top))
-    }
-    updateHeight()
-    window.addEventListener("resize", updateHeight)
-    return () => window.removeEventListener("resize", updateHeight)
-  }, [items.length])
-
-  useLayoutEffect(() => {
-    if (!listContainerRef.current) return
-    const cards = listContainerRef.current.querySelectorAll("[data-archive-card]")
-    if (!cards.length) return
-    let maxHeight = 0
-    cards.forEach((card) => {
-      if (!(card instanceof HTMLElement)) return
-      const height = card.getBoundingClientRect().height
-      if (height > maxHeight) maxHeight = height
-    })
-    const next = resolveRowHeight(maxHeight, ARCHIVE_LIST_ROW_GAP, ARCHIVE_LIST_ROW_HEIGHT)
-    if (next !== rowHeight) {
-      setRowHeight(next)
-    }
-  }, [items.length, listHeight, rowHeight])
-
   const showCategorySkeleton = isCategoryLoading && categories.length === 0
   const showListSkeleton = isListLoading && (!isUsingCache || items.length === 0)
-  const rowRenderer = useCallback(
-    ({ index, style, ariaAttributes, items: currentItems }: ArchiveRowProps) => {
-      const currentHasMore = hasMoreRef.current
-      const currentDisableLoadMore = disableLoadMoreRef.current
-      const currentIsLoadingMore = isLoadingMoreRef.current
-      if (isLoadMoreRow(index, currentItems.length, currentHasMore, currentDisableLoadMore)) {
-        return (
-          <div
-            style={{
-              ...style,
-              boxSizing: "border-box",
-              paddingBottom: ARCHIVE_LIST_ROW_GAP,
-            }}
-            className="flex items-center justify-center"
-            {...ariaAttributes}
-          >
-            {currentIsLoadingMore ? (
-              <span className="text-xs text-slate-400">正在加载更多...</span>
-            ) : (
-              <button
-                className="text-xs font-medium text-slate-500 hover:text-slate-700"
-                type="button"
-                onClick={() => onLoadMoreRef.current()}
-              >
-                加载更多
-              </button>
-            )}
-          </div>
-        )
-      }
-
-      const item = currentItems[index]
-      if (!item) return null
-      return (
-        <div
-          style={{
-            ...style,
-            boxSizing: "border-box",
-            paddingBottom: ARCHIVE_LIST_ROW_GAP,
-          }}
-          {...ariaAttributes}
+  const loadMoreContent = canLoadMore ? (
+    <div
+      className="flex items-center justify-center"
+      style={{
+        boxSizing: "border-box",
+        paddingBottom: listGap,
+      }}
+    >
+      {isLoadingMore ? (
+        <span className="text-xs text-slate-400">正在加载更多...</span>
+      ) : (
+        <button
+          className="text-xs font-medium text-slate-500 hover:text-slate-700"
+          type="button"
+          onClick={() => onLoadMore()}
         >
-          <ArchiveListCard
-            key={item.id}
-            id={item.id}
-            title={item.title}
-            price={item.price}
-            commission={item.commission}
-            commissionRate={item.commissionRate}
-            sales30={item.sales30}
-            comments={item.comments}
-            image={item.image}
-            shopName={item.shopName}
-            uid={item.uid}
-            source={item.source}
-            blueLink={item.blueLink}
-            params={item.params}
-            remark={item.remark}
-            missingTips={item.missingTips}
-            isFocused={item.isFocused}
-            onToggleFocus={onToggleFocusRef.current}
-            onEdit={onEditRef.current}
-            onDelete={onDeleteRef.current}
-            onDragStart={onDragStartRef.current}
-            onDrop={onDropRef.current}
-            onAddToScheme={onAddToSchemeRef.current}
-            onCoverClick={() => onCoverClickRef.current?.(item.id)}
-            onCardClick={() => onOpenLinkRef.current?.(item.blueLink)}
-          />
-        </div>
-      )
-    },
-    []
-  )
-
+          加载更多
+        </button>
+      )}
+    </div>
+  ) : null
   return (
     <>
       <div className="grid gap-8 lg:grid-cols-[260px_1fr]">
@@ -491,7 +350,6 @@ export default function ArchivePageView({
             )}
           </div>
         </section>
-
         <div className="space-y-6">
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
             <div className="flex items-start justify-between gap-4">
@@ -522,7 +380,6 @@ export default function ArchivePageView({
               </div>
             </div>
           </section>
-
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
             <div className="flex flex-wrap items-center gap-4">
               <div className="w-full text-sm text-slate-600 md:w-[180px]">
@@ -595,7 +452,6 @@ export default function ArchivePageView({
               </div>
             </div>
           </section>
-
           {showListSkeleton ? (
             <ListSkeleton />
           ) : errorMessage ? (
@@ -611,27 +467,57 @@ export default function ArchivePageView({
               actionLabel={isListLoading ? undefined : "新增商品"}
               onAction={isListLoading ? undefined : onCreate}
             />
-          ) : (
-            <div ref={listContainerRef} data-testid="archive-virtual-list">
-              <List
-                rowCount={virtualItemCount}
-                rowHeight={rowHeight}
-                rowComponent={rowRenderer}
-                rowProps={{ items }}
-                onRowsRendered={({ stopIndex }) => {
-                  if (!canLoadMore || isLoadingMore) return
-                  if (stopIndex >= items.length) {
-                    onLoadMore()
-                  }
-                }}
-                defaultHeight={listHeight}
-                style={{ height: listHeight, width: "100%" }}
-              />
+                    ) : (
+            <div data-testid="archive-list">
+              {items.map((item) => (
+                <div
+                  key={item.id}
+                  style={{
+                    boxSizing: "border-box",
+                    paddingBottom: listGap,
+                  }}
+                >
+                  <ArchiveListCard
+                    id={item.id}
+                    title={item.title}
+                    price={item.price}
+                    commission={item.commission}
+                    commissionRate={item.commissionRate}
+                    jdPrice={item.jdPrice}
+                    jdCommission={item.jdCommission}
+                    jdCommissionRate={item.jdCommissionRate}
+                    jdSales={item.jdSales}
+                    tbPrice={item.tbPrice}
+                    tbCommission={item.tbCommission}
+                    tbCommissionRate={item.tbCommissionRate}
+                    tbSales={item.tbSales}
+                    sales30={item.sales30}
+                    comments={item.comments}
+                    image={item.image}
+                    shopName={item.shopName}
+                    uid={item.uid}
+                    source={item.source}
+                    blueLink={item.blueLink}
+                    params={item.params}
+                    remark={item.remark}
+                    missingTips={item.missingTips}
+                    isFocused={item.isFocused}
+                    onToggleFocus={onToggleFocus}
+                    onEdit={onEdit}
+                    onDelete={onDelete}
+                    onDragStart={onDragStart}
+                    onDrop={onDrop}
+                    onAddToScheme={onAddToScheme}
+                    onCoverClick={onCoverClick ? () => onCoverClick(item.id) : undefined}
+                    onCardClick={onOpenLink ? () => onOpenLink(item.blueLink) : undefined}
+                  />
+                </div>
+              ))}
+              {loadMoreContent}
             </div>
           )}
         </div>
       </div>
-
       {isCategoryManagerOpen ? (
         <CategoryManagerModal
           isOpen={isCategoryManagerOpen}
@@ -640,7 +526,6 @@ export default function ArchivePageView({
           onSave={onSaveCategories}
         />
       ) : null}
-
       {isPresetFieldsOpen ? (
         <PresetFieldsModal
           isOpen={isPresetFieldsOpen}
@@ -650,7 +535,6 @@ export default function ArchivePageView({
           onSave={onSavePresetFields}
         />
       ) : null}
-
       {isProductFormOpen ? (
         <ProductFormModal
           isOpen={isProductFormOpen}
@@ -660,12 +544,12 @@ export default function ArchivePageView({
           }))}
           presetFields={presetFields}
           initialValues={productFormInitialValues}
+          defaultCategoryId={selectedCategory !== "all" ? selectedCategory : ""}
           autoOpenCoverPicker={autoOpenCoverPicker}
           onClose={onCloseProductForm}
           onSubmit={onSubmitProductForm}
         />
       ) : null}
-
       {isImportOpen ? (
         <ImportProgressModal
           isOpen={isImportOpen}

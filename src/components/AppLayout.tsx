@@ -1,18 +1,19 @@
 ﻿import type { ReactNode } from "react"
 
 const primaryItems = [
-  "方案操作台",
   "选品库",
-  "获取商品佣金",
-  "获取商品参数",
-  "对标视频收集",
+  "方案库",
+  "蓝链-置顶评论",
+  "蓝链-商品映射",
+  "我的账号",
 ]
 
 const utilityItems = [
-  "评论蓝链管理",
-  "蓝链商品映射",
+  "获取商品佣金",
+  "获取商品参数",
+  "对标视频收集",
   "提取视频文案",
-  "一键加购",
+  "一键抠图",
 ]
 
 interface AppLayoutProps {

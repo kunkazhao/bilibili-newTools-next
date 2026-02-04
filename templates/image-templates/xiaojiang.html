@@ -104,6 +104,8 @@ body {
   justify-content: center;
   align-items: center;
   gap: 8px;
+  padding-top: 28px;
+  padding-bottom: 24px;
 }
 .accent-title {
   font-size: 14px;
@@ -122,13 +124,23 @@ body {
   line-height: 1.15;
   letter-spacing: 0.8px;
   text-align: center;
-  margin-top: 0;
+  width: 100%;
+  margin: 0;
+  padding: 4px 0;
+}
+.accent-price {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--tpl-highlight);
+  letter-spacing: 0.6px;
 }
 .info-panel {
   grid-column: 2;
   grid-row: 1;
   gap: 10px;
   overflow: hidden;
+  display: grid;
+  grid-template-rows: 1fr;
 }
 .title {
   font-family: var(--tpl-title-font);
@@ -145,24 +157,13 @@ body {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.price-row {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 10px;
-  padding: 4px 8px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--tpl-border);
-}
-.price-value {
-  font-size: 20px;
-  font-weight: 800;
-  color: var(--tpl-highlight);
-}
 .params-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
+  height: 100%;
+  grid-auto-rows: 1fr;
+  align-content: stretch;
 }
 .param-item {
   border-radius: 12px;
@@ -173,14 +174,15 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  justify-content: center;
 }
 .tpl-param-label {
-  font-size: 10px;
+  font-size: 16px;
   color: var(--tpl-muted);
   letter-spacing: 1px;
 }
 .tpl-param-value {
-  font-size: 14px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--tpl-text);
 }
@@ -223,13 +225,9 @@ body {
     </div>
     <div class="panel accent-panel">
       <div class="title tpl-title" data-field="title">Vortex X1 无线电竞鼠标</div>
-      <div class="accent-title">置顶评论里直达商品链接</div>
-      <div class="accent-line"></div>
+      <div class="accent-price tpl-price" data-field="price">899元</div>
     </div>
     <div class="panel info-panel">
-      <div class="price-row">
-        <span class="price-value tpl-price" data-field="price">899元</span>
-      </div>
       <div class="params-grid">
         <div class="param-item tpl-param">
           <span class="tpl-param-label">重量</span>

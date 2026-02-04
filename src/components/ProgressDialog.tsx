@@ -21,6 +21,7 @@ type ProgressDialogProps = {
   showFailures?: boolean
   allowCancel?: boolean
   showCloseOnDone?: boolean
+  summaryText?: string
   onCancel?: () => void
   onOpenChange?: (open: boolean) => void
 }
@@ -36,12 +37,13 @@ export default function ProgressDialog({
   showFailures = false,
   allowCancel = false,
   showCloseOnDone = true,
+  summaryText,
   onCancel,
   onOpenChange,
 }: ProgressDialogProps) {
   const percent = total > 0 ? Math.round((processed / total) * 100) : 0
   const failureCount = failures.length
-  const summaryText = `${total}个商品 · ${failureCount}个失败`
+  const summaryTextResolved = summaryText ?? `${total}个商品 · ${failureCount}个失败`
   const isRunning = status === "running"
 
   return (
@@ -65,7 +67,7 @@ export default function ProgressDialog({
           </div>
 
           {showSummary ? (
-            <div className="text-sm text-slate-600">{summaryText}</div>
+            <div className="text-sm text-slate-600">{summaryTextResolved}</div>
           ) : null}
 
           {showFailures ? (

@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui/button"
+﻿import { Button } from "@/components/ui/button"
 
 type SchemeDetailHeaderProps = {
   name: string
@@ -6,6 +6,9 @@ type SchemeDetailHeaderProps = {
   itemCount: number
   createdAt: string
   onBack: () => void
+  onExportJson: () => void
+  onExportExcel: () => void
+  onOpenFeishu: () => void
 }
 
 export default function SchemeDetailHeader({
@@ -14,6 +17,9 @@ export default function SchemeDetailHeader({
   itemCount,
   createdAt,
   onBack,
+  onExportJson,
+  onExportExcel,
+  onOpenFeishu,
 }: SchemeDetailHeaderProps) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
@@ -23,9 +29,20 @@ export default function SchemeDetailHeader({
         <span>选品数量：{itemCount}</span>
         <span>创建时间：{createdAt}</span>
       </div>
-      <Button variant="outline" onClick={onBack}>
-        返回方案列表
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button variant="outline" onClick={onExportJson}>
+          导出json
+        </Button>
+        <Button variant="outline" onClick={onExportExcel}>
+          导出Excel
+        </Button>
+        <Button variant="outline" onClick={onOpenFeishu}>
+          写入飞书表格
+        </Button>
+        <Button variant="outline" onClick={onBack}>
+          返回方案列表
+        </Button>
+      </div>
     </div>
   )
 }

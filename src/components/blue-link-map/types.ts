@@ -15,6 +15,7 @@ export interface BlueLinkEntry {
   product_title?: string
   product_cover?: string
   product_price?: number
+  remark?: string | null
   account_id?: string
   category_id?: string
   created_at?: string

@@ -8,5 +8,5 @@ export type AccountVideo = {
   author?: string | null
   duration?: number | null
   pub_time?: string | null
-  stats?: { view?: number; like?: number; reply?: number } | null
+  stats?: { view?: number; like?: number; reply?: number; danmaku?: number; favorite?: number } | null
 }

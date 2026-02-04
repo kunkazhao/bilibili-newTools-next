@@ -48,7 +48,6 @@ const TEXT = {
   commissionRate: "佣金比例",
   sales30: "30天销量",
   comments: "评价数",
-  shopLabel: "店铺：",
   uidLabel: "商品ID：",
   sourceLabel: "来源：",
   matchParams: "匹配参数",
@@ -82,6 +81,11 @@ const resolveMetric = (value?: string, fallback?: string) => {
   if (trimmed) return trimmed
   const fallbackText = String(fallback ?? "").trim()
   return fallbackText || "--"
+}
+
+const formatAmount = (value: string) => {
+  if (!value || value === "--") return "--"
+  return `${value}${TEXT.yuan}`
 }
 
 export default function ArchiveListCard({
@@ -149,10 +153,19 @@ export default function ArchiveListCard({
     sales: resolveMetric(tbSales),
   }
 
+  const renderInlineMetric = (label: string, value: string, valueClass: string) => (
+    <div className="flex flex-col items-start gap-3 whitespace-nowrap" data-testid="archive-metric-item">
+      <span className="text-[13px] leading-none text-slate-400 tracking-wider" data-testid="archive-metric-label">
+        {label}
+      </span>
+      <span className={`leading-none ${valueClass}`}>{value}</span>
+    </div>
+  )
+
   return (
     <InteractiveCard
       interactive={isInteractive}
-      className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card"
+      className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card"
       data-archive-card
       data-testid="archive-card-body"
       onDragOver={(event) => event.preventDefault()}
@@ -161,7 +174,7 @@ export default function ArchiveListCard({
     >
       <div className="flex gap-5">
         <div
-          className={`relative h-[140px] w-[120px] overflow-hidden rounded-xl border border-slate-200 bg-slate-100 ${coverCursorClass}`}
+          className={`relative h-[140px] w-[140px] shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 ${coverCursorClass}`}
           data-testid="archive-card-cover"
           onClick={(event) => {
             event.stopPropagation()
@@ -195,97 +208,12 @@ export default function ArchiveListCard({
           </Button>
         </div>
 
-        <div className="flex-1 space-y-4">
+        <div className="flex-1 min-h-[140px] flex flex-col">
           <div className="flex items-start justify-between gap-4">
-            <div>
+            <div className="min-w-0">
               <h3 className="text-lg font-semibold text-slate-900">
                 {truncateTitle(decodeUnicodeEscapes(title))}
               </h3>
-              <div className="mt-4 space-y-3 text-xs text-slate-500">
-                <div
-                  className="flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2"
-                  data-testid="archive-metrics-jd"
-                >
-                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-rose-50 text-xs font-semibold text-rose-500">
-                    JD
-                  </span>
-                  <div className="grid flex-1 gap-4 md:grid-cols-4">
-                    <div>
-                      <div className="text-sm text-slate-400">{TEXT.price}</div>
-                      <div className="mt-1 text-base font-semibold text-slate-900">
-                        {jdMetrics.price === "--"
-                          ? "--"
-                          : `${jdMetrics.price}${TEXT.yuan}`}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-slate-400">{TEXT.commission}</div>
-                      <div className="mt-1 text-base font-semibold text-emerald-600">
-                        {jdMetrics.commission === "--"
-                          ? "--"
-                          : `${jdMetrics.commission}${TEXT.yuan}`}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-slate-400">{TEXT.commissionRate}</div>
-                      <div className="mt-1 text-base font-semibold text-rose-500">
-                        {jdMetrics.commissionRate || "--"}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-slate-400">{TEXT.sales30}</div>
-                      <div className="mt-1 text-base font-semibold text-slate-900">
-                        {jdMetrics.sales || "--"}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div
-                  className="flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2"
-                  data-testid="archive-metrics-tb"
-                >
-                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50 text-xs font-semibold text-amber-500">
-                    TB
-                  </span>
-                  <div className="grid flex-1 gap-4 md:grid-cols-4">
-                    <div>
-                      <div className="text-sm text-slate-400">{TEXT.price}</div>
-                      <div className="mt-1 text-base font-semibold text-slate-900">
-                        {tbMetrics.price === "--"
-                          ? "--"
-                          : `${tbMetrics.price}${TEXT.yuan}`}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-slate-400">{TEXT.commission}</div>
-                      <div className="mt-1 text-base font-semibold text-emerald-600">
-                        {tbMetrics.commission === "--"
-                          ? "--"
-                          : `${tbMetrics.commission}${TEXT.yuan}`}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-slate-400">{TEXT.commissionRate}</div>
-                      <div className="mt-1 text-base font-semibold text-rose-500">
-                        {tbMetrics.commissionRate || "--"}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-slate-400">{TEXT.sales30}</div>
-                      <div className="mt-1 text-base font-semibold text-slate-900">
-                        {tbMetrics.sales || "--"}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-5 flex flex-wrap gap-4 text-xs text-slate-400">
-                <span>{TEXT.shopLabel}{decodeUnicodeEscapes(shopName) || "--"}</span>
-                <span>{TEXT.uidLabel}{uid || "--"}</span>
-                <span className="max-w-[280px] truncate">
-                  {TEXT.sourceLabel}{decodeUnicodeEscapes(source || blueLink || "") || "--"}
-                </span>
-              </div>
             </div>
             <div className="flex items-center gap-2">
               <span
@@ -336,14 +264,58 @@ export default function ArchiveListCard({
               </Button>
             </div>
           </div>
+          <div
+            className="mt-3 flex items-start gap-3 text-[16px] text-slate-500 flex-nowrap"
+            data-testid="archive-metrics-row"
+          >
+            <div
+              className="flex items-start gap-2 rounded-xl bg-[#fbfcfd] px-7 py-3 flex-1 min-w-[350px]"
+              data-testid="archive-metrics-jd"
+            >
+              <span
+                className="inline-flex h-[40px] w-[40px] min-h-[40px] min-w-[40px] flex-none self-start items-center justify-center rounded-lg bg-rose-500 text-[16px] font-semibold leading-none text-white text-center -translate-x-[6px]"
+                data-testid="archive-metrics-badge-jd"
+              >
+                JD
+              </span>
+              <div className="flex items-start gap-10 flex-1 min-w-0 overflow-visible" data-testid="archive-metrics-list">
+                {renderInlineMetric(TEXT.price, formatAmount(jdMetrics.price), "font-semibold text-slate-900")}
+                {renderInlineMetric(TEXT.commission, formatAmount(jdMetrics.commission), "font-semibold text-emerald-600")}
+                {renderInlineMetric(TEXT.commissionRate, jdMetrics.commissionRate || "--", "font-semibold text-rose-500")}
+                {renderInlineMetric(TEXT.sales30, jdMetrics.sales || "--", "font-semibold text-slate-900")}
+              </div>
+            </div>
+            <div
+              className="flex items-start gap-2 rounded-xl bg-[#fbfcfd] px-7 py-3 flex-1 min-w-[350px]"
+              data-testid="archive-metrics-tb"
+            >
+              <span
+                className="inline-flex h-[40px] w-[40px] min-h-[40px] min-w-[40px] flex-none self-start items-center justify-center rounded-lg bg-amber-500 text-[16px] font-semibold leading-none text-white text-center -translate-x-[6px]"
+                data-testid="archive-metrics-badge-tb"
+              >
+                TB
+              </span>
+              <div className="flex items-start gap-10 flex-1 min-w-0 overflow-visible" data-testid="archive-metrics-list">
+                {renderInlineMetric(TEXT.price, formatAmount(tbMetrics.price), "font-semibold text-slate-900")}
+                {renderInlineMetric(TEXT.commission, formatAmount(tbMetrics.commission), "font-semibold text-emerald-600")}
+                {renderInlineMetric(TEXT.commissionRate, tbMetrics.commissionRate || "--", "font-semibold text-rose-500")}
+                {renderInlineMetric(TEXT.sales30, tbMetrics.sales || "--", "font-semibold text-slate-900")}
+              </div>
+            </div>
+          </div>
+          <div
+            className="mt-auto flex min-w-0 items-center gap-4 text-xs text-slate-400"
+            data-testid="archive-meta-row"
+          >
+            <span className="whitespace-nowrap">{TEXT.uidLabel}{uid || "--"}</span>
+            <span className="min-w-0 truncate">
+              {TEXT.sourceLabel}{decodeUnicodeEscapes(source) || "--"}
+            </span>
+          </div>
         </div>
       </div>
 
-      <div
-        className={`mt-4 rounded-xl border p-4 ${
-          hasMissing ? "border-rose-300" : "border-slate-200"
-        } bg-slate-50`}
-      >
+      <div className="mt-4 rounded-xl p-4 bg-[#fbfcfd]">
         <div className="flex items-start justify-between gap-4">
           <div className="grid flex-1 gap-3 md:grid-cols-3">
             {params.map((entry, index) => (

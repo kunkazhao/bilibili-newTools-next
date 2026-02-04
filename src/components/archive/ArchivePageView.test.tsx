@@ -608,11 +608,123 @@ describe("ArchivePageView", () => {
 
     expect(screen.getByText("加载更多")).toBeTruthy()
 
-    expect(screen.getByTestId("archive-virtual-list")).toBeTruthy()
+    expect(screen.getByTestId("archive-list")).toBeTruthy()
+    expect(screen.queryByTestId("archive-virtual-list")).toBeNull()
 
   })
 
 
+
+  it("uses 12px spacing between cards", () => {
+    render(
+      <ArchivePageView
+        items={[
+          {
+            id: "item-1",
+            title: "????",
+            price: "10",
+            commission: "1",
+            commissionRate: "10%",
+            sales30: "--",
+            comments: "--",
+            image: "",
+            categoryName: "??1",
+            accountName: "",
+            blueLink: "",
+            shopName: "",
+            uid: "SB001",
+            source: "",
+            params: [],
+            remark: "",
+            missingTips: [],
+            isFocused: false,
+          },
+          {
+            id: "item-2",
+            title: "????2",
+            price: "20",
+            commission: "2",
+            commissionRate: "20%",
+            sales30: "--",
+            comments: "--",
+            image: "",
+            categoryName: "??1",
+            accountName: "",
+            blueLink: "",
+            shopName: "",
+            uid: "SB002",
+            source: "",
+            params: [],
+            remark: "",
+            missingTips: [],
+            isFocused: false,
+          },
+        ]}
+        categories={[{ id: "cat-1", name: "??1", sortOrder: 0, count: 0 }]}
+        isCategoryLoading={false}
+        isListLoading={false}
+        isRefreshing={false}
+        isUsingCache={false}
+        schemes={[]}
+        schemeValue=""
+        isSchemeLoading={false}
+        onSchemeChange={() => {}}
+        selectedCategory="cat-1"
+        searchValue=""
+        onSearchChange={() => {}}
+        priceRange={[0, 0]}
+        priceBounds={[0, 0]}
+        onPriceRangeChange={() => {}}
+        hasMore={false}
+        isLoadingMore={false}
+        onLoadMore={() => {}}
+        sortValue="manual"
+        onSortChange={() => {}}
+        onCreate={() => {}}
+        onEdit={() => {}}
+        onDelete={() => {}}
+        onToggleFocus={() => {}}
+        onDragStart={() => {}}
+        onDrop={() => {}}
+        onSelectCategory={() => {}}
+        onClearList={() => {}}
+        onDownloadImages={() => {}}
+        onExport={() => {}}
+        onSyncFeishu={() => {}}
+        onOpenCategoryManager={() => {}}
+        onCloseCategoryManager={() => {}}
+        onSaveCategories={() => {}}
+        isCategoryManagerOpen={false}
+        isPresetFieldsOpen={false}
+        onOpenPresetFields={() => {}}
+        onClosePresetFields={() => {}}
+        onSavePresetFields={() => {}}
+        isProductFormOpen={false}
+        onCloseProductForm={() => {}}
+        onSubmitProductForm={() => {}}
+        presetFields={[]}
+        importProgressState={{
+          status: "idle",
+          total: 0,
+          processed: 0,
+          success: 0,
+          failed: 0,
+          failures: [],
+        }}
+        isImportOpen={false}
+        onCloseImport={() => {}}
+        onCancelImport={() => {}}
+        onFixSort={() => {}}
+        isFixSortDisabled={false}
+        isFixSortSaving={false}
+      />
+    )
+
+    const list = screen.getByTestId("archive-list")
+    const firstItem = list.firstElementChild as HTMLElement | null
+    expect(firstItem).toBeTruthy()
+    expect(firstItem?.style.paddingBottom).toBe("12px")
+  })
 
   it("hides load-more row when there are no more items", () => {
 

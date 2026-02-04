@@ -2,7 +2,8 @@ import type { ChangeEvent, DragEvent, RefObject } from "react"
 import Empty from "@/components/Empty"
 import PrimaryButton from "@/components/PrimaryButton"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
+import { Switch } from "@/components/ui/switch"
+import { X } from "lucide-react"
 import type { RecognizeEntry } from "./types"
 
 interface RecognizePageViewProps {
@@ -93,8 +94,8 @@ export default function RecognizePageView({
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-2 text-sm text-slate-600">
-            <Checkbox
-              aria-label="Lock columns"
+            <Switch
+              aria-label="固定列"
               checked={isColumnLocked}
               onCheckedChange={(value) => onLockChange(Boolean(value))}
             />
@@ -104,30 +105,13 @@ export default function RecognizePageView({
           <div className="text-xs text-slate-400">共 {entries.length} 条</div>
         </div>
 
-        <div
-          className={`mt-4 flex min-h-[160px] cursor-pointer items-center justify-center rounded-2xl border border-dashed px-6 text-center text-sm transition ${
-            isDragging
-              ? "border-brand bg-brand/5 text-brand"
-              : "border-slate-200 bg-slate-50 text-slate-500"
-          }`}
-          onClick={onOpenFilePicker}
-          onDragOver={onDragOver}
-          onDragEnter={onDragEnter}
-          onDragLeave={onDragLeave}
-          onDrop={onDrop}
-        >
-          <div>
-            <p className="text-sm font-medium text-slate-700">将图片拖动到此处，或点击上传</p>
-            <p className="mt-2 text-xs text-slate-400">支持多张图片批量识别</p>
-          </div>
-        </div>
-
         <div className="mt-6 overflow-auto rounded-2xl border border-slate-200">
           {entries.length === 0 ? (
             <div className="p-10">
               <Empty
                 title="暂无识别结果"
                 description="还没有添加图片，点击“新增商品”上传后即可在此查看。"
+                hideTitle
               />
             </div>
           ) : (
@@ -164,13 +148,14 @@ export default function RecognizePageView({
                         <span>{col}</span>
                         <button
                           type="button"
-                          className="text-xs text-rose-500 hover:text-rose-600"
+                          className="inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 transition hover:text-rose-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
+                          aria-label="删除列"
                           onClick={(event) => {
                             event.stopPropagation()
                             onDeleteColumn(col)
                           }}
                         >
-                          删除
+                          <X className="h-3.5 w-3.5" aria-hidden="true" />
                         </button>
                       </div>
                     </th>

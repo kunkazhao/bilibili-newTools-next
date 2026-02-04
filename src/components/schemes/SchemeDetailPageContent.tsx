@@ -43,6 +43,7 @@ const META_SPEC_KEYS = {
   comments: "_comments",
   sourceLink: "_source_link",
   blueLink: "_blue_link",
+  taobaoPromoLink: "_tb_promo_link",
 } as const
 
 const IMAGE_TEMPLATE_CACHE_KEY = "image_template_cache_v1"
@@ -116,6 +117,7 @@ interface SchemeDetailPageProps {
 
 interface ProductFormValues {
   promoLink: string
+  taobaoPromoLink: string
   title: string
   price: string
   commission: string
@@ -162,9 +164,20 @@ function formatRate(value?: number) {
 }
 
 function getMeta(spec?: Record<string, string>) {
-  if (!spec) return { promoLink: "", shopName: "", sales30: "", comments: "", sourceLink: "", blueLink: "" }
+  if (!spec) {
+    return {
+      promoLink: "",
+      taobaoPromoLink: "",
+      shopName: "",
+      sales30: "",
+      comments: "",
+      sourceLink: "",
+      blueLink: "",
+    }
+  }
   return {
     promoLink: spec[META_SPEC_KEYS.promoLink] ?? "",
+    taobaoPromoLink: spec[META_SPEC_KEYS.taobaoPromoLink] ?? "",
     shopName: spec[META_SPEC_KEYS.shopName] ?? "",
     sales30: spec[META_SPEC_KEYS.sales30] ?? "",
     comments: spec[META_SPEC_KEYS.comments] ?? "",
@@ -298,8 +311,8 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null)
   const [productFormInitialValues, setProductFormInitialValues] = useState<ProductFormValues | undefined>(undefined)
   const isLoading = status === "loading" || status === "warmup"
-  const [priceMin, setPriceMin] = useState("")
-  const [priceMax, setPriceMax] = useState("")
+  const [priceMin] = useState("")
+  const [priceMax] = useState("")
   const [sortValue, setSortValue] = useState("price-asc")
 
   const mergedItems = useMemo(
@@ -523,6 +536,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     const meta = getMeta(item.spec)
     return {
       promoLink: meta.promoLink || "",
+      taobaoPromoLink: meta.taobaoPromoLink || "",
       title: item.title || "",
       price: item.price !== undefined ? String(item.price) : "",
       commission: item.commission !== undefined ? String(item.commission) : "",
@@ -540,10 +554,19 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     }
   }
 
-  const openEditItem = async (item: SchemeItem) => {
-    const sourceId = item.source_id || item.id
+  const openEditItem = async (id: string) => {
+    const target = items.find((entry) => entry.id === id)
+    if (!target) {
+      showToast("未找到商品，无法编辑", "error")
+      return
+    }
+    const sourceId = target.source_id || target.id
+    if (!sourceId) {
+      showToast("商品ID缺失，无法编辑", "error")
+      return
+    }
     setEditingSourceId(sourceId)
-    let sourceItem = findSourceItem(item) || item
+    let sourceItem = findSourceItem(target) || target
     try {
       const data = await apiRequest<{ item: SchemeItem }>(`/api/sourcing/items/${sourceId}`)
       if (data?.item) {
@@ -601,6 +624,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       [META_SPEC_KEYS.blueLink]: values.blueLink,
       [META_SPEC_KEYS.shopName]: values.shopName || values.accountName,
       [META_SPEC_KEYS.promoLink]: values.promoLink,
+      [META_SPEC_KEYS.taobaoPromoLink]: values.taobaoPromoLink,
       [META_SPEC_KEYS.sales30]: values.sales30,
       [META_SPEC_KEYS.comments]: values.comments,
       ...values.params,
@@ -1322,7 +1346,8 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
         })
         const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png", 1))
         if (blob) {
-          const name = sanitizeFilename(item.title || `商品_${index}`)
+          const baseName = item.title || `商品_${index}`
+          const name = sanitizeFilename(`${index}-${baseName}`)
           zip.file(`${name}.png`, blob)
           recordSuccess()
         } else {
@@ -1343,8 +1368,17 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       const anchor = document.createElement("a")
       anchor.href = url
       const schemeName = String(scheme?.name || "方案")
-      const categoryName = String(scheme?.category_name || scheme?.category_id || "品类")
-      const zipName = sanitizeFilename(`${schemeName}-${categoryName}`)
+      const templateName = String(template?.name || "模板")
+      const now = new Date()
+      const timestamp =
+        now.getFullYear() +
+        String(now.getMonth() + 1).padStart(2, "0") +
+        String(now.getDate()).padStart(2, "0") +
+        "_" +
+        String(now.getHours()).padStart(2, "0") +
+        String(now.getMinutes()).padStart(2, "0") +
+        String(now.getSeconds()).padStart(2, "0")
+      const zipName = sanitizeFilename(`${schemeName}-${templateName}-${timestamp}`)
       anchor.download = `${zipName}.zip`
       document.body.appendChild(anchor)
       anchor.click()
@@ -1762,18 +1796,14 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
           createdAt: formatDate(scheme.created_at),
           onBack,
           onExportJson: exportJsonTxt,
+          onExportExcel: exportExcel,
+          onOpenFeishu: () => setFeishuOpen(true),
         }}
         toolbar={{
-          priceMin,
-          priceMax,
           sortValue,
-          onPriceMinChange: setPriceMin,
-          onPriceMaxChange: setPriceMax,
           onSortChange: setSortValue,
           onClearItems: () => persistItems([], "?????"),
           onOpenPicker: openPicker,
-          onExport: exportExcel,
-          onOpenFeishu: () => setFeishuOpen(true),
         }}
         productList={{
           items: productCards,

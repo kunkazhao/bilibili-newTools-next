@@ -9,13 +9,14 @@ import { apiRequest } from "@/lib/api"
 
 const schemeDetailViewCapture = vi.hoisted(() => ({
   props: null as null | {
-    header: { onExportJson: () => void }
+    header: { onExportJson: () => void; onExportExcel: () => void; onOpenFeishu: () => void }
     productList: { totalCount: number; onGenerateImage: (id: string) => void }
     sidebar: { image: { activeTemplateId: string; onGenerate: () => Promise<void> | void } }
   },
 }))
 
 const showToast = vi.fn()
+const zipFileCalls: string[] = []
 
 vi.mock("@/components/schemes/SchemeDetailDialogs", () => ({
   default: () => null,
@@ -46,7 +47,9 @@ vi.mock("html2canvas", () => ({
 
 vi.mock("jszip", () => ({
   default: vi.fn().mockImplementation(() => ({
-    file: vi.fn(),
+    file: vi.fn((name: string) => {
+      zipFileCalls.push(name)
+    }),
     generateAsync: vi.fn().mockResolvedValue(new Blob(["zip"], { type: "application/zip" })),
   })),
 }))
@@ -113,6 +116,7 @@ describe("SchemeDetailPageContent", () => {
     vi.clearAllMocks()
     schemeDetailViewCapture.props = null
     localStorage.clear()
+    zipFileCalls.length = 0
   })
 
   it("loads blue link state via v2 helper", async () => {
@@ -129,7 +133,7 @@ describe("SchemeDetailPageContent", () => {
     )
   })
 
-  it("downloads image zip named with scheme and category", async () => {
+  it("downloads image zip named with scheme, template, and timestamp", async () => {
     const originalCreateElement = document.createElement.bind(document)
     let lastAnchor: HTMLAnchorElement | null = null
 
@@ -175,8 +179,68 @@ describe("SchemeDetailPageContent", () => {
 
     await schemeDetailViewCapture.props?.sidebar.image.onGenerate()
 
+    const schemeResponse = await apiRequest<{ scheme?: { name?: string } }>("/api/schemes/s1")
+    const templateResponse = await apiRequest<{ templates?: Array<{ name?: string }> }>("/api/image/templates")
+    const schemeName = String(schemeResponse?.scheme?.name || "")
+    const templateName = String(templateResponse?.templates?.[0]?.name || "")
+    const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    const expectedPattern = new RegExp(
+      `^${escapeRegExp(schemeName)}-${escapeRegExp(templateName)}-\\d{8}_\\d{6}\\.zip$`
+    )
+
     expect(lastAnchor).not.toBeNull()
-    expect(lastAnchor?.download).toBe("方案名-品类.zip")
+    expect(lastAnchor?.download).toMatch(expectedPattern)
+
+    revokeUrlSpy.mockRestore()
+    createUrlSpy.mockRestore()
+    boundingSpy.mockRestore()
+    createElementSpy.mockRestore()
+  })
+
+  it("prefixes image filenames with index when generating zip", async () => {
+    const originalCreateElement = document.createElement.bind(document)
+    const createElementSpy = vi.spyOn(document, "createElement").mockImplementation((tagName: string) => {
+      const el = originalCreateElement(tagName)
+      if (tagName.toLowerCase() === "a") {
+        ;(el as HTMLAnchorElement).click = vi.fn()
+      }
+      return el
+    })
+
+    const boundingSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({
+        width: 100,
+        height: 100,
+        top: 0,
+        left: 0,
+        right: 100,
+        bottom: 100,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect)
+
+    if (!("createObjectURL" in URL)) {
+      Object.defineProperty(URL, "createObjectURL", { value: () => "blob:mock", writable: true })
+    }
+    if (!("revokeObjectURL" in URL)) {
+      Object.defineProperty(URL, "revokeObjectURL", { value: () => {}, writable: true })
+    }
+
+    const createUrlSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock")
+    const revokeUrlSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {})
+
+    render(<SchemeDetailPageContent schemeId="s1" onBack={() => {}} />)
+
+    await waitFor(() => {
+      expect(schemeDetailViewCapture.props?.productList.totalCount).toBe(1)
+      expect(schemeDetailViewCapture.props?.sidebar.image.activeTemplateId).toBe("tpl-1")
+    })
+
+    await schemeDetailViewCapture.props?.sidebar.image.onGenerate()
+
+    expect(zipFileCalls).toEqual(["1-商品A.png"])
 
     revokeUrlSpy.mockRestore()
     createUrlSpy.mockRestore()

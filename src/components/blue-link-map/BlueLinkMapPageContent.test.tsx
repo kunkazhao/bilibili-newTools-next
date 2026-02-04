@@ -98,4 +98,73 @@ describe("BlueLinkMapPageContent", () => {
 
     resolveFetch?.({ accounts: [], categories: [], entries: [] })
   })
+
+  it("sorts entries by price asc and exposes clear handler", async () => {
+    vi.mocked(fetchBlueLinkMapState).mockResolvedValue({
+      accounts: [{ id: "account-1", name: "Account 1" }],
+      categories: [{ id: "category-1", account_id: "account-1", name: "Category 1" }],
+      entries: [
+        {
+          id: "entry-1",
+          account_id: "account-1",
+          category_id: "category-1",
+          source_link: "https://example.com/1",
+          product_id: "product-1",
+          product_price: 199,
+        },
+        {
+          id: "entry-2",
+          account_id: "account-1",
+          category_id: "category-1",
+          source_link: "https://example.com/2",
+          product_id: "product-2",
+          product_price: 99,
+        },
+      ],
+    })
+
+    render(<BlueLinkMapPageContent />)
+
+    await waitFor(() => {
+      const ids = latestViewProps?.visibleEntries?.map((entry: any) => entry.id)
+      expect(ids).toEqual(["entry-2", "entry-1"])
+    })
+
+    expect(typeof latestViewProps?.onClearList).toBe("function")
+  })
+
+  it("enables clear list when account and category are selected", async () => {
+    vi.mocked(fetchBlueLinkMapState).mockResolvedValue({
+      accounts: [{ id: "account-1", name: "Account 1" }],
+      categories: [{ id: "category-1", account_id: "account-1", name: "Category 1" }],
+      entries: [],
+    })
+
+    render(<BlueLinkMapPageContent />)
+
+    await waitFor(() => {
+      expect(latestViewProps?.activeAccountId).toBe("account-1")
+      expect(latestViewProps?.activeCategoryId).toBe("category-1")
+    })
+
+    expect(latestViewProps?.canClearList).toBe(true)
+  })
+
+  it("shows readable toast when copying empty blue link", async () => {
+    vi.mocked(fetchBlueLinkMapState).mockResolvedValue({
+      accounts: [{ id: "account-1", name: "Account 1" }],
+      categories: [{ id: "category-1", account_id: "account-1", name: "Category 1" }],
+      entries: [],
+    })
+
+    render(<BlueLinkMapPageContent />)
+
+    await waitFor(() => {
+      expect(typeof latestViewProps?.onCopy).toBe("function")
+    })
+
+    await latestViewProps.onCopy({ source_link: "" })
+
+    expect(showToast).toHaveBeenCalledWith("蓝链为空", "error")
+  })
 })

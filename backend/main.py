@@ -1169,7 +1169,12 @@ def build_account_video_payload(
     }
 
 
-async def fetch_account_videos_from_bili(mid: str, page: int = 1, page_size: int = 20) -> List[Dict[str, Any]]:
+async def fetch_account_videos_from_bili(
+    mid: str,
+    page: int = 1,
+    page_size: int = 20,
+    session: Optional[aiohttp.ClientSession] = None,
+) -> List[Dict[str, Any]]:
     keys = await fetch_wbi_keys()
     if not keys:
         raise HTTPException(status_code=500, detail="无法获取 B 站 WBI 密钥")
@@ -1181,22 +1186,27 @@ async def fetch_account_videos_from_bili(mid: str, page: int = 1, page_size: int
         "order": "pubdate",
     }
     headers = build_bilibili_headers({"Referer": "https://www.bilibili.com/"})
+
+    async def request(current_session: aiohttp.ClientSession) -> List[Dict[str, Any]]:
+        async with current_session.get(
+            url,
+            headers=headers,
+            params=signed_params,
+            timeout=aiohttp.ClientTimeout(total=12),
+        ) as resp:
+            data = await resp.json()
+            if data.get("code") != 0:
+                message = data.get("message") or "获取账号视频失败"
+                raise RuntimeError(message)
+            return data.get("data", {}).get("list", {}).get("vlist", []) or []
+
     for attempt in range(2):
         signed_params = encode_wbi_params(params, keys.get("img_key", ""), keys.get("sub_key", ""))
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    url,
-                    headers=headers,
-                    params=signed_params,
-                    timeout=aiohttp.ClientTimeout(total=12),
-                ) as resp:
-                    data = await resp.json()
-                    if data.get("code") != 0:
-                        message = data.get("message") or "获取账号视频失败"
-                        raise RuntimeError(message)
-                    vlist = data.get("data", {}).get("list", {}).get("vlist", []) or []
-                    return vlist
+            if session:
+                return await request(session)
+            async with aiohttp.ClientSession() as local_session:
+                return await request(local_session)
         except Exception as e:
             if attempt == 0:
                 keys = await fetch_wbi_keys(force=True)
@@ -1205,7 +1215,10 @@ async def fetch_account_videos_from_bili(mid: str, page: int = 1, page_size: int
     return []
 
 
-async def fetch_account_video_stat(bvid: str) -> Optional[Dict[str, Any]]:
+async def fetch_account_video_stat(
+    bvid: str,
+    session: Optional[aiohttp.ClientSession] = None,
+) -> Optional[Dict[str, Any]]:
     if not bvid:
         return None
     trimmed = str(bvid).strip()
@@ -1218,7 +1231,7 @@ async def fetch_account_video_stat(bvid: str) -> Optional[Dict[str, Any]]:
     async def fetch_data(url: str) -> Optional[Dict[str, Any]]:
         for attempt in range(2):
             try:
-                async with aiohttp.ClientSession() as session:
+                if session:
                     async with session.get(
                         url,
                         headers=headers,
@@ -1226,9 +1239,18 @@ async def fetch_account_video_stat(bvid: str) -> Optional[Dict[str, Any]]:
                         timeout=aiohttp.ClientTimeout(total=10),
                     ) as resp:
                         data = await resp.json()
-                        if data.get("code") != 0:
-                            return None
-                        return data.get("data") or None
+                else:
+                    async with aiohttp.ClientSession() as local_session:
+                        async with local_session.get(
+                            url,
+                            headers=headers,
+                            params={"bvid": trimmed},
+                            timeout=aiohttp.ClientTimeout(total=10),
+                        ) as resp:
+                            data = await resp.json()
+                if data.get("code") != 0:
+                    return None
+                return data.get("data") or None
             except Exception:
                 if attempt == 0:
                     continue
@@ -6189,6 +6211,7 @@ class BlueLinkMapEntryCreate(BaseModel):
     product_id: Optional[str] = None
 
     sku_id: Optional[str] = None
+    remark: Optional[str] = None
 
 
 
@@ -6217,6 +6240,7 @@ class BlueLinkMapEntryUpdate(BaseModel):
     product_id: Optional[str] = None
 
     sku_id: Optional[str] = None
+    remark: Optional[str] = None
 
 
 
@@ -6243,6 +6267,13 @@ class BlueLinkMapEntryUpdate(BaseModel):
 class BlueLinkMapBatchPayload(BaseModel):
 
     entries: List[BlueLinkMapEntryCreate]
+
+
+class BlueLinkMapClearPayload(BaseModel):
+
+    account_id: str
+
+    category_id: str
 
 
 
@@ -6829,6 +6860,7 @@ def normalize_blue_link_map_entry(row: Dict[str, Any]) -> Dict[str, Any]:
         "sku_id": row.get("sku_id"),
 
         "source_link": row.get("source_link"),
+        "remark": row.get("remark"),
 
         "created_at": row.get("created_at"),
 
@@ -7181,7 +7213,7 @@ async def fetch_blue_link_map_snapshot(product_ids: Optional[List[str]] = None) 
     cleaned_ids = [str(pid).strip() for pid in (product_ids or []) if str(pid).strip()]
     entries_params = {
         "order": "updated_at.desc",
-        "select": "id,account_id,category_id,product_id,sku_id,source_link,created_at,updated_at"
+        "select": "id,account_id,category_id,product_id,sku_id,source_link,remark,created_at,updated_at"
     }
     if cleaned_ids:
         entries_params["product_id"] = f"in.({','.join(cleaned_ids)})"
@@ -8754,16 +8786,94 @@ async def get_my_account_state(account_id: Optional[str] = None):
     }
 
 
+ACCOUNT_VIDEO_STAT_CONCURRENCY = 6
+
+
+@app.get("/api/my-accounts/video-counts")
+async def get_my_account_video_counts():
+    client = ensure_supabase()
+    accounts = await client.select("comment_accounts", params={"order": "created_at.asc"})
+    results: List[Dict[str, Any]] = []
+    failures: List[Dict[str, Any]] = []
+
+    if not accounts:
+        return {"total": 0, "items": [], "failures": []}
+
+    async with aiohttp.ClientSession() as session:
+        tasks: List[Tuple[str, str, asyncio.Task]] = []
+        for account in accounts:
+            account_id = account.get("id") or ""
+            name = account.get("name") or ""
+            if not account_id:
+                failures.append(
+                    {
+                        "account_id": account_id,
+                        "name": name,
+                        "reason": "账号ID缺失",
+                    }
+                )
+                continue
+            homepage_link = account.get("homepage_link") or ""
+            mid = extract_mid_from_homepage_link(homepage_link)
+            if not mid:
+                failures.append(
+                    {
+                        "account_id": account_id,
+                        "name": name,
+                        "reason": "请先填写正确的账号主页链接",
+                    }
+                )
+                continue
+
+            async def fetch_count(target_mid: str, acc_id: str, acc_name: str) -> Dict[str, Any]:
+                vlist = await fetch_account_videos_from_bili(target_mid, session=session)
+                return {"account_id": acc_id, "name": acc_name, "count": len(vlist)}
+
+            tasks.append(
+                (
+                    account_id,
+                    name,
+                    asyncio.create_task(fetch_count(mid, account_id, name)),
+                )
+            )
+
+        for account_id, name, task in tasks:
+            try:
+                result = await task
+            except HTTPException as exc:
+                failures.append(
+                    {
+                        "account_id": account_id,
+                        "name": name,
+                        "reason": str(exc.detail),
+                    }
+                )
+            except Exception as exc:
+                failures.append(
+                    {
+                        "account_id": account_id,
+                        "name": name,
+                        "reason": str(exc),
+                    }
+                )
+            else:
+                results.append(result)
+
+    total = sum(item.get("count", 0) for item in results)
+    return {"total": total, "items": results, "failures": failures}
+
+
 async def sync_account_videos_for_account(
     client: SupabaseClient,
     account_id: str,
     homepage_link: str,
-) -> Tuple[int, int]:
+) -> Tuple[int, int, int]:
     mid = extract_mid_from_homepage_link(homepage_link)
     if not mid:
         raise HTTPException(status_code=400, detail="请先填写正确的账号主页链接")
 
     vlist = await fetch_account_videos_from_bili(mid)
+    total_videos = len(vlist)
     existing_rows = await client.select(
         "account_videos",
         params={"select": "bvid", "account_id": f"eq.{account_id}"},
@@ -8773,9 +8883,23 @@ async def sync_account_videos_for_account(
     rows: List[Dict[str, Any]] = []
     added = 0
     updated = 0
-    for item in vlist:
-        stat = await fetch_account_video_stat(item.get("bvid") or item.get("bvid_str") or "")
-        payload_row = build_account_video_payload(account_id, item, stat)
+    semaphore = asyncio.Semaphore(ACCOUNT_VIDEO_STAT_CONCURRENCY)
+
+    async def build_row(item: Dict[str, Any], session: aiohttp.ClientSession):
+        bvid = str(item.get("bvid") or item.get("bvid_str") or "").strip()
+        if not bvid:
+            return None
+        async with semaphore:
+            stat = await fetch_account_video_stat(bvid, session=session)
+        return build_account_video_payload(account_id, item, stat)
+
+    async with aiohttp.ClientSession() as session:
+        results = await asyncio.gather(
+            *(build_row(item, session) for item in vlist),
+            return_exceptions=False,
+        )
+
+    for payload_row in results:
         if not payload_row:
             continue
         if payload_row["bvid"] in existing_set:
@@ -8787,7 +8911,7 @@ async def sync_account_videos_for_account(
     if rows:
         await client.upsert("account_videos", rows, on_conflict="account_id,bvid")
 
-    return added, updated
+    return added, updated, total_videos
 
 
 @app.post("/api/my-accounts/sync")
@@ -8803,7 +8927,7 @@ async def sync_my_account_videos(payload: MyAccountSyncPayload):
 
     account = existing_accounts[0]
     homepage_link = account.get("homepage_link") or ""
-    added, updated = await sync_account_videos_for_account(
+    added, updated, video_count = await sync_account_videos_for_account(
         client, account_id, homepage_link
     )
 
@@ -8818,6 +8942,7 @@ async def sync_my_account_videos(payload: MyAccountSyncPayload):
     return {
         "added": added,
         "updated": updated,
+        "video_count": video_count,
         "videos": [normalize_account_video(item) for item in videos],
     }
 
@@ -8829,6 +8954,7 @@ async def sync_my_account_videos_all():
     results: List[Dict[str, Any]] = []
     total_added = 0
     total_updated = 0
+    total_videos = 0
     failed = 0
 
     for account in accounts:
@@ -8848,17 +8974,19 @@ async def sync_my_account_videos_all():
             continue
         try:
             homepage_link = account.get("homepage_link") or ""
-            added, updated = await sync_account_videos_for_account(
+            added, updated, video_count = await sync_account_videos_for_account(
                 client, account_id, homepage_link
             )
             total_added += added
             total_updated += updated
+            total_videos += video_count
             results.append(
                 {
                     "account_id": account_id,
                     "name": name,
                     "added": added,
                     "updated": updated,
+                    "video_count": video_count,
                 }
             )
         except HTTPException as exc:
@@ -8889,6 +9017,7 @@ async def sync_my_account_videos_all():
         "added": total_added,
         "updated": total_updated,
         "failed": failed,
+        "video_count": total_videos,
         "results": results,
     }
 
@@ -9174,6 +9303,7 @@ async def batch_upsert_blue_link_map_entries(payload: BlueLinkMapBatchPayload):
             "sku_id": entry.sku_id,
 
             "source_link": entry.source_link,
+            "remark": (entry.remark or "").strip() or None,
 
             "updated_at": now,
 
@@ -9229,6 +9359,22 @@ async def batch_upsert_blue_link_map_entries(payload: BlueLinkMapBatchPayload):
 
 
 
+@app.post("/api/blue-link-map/entries/clear")
+async def clear_blue_link_map_entries(payload: BlueLinkMapClearPayload):
+    client = ensure_supabase()
+    account_id = (payload.account_id or "").strip()
+    category_id = (payload.category_id or "").strip()
+    if not account_id or not category_id:
+        raise HTTPException(status_code=400, detail="账号或分类不能为空")
+    await client.delete(
+        "blue_link_map_entries",
+        {"account_id": f"eq.{account_id}", "category_id": f"eq.{category_id}"},
+    )
+    BLUE_LINK_MAP_CACHE["timestamp"] = 0.0
+    BLUE_LINK_MAP_CACHE["data"] = None
+    return {"status": "ok"}
+
+
 @app.patch("/api/blue-link-map/entries/{entry_id}")
 
 async def patch_blue_link_map_entry(entry_id: str, payload: BlueLinkMapEntryUpdate):
@@ -9260,6 +9406,8 @@ async def patch_blue_link_map_entry(entry_id: str, payload: BlueLinkMapEntryUpda
     if payload.sku_id is not None:
 
         updates["sku_id"] = payload.sku_id
+    if payload.remark is not None:
+        updates["remark"] = (payload.remark or "").strip() or None
 
     if not updates:
 
@@ -9282,6 +9430,7 @@ async def patch_blue_link_map_entry(entry_id: str, payload: BlueLinkMapEntryUpda
             "sku_id": updates.get("sku_id", existing.get("sku_id")),
 
             "source_link": updates.get("source_link", existing.get("source_link")),
+            "remark": updates.get("remark", existing.get("remark")),
 
             "updated_at": updates["updated_at"],
 

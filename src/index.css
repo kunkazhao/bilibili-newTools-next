@@ -17,6 +17,20 @@
     @apply flex h-7 w-7 cursor-grab items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500;
   }
 
+  .card-interactive {
+    cursor: pointer;
+    transition:
+      box-shadow var(--card-interactive-transition),
+      border-color var(--card-interactive-transition),
+      transform var(--card-interactive-transition);
+  }
+
+  .card-interactive:hover {
+    border-color: var(--card-interactive-hover-border);
+    box-shadow: var(--card-interactive-hover-shadow);
+    transform: translateY(var(--card-interactive-hover-translate));
+  }
+
   .dialog-content {
     padding: var(--dialog-content-padding);
   }
@@ -86,6 +100,10 @@
 
 :root {
   color-scheme: light;
+  --card-interactive-hover-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+  --card-interactive-hover-border: #cbd5f5;
+  --card-interactive-hover-translate: -1px;
+  --card-interactive-transition: 180ms ease;
   --dialog-title-size: 18px;
   --dialog-title-weight: 600;
   --dialog-description-size: 14px;

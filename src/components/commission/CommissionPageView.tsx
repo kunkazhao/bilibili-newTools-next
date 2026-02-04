@@ -48,6 +48,7 @@ interface CommissionPageViewProps {
   onArchive: (id: string) => void
   onArchiveAll: () => void
   onDelete: (id: string) => void
+  onCardClick?: (id: string) => void
   onClearAll: () => void
   onExport: () => void
   onDownloadImages: () => void
@@ -123,6 +124,7 @@ export default function CommissionPageView({
   onArchive,
   onArchiveAll,
   onDelete,
+  onCardClick,
   onClearAll,
   onExport,
   onDownloadImages,
@@ -245,6 +247,7 @@ export default function CommissionPageView({
               onEdit={onEdit}
               onArchive={onArchive}
               onDelete={onDelete}
+              onCardClick={() => onCardClick?.(item.id)}
             />
           ))}
         </div>

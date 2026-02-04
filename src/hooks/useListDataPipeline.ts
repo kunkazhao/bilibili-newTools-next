@@ -136,6 +136,7 @@ export function useListDataPipeline<TItem, TFilters, TResponse>(
   }, [applyCache, refresh, storageKey])
 
   useEffect(() => {
+    isMountedRef.current = true
     return () => {
       isMountedRef.current = false
       requestIdRef.current += 1

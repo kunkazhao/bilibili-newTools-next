@@ -27,6 +27,7 @@ describe("ProductFormModal", () => {
 
   const baseValues = {
     promoLink: "",
+    taobaoPromoLink: "",
     title: "测试商品",
     price: "88",
     commission: "8.8",
@@ -67,7 +68,7 @@ describe("ProductFormModal", () => {
     expect(combo.textContent).toContain("???")
   })
 
-  it("renders JD and Taobao link inputs", () => {
+  it("renders JD, Taobao, and Taobao promo link inputs", () => {
     render(
       <ToastProvider>
         <ProductFormModal
@@ -86,6 +87,7 @@ describe("ProductFormModal", () => {
 
     expect(screen.getByLabelText("京东链接")).toBeTruthy()
     expect(screen.getByLabelText("淘宝链接")).toBeTruthy()
+    expect(screen.getByLabelText("淘宝推广链接")).toBeTruthy()
   })
 
   it("includes taobao link value when submitting", async () => {
@@ -276,7 +278,8 @@ describe("ProductFormModal", () => {
           categories={[{ label: "分类", value: "cat-1" }]}
           presetFields={[]}
           initialValues={{
-            promoLink: "https://item.taobao.com/item.htm?id=123",
+            promoLink: "",
+            taobaoPromoLink: "",
             title: "",
             price: "",
             commission: "",
@@ -301,8 +304,8 @@ describe("ProductFormModal", () => {
       </ToastProvider>
     )
 
-    const taobaoInput = screen.getByLabelText("淘宝链接") as HTMLInputElement
-    fireEvent.change(taobaoInput, {
+    const taobaoPromoInput = screen.getByLabelText("淘宝推广链接") as HTMLInputElement
+    fireEvent.change(taobaoPromoInput, {
       target: { value: "https://item.taobao.com/item.htm?id=123" },
     })
     const titleInput = screen.getByLabelText("商品标题") as HTMLInputElement

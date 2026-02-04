@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+ï»¿import { describe, expect, it } from "vitest"
 import {
   formatArchivePriceForExport,
   resolveArchiveExportLink,
@@ -15,7 +15,7 @@ describe("archive export helpers", () => {
       spec: {
         _promo_link: "https://union-click.jd.com/jdc?e=abc",
         _source_link: "https://www.bilibili.com/video/BV1",
-        _shop_name: "¾©¶«×ÔÓªÆì½¢µê",
+        _shop_name: "ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Óªï¿½ì½¢ï¿½ï¿½",
       },
     }
 
@@ -40,17 +40,17 @@ describe("archive export helpers", () => {
       id: "item-3",
       uid: "UID-3",
       blueLink: "",
-      accountName: "ÕËºÅµêÆÌ",
+      accountName: "ï¿½ËºÅµï¿½ï¿½ï¿½",
       spec: {
-        shopName: "±¸ÓÃµêÆÌ",
+        shopName: "ï¿½ï¿½ï¿½Ãµï¿½ï¿½ï¿½",
       },
     }
 
-    expect(resolveArchiveShopName(item)).toBe("±¸ÓÃµêÆÌ")
+    expect(resolveArchiveShopName(item)).toBe("ï¿½ï¿½ï¿½Ãµï¿½ï¿½ï¿½")
   })
 
-  it("formats price without decimals and with Ôª suffix", () => {
-    expect(formatArchivePriceForExport(78)).toBe("78Ôª")
-    expect(formatArchivePriceForExport("78.9")).toBe("78Ôª")
+  it("formats price without decimals", () => {
+    expect(formatArchivePriceForExport(78)).toBe("78å…ƒ")
+    expect(formatArchivePriceForExport("78.9")).toBe("78å…ƒ")
   })
 })

@@ -1,6 +1,7 @@
-import { Button } from "@/components/ui/button"
+﻿import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import Empty from "@/components/Empty"
+import Tooltip from "@/components/Tooltip"
 import { Copy, Link2, Pencil, Settings, Trash2 } from "lucide-react"
 import type { BlueLinkAccount, BlueLinkCategory, BlueLinkEntry, SourcingItem } from "./types"
 
@@ -23,11 +24,14 @@ interface BlueLinkMapPageViewProps {
   onOpenAccountManage: () => void
   onOpenCategoryManage: () => void
   onOpenImport: () => void
+  onClearList: () => void
   onAutoMap: () => void
   onCopy: (entry: BlueLinkEntry) => void
+  onCopyRemark: (entry: BlueLinkEntry) => void
   onEdit: (entry: BlueLinkEntry) => void
   onPick: (entry: BlueLinkEntry) => void
   onDelete: (entry: BlueLinkEntry) => void
+  canClearList: boolean
 }
 
 export default function BlueLinkMapPageView({
@@ -49,11 +53,14 @@ export default function BlueLinkMapPageView({
   onOpenAccountManage,
   onOpenCategoryManage,
   onOpenImport,
+  onClearList,
   onAutoMap,
   onCopy,
+  onCopyRemark,
   onEdit,
   onPick,
   onDelete,
+  canClearList,
 }: BlueLinkMapPageViewProps) {
   const accountNameById = new Map(accounts.map((account) => [account.id, account.name]))
   const categoryNameById = new Map(accountCategories.map((category) => [category.id, category.name]))
@@ -120,6 +127,11 @@ export default function BlueLinkMapPageView({
   const truncateTitle = (value: string) => {
     if (!value) return "--"
     return value.length > 12 ? `${value.slice(0, 12)}...` : value
+  }
+
+  const truncateText = (value: string, maxLength = 20) => {
+    if (!value) return "--"
+    return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value
   }
 
   return (
@@ -205,6 +217,9 @@ export default function BlueLinkMapPageView({
                 value={searchValue}
                 onChange={(event) => onSearchChange(event.target.value)}
               />
+              <Button variant="outline" onClick={onClearList} disabled={!canClearList}>
+                清空列表
+              </Button>
               <Button variant="outline" onClick={onOpenImport}>
                 导入蓝链
               </Button>
@@ -262,21 +277,18 @@ export default function BlueLinkMapPageView({
                           )}
                         </div>
                         <div className="flex-1">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="space-y-2">
-                              <p className="text-sm font-semibold text-slate-900">
-                                {truncateTitle(title)}
-                              </p>
-                              <div className="flex flex-wrap gap-3 text-xs text-slate-500">
-                                <span>价格：{formatPrice(price)}</span>
-                                <span>佣金比例：{formatCommissionRate(commissionRate)}</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1">
+                          <div
+                            className="flex items-start justify-between gap-3"
+                            data-testid="blue-link-card-header"
+                          >
+                            <p className="text-sm font-semibold text-slate-900">
+                              {truncateTitle(title)}
+                            </p>
+                            <div className="flex items-start gap-1">
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="text-slate-500"
+                                className="h-7 w-7 text-slate-500"
                                 onClick={() => onEdit(entry)}
                                 aria-label="编辑蓝链"
                               >
@@ -285,7 +297,7 @@ export default function BlueLinkMapPageView({
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="text-slate-500"
+                                className="h-7 w-7 text-slate-500"
                                 onClick={() => onPick(entry)}
                                 aria-label="选择商品"
                               >
@@ -294,13 +306,22 @@ export default function BlueLinkMapPageView({
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="text-rose-500"
+                                className="h-7 w-7 text-rose-500"
                                 onClick={() => onDelete(entry)}
                                 aria-label="删除蓝链"
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             </div>
+                          </div>
+                          <div
+                            className="mt-1 flex flex-nowrap items-center gap-3 text-xs text-slate-500"
+                            data-testid="blue-link-card-metrics"
+                          >
+                            <span className="whitespace-nowrap">价格：{formatPrice(price)}</span>
+                            <span className="whitespace-nowrap">
+                              佣金：{formatCommissionRate(commissionRate)}
+                            </span>
                           </div>
                           <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
                             <span className="truncate">{entry.source_link || "--"}</span>
@@ -310,6 +331,21 @@ export default function BlueLinkMapPageView({
                               className="h-7 w-7 text-slate-500"
                               onClick={() => onCopy(entry)}
                               aria-label="复制蓝链"
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
+                            <span>备注：</span>
+                            <Tooltip content={entry.remark || "--"}>
+                              <span className="truncate">{truncateText(entry.remark || "--", 20)}</span>
+                            </Tooltip>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-slate-500"
+                              onClick={() => onCopyRemark(entry)}
+                              aria-label="复制备注"
                             >
                               <Copy className="h-4 w-4" />
                             </Button>
@@ -325,3 +361,4 @@ export default function BlueLinkMapPageView({
     </div>
   )
 }
+

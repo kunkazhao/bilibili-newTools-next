@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useToast } from "@/components/Toast"
 import { apiRequest } from "@/lib/api"
 import { createAccount, deleteAccount as removeAccount, updateAccount } from "@/lib/accountsApi"
@@ -160,6 +160,7 @@ export default function BlueLinkMapPage() {
   const [editOpen, setEditOpen] = useState(false)
   const [editingEntry, setEditingEntry] = useState<BlueLinkEntry | null>(null)
   const [editLink, setEditLink] = useState("")
+  const [editRemark, setEditRemark] = useState("")
 
   const [importOpen, setImportOpen] = useState(false)
   const [importText, setImportText] = useState("")
@@ -319,28 +320,41 @@ export default function BlueLinkMapPage() {
     })
   }, [baseEntries, normalizedKeyword, itemsVersion])
 
+  const resolveEntryPrice = (entry: BlueLinkEntry) => {
+    const matchedItem = entry.product_id ? itemsByIdRef.current.get(entry.product_id) : null
+    const value = Number(matchedItem?.price ?? entry.product_price)
+    return Number.isFinite(value) ? value : Number.POSITIVE_INFINITY
+  }
+
+  const sortedEntries = useMemo(() => {
+    if (!filteredEntries.length) return []
+    const next = [...filteredEntries]
+    next.sort((a, b) => resolveEntryPrice(a) - resolveEntryPrice(b))
+    return next
+  }, [filteredEntries, itemsVersion])
+
   useEffect(() => {
     if (chunkTimerRef.current) {
       window.clearTimeout(chunkTimerRef.current)
       chunkTimerRef.current = null
     }
-    if (!filteredEntries.length) {
+    if (!sortedEntries.length) {
       setVisibleEntries([])
       return
     }
     let index = 0
     const next = () => {
       index += 50
-      setVisibleEntries(filteredEntries.slice(0, index))
-      if (index < filteredEntries.length) {
+      setVisibleEntries(sortedEntries.slice(0, index))
+      if (index < sortedEntries.length) {
         chunkTimerRef.current = window.setTimeout(next, 16)
       }
     }
-    setVisibleEntries(filteredEntries.slice(0, 50))
-    if (filteredEntries.length > 50) {
+    setVisibleEntries(sortedEntries.slice(0, 50))
+    if (sortedEntries.length > 50) {
       chunkTimerRef.current = window.setTimeout(next, 16)
     }
-  }, [filteredEntries])
+  }, [sortedEntries])
 
   useEffect(() => {
     return () => {
@@ -471,6 +485,30 @@ export default function BlueLinkMapPage() {
     }
   }
 
+  const handleCopyRemark = async (entry: BlueLinkEntry) => {
+    const remark = String(entry.remark || "").trim()
+    if (!remark) {
+      showToast("暂无备注", "error")
+      return
+    }
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(remark)
+      } else {
+        const textarea = document.createElement("textarea")
+        textarea.value = remark
+        textarea.style.position = "fixed"
+        textarea.style.left = "-9999px"
+        document.body.appendChild(textarea)
+        textarea.select()
+        document.execCommand("copy")
+        document.body.removeChild(textarea)
+      }
+      showToast("备注已复制", "success")
+    } catch {
+      showToast("复制失败", "error")
+    }
+  }
   const handleAccountReorder = (sourceId: string, targetId: string) => {
     updateState((prev) => ({
       ...prev,
@@ -501,12 +539,14 @@ export default function BlueLinkMapPage() {
   const openEdit = (entry: BlueLinkEntry) => {
     setEditingEntry(entry)
     setEditLink(entry.source_link || "")
+    setEditRemark(entry.remark || "")
     setEditOpen(true)
   }
 
   const handleEditSubmit = async () => {
     if (!editingEntry) return
     const link = editLink.trim()
+    const remark = editRemark.trim()
     if (!link) {
       showToast("蓝链链接不能为空", "error")
       return
@@ -515,7 +555,12 @@ export default function BlueLinkMapPage() {
       await apiRequest(`/api/blue-link-map/entries/${editingEntry.id}`,
         {
           method: "PATCH",
-          body: JSON.stringify({ source_link: link, product_id: null, sku_id: null }),
+          body: JSON.stringify({
+            source_link: link,
+            product_id: null,
+            sku_id: null,
+            remark: remark ? remark : null,
+          }),
         }
       )
       showToast("蓝链已更新", "success")
@@ -548,7 +593,7 @@ export default function BlueLinkMapPage() {
     const title = matchedItem?.title || entry.product_title || "未命名蓝链"
     openConfirm({
       title: "删除蓝链映射",
-      description: `确认删除【${title}】吗？`,
+      description: `确认删除《${title}》吗？`,
       actionLabel: "确认删除",
       onConfirm: async () => {
         await deleteEntry(entry)
@@ -556,6 +601,34 @@ export default function BlueLinkMapPage() {
     })
   }
 
+  const requestClearList = () => {
+    if (!activeAccountId) {
+      showToast("请先选择账号", "error")
+      return
+    }
+    if (!activeCategoryId) {
+      showToast("请先选择分类", "error")
+      return
+    }
+    const categoryName =
+      categories.find((category) => category.id === activeCategoryId)?.name || "当前分类"
+    openConfirm({
+      title: "清空列表",
+      description: `确认清空【${categoryName}】下所有蓝链吗？`,
+      actionLabel: "确认清空",
+      onConfirm: async () => {
+        await apiRequest("/api/blue-link-map/entries/clear", {
+          method: "POST",
+          body: JSON.stringify({
+            account_id: activeAccountId,
+            category_id: activeCategoryId,
+          }),
+        })
+        showToast("已清空", "success")
+        await refreshState()
+      },
+    })
+  }
   const openConfirm = (options: {
     title: string
     description?: string
@@ -619,7 +692,7 @@ export default function BlueLinkMapPage() {
     const name = accounts.find((account) => account.id === accountId)?.name || "该账号"
     openConfirm({
       title: "删除账号",
-      description: `确认删除【${name}】吗？该账号的蓝链映射都会被移除。`,
+      description: `确认删除《${name}》吗？该账号的蓝链映射都会被移除。`,
       actionLabel: "确认删除",
       onConfirm: async () => {
         try {
@@ -704,7 +777,7 @@ export default function BlueLinkMapPage() {
     const name = categories.find((category) => category.id === categoryId)?.name || "该分类"
     openConfirm({
       title: "删除分类",
-      description: `删除后分类【${name}】下的映射都会被移除，确认删除？`,
+      description: `删除后分类《${name}》下的映射都会被移除，确认删除吗？`,
       actionLabel: "确认删除",
       onConfirm: async () => {
         try {
@@ -1037,7 +1110,7 @@ export default function BlueLinkMapPage() {
     if (importing) return
     setImporting(true)
     setImportCancel(false)
-    showProgressModal(lines.length, "导入")
+    showProgressModal(lines.length, "瀵煎叆")
 
     const payloadEntries: Array<{ account_id: string; category_id: string; source_link: string; sku_id?: string | null; product_id?: string | null }> = []
     const failures: ProgressFailure[] = []
@@ -1114,16 +1187,21 @@ export default function BlueLinkMapPage() {
         onOpenAccountManage={() => setAccountModalOpen(true)}
         onOpenCategoryManage={() => setCategoryModalOpen(true)}
         onOpenImport={() => setImportOpen(true)}
+        onClearList={requestClearList}
         onAutoMap={autoMapEntries}
         onCopy={handleCopy}
+        onCopyRemark={handleCopyRemark}
         onEdit={openEdit}
         onPick={openProductPicker}
         onDelete={requestDeleteEntry}
+        canClearList={Boolean(activeAccountId && activeCategoryId)}
       />
       <BlueLinkMapDialogs
         editOpen={editOpen}
         editLink={editLink}
+        editRemark={editRemark}
         onEditLinkChange={setEditLink}
+        onEditRemarkChange={setEditRemark}
         onEditOpenChange={setEditOpen}
         onEditSubmit={handleEditSubmit}
         importOpen={importOpen}
@@ -1191,3 +1269,10 @@ export default function BlueLinkMapPage() {
     </>
   )
 }
+
+
+
+
+
+
+

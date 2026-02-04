@@ -41,7 +41,9 @@ import type {
 interface BlueLinkMapDialogsProps {
   editOpen: boolean
   editLink: string
+  editRemark: string
   onEditLinkChange: (value: string) => void
+  onEditRemarkChange: (value: string) => void
   onEditOpenChange: (open: boolean) => void
   onEditSubmit: () => void
 
@@ -108,7 +110,9 @@ interface BlueLinkMapDialogsProps {
 export default function BlueLinkMapDialogs({
   editOpen,
   editLink,
+  editRemark,
   onEditLinkChange,
+  onEditRemarkChange,
   onEditOpenChange,
   onEditSubmit,
   importOpen,
@@ -203,11 +207,18 @@ export default function BlueLinkMapDialogs({
             <DialogTitle>编辑蓝链</DialogTitle>
             <DialogDescription>修改蓝链链接并重新匹配商品。</DialogDescription>
           </DialogHeader>
-          <Textarea aria-label="Edit blue link"
+          <Textarea
+            aria-label="Edit blue link"
             rows={4}
             value={editLink}
             onChange={(event) => onEditLinkChange(event.target.value)}
             placeholder="请输入蓝链"
+          />
+          <Input
+            aria-label="Edit remark"
+            value={editRemark}
+            onChange={(event) => onEditRemarkChange(event.target.value)}
+            placeholder="请输入备注"
           />
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => onEditOpenChange(false)}>

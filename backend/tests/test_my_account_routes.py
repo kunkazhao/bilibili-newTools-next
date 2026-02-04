@@ -22,7 +22,9 @@ def has_route(path: str, methods=None) -> bool:
 class MyAccountRouteTests(unittest.TestCase):
     def test_routes_exist(self):
         self.assertTrue(has_route("/api/my-accounts/state", {"GET"}))
+        self.assertTrue(has_route("/api/my-accounts/video-counts", {"GET"}))
         self.assertTrue(has_route("/api/my-accounts/sync", {"POST"}))
+        self.assertTrue(has_route("/api/my-accounts/sync-all", {"POST"}))
 
 
 if __name__ == "__main__":

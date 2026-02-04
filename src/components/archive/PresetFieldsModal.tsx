@@ -11,19 +11,20 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { GripVertical, Trash2 } from "lucide-react"
-import type { CategoryItem } from "@/components/archive/types"
+import type { CategoryItem, SpecField } from "@/components/archive/types"
 
 interface PresetFieldsModalProps {
   isOpen: boolean
   categories: CategoryItem[]
   selectedCategoryId: string
   onClose: () => void
-  onSave: (categoryId: string, fields: { key: string }[]) => void
+  onSave: (categoryId: string, fields: SpecField[]) => void
 }
 
 type DraftField = {
   id: string
   key: string
+  example: string
 }
 
 export default function PresetFieldsModal({
@@ -48,9 +49,9 @@ export default function PresetFieldsModal({
   const [dragId, setDragId] = useState<string | null>(null)
   const draftIdRef = useRef(0)
 
-  const createDraft = (value: string) => {
+  const createDraft = (key: string, example: string = "") => {
     draftIdRef.current += 1
-    return { id: `preset-${draftIdRef.current}`, key: value }
+    return { id: `preset-${draftIdRef.current}`, key, example }
   }
 
   useEffect(() => {
@@ -60,7 +61,7 @@ export default function PresetFieldsModal({
   useEffect(() => {
     if (!isOpen) return
     const target = categories.find((item) => item.id === activeCategoryId)
-    setDrafts(target?.specFields?.map((field) => createDraft(field.key)) ?? [])
+    setDrafts(target?.specFields?.map((field) => createDraft(field.key, field.example ?? "")) ?? [])
     setErrorMessage("")
   }, [activeCategoryId, isOpen])
 
@@ -90,22 +91,32 @@ export default function PresetFieldsModal({
     )
   }
 
+  const handleUpdateExample = (id: string, value: string) => {
+    setDrafts((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, example: value } : item))
+    )
+  }
+
   const handleRemove = (id: string) => {
     setDrafts((prev) => prev.filter((item) => item.id !== id))
   }
 
   const handleSave = () => {
-    const trimmed = drafts.map((item) => item.key.trim())
-    if (trimmed.some((item) => item === "")) {
+    if (drafts.some((item) => item.key.trim() === "")) {
       setErrorMessage("参数名称不能为空")
       return
     }
-    if (new Set(trimmed).size !== trimmed.length) {
+    const trimmedSet = new Set(drafts.map((item) => item.key.trim()))
+    if (trimmedSet.size !== drafts.length) {
       setErrorMessage("参数名称重复")
       return
     }
     if (!activeCategoryId) return
-    onSave(activeCategoryId, trimmed.map((item) => ({ key: item })))
+    const fields: SpecField[] = drafts.map((item) => ({
+      key: item.key.trim(),
+      example: item.example.trim(),
+    }))
+    onSave(activeCategoryId, fields)
     setErrorMessage("")
     onClose()
   }
@@ -179,8 +190,16 @@ export default function PresetFieldsModal({
                 <Input
                   aria-label="Preset field"
                   className="modal-list-field bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
+                  placeholder="参数名称"
                   value={item.key}
                   onChange={(event) => handleUpdate(item.id, event.target.value)}
+                />
+                <Input
+                  aria-label="Format example"
+                  className="modal-list-field bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
+                  placeholder="格式示例"
+                  value={item.example}
+                  onChange={(event) => handleUpdateExample(item.id, event.target.value)}
                 />
                 <Button
                   type="button"

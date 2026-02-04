@@ -7,6 +7,9 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+.env
+.env*.local
+
 node_modules
 dist
 dist-ssr
@@ -25,3 +28,15 @@ dist-ssr
 
 # Dev server artifacts
 .devserver.*
+# Codex / local scratch
+.claude/
+_skill_tmp/
+# Misc local files
+ai_debug.txt
+ai_result.json
+backend/server.err
+nul
+scheme-items.txt
+category_detail.json
+check_db.py
+start-backend.bat

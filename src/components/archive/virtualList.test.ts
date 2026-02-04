@@ -27,12 +27,12 @@ describe("virtual list helpers", () => {
   })
 
   it("exposes fixed row height", () => {
-    expect(ARCHIVE_LIST_ROW_GAP).toBe(14)
-    expect(ARCHIVE_LIST_ROW_HEIGHT).toBe(398)
+    expect(ARCHIVE_LIST_ROW_GAP).toBe(2)
+    expect(ARCHIVE_LIST_ROW_HEIGHT).toBe(362)
   })
 
   it("derives row height from measured card height", () => {
-    expect(resolveRowHeight(383.25, ARCHIVE_LIST_ROW_GAP, ARCHIVE_LIST_ROW_HEIGHT)).toBe(398)
+    expect(resolveRowHeight(383.25, ARCHIVE_LIST_ROW_GAP, ARCHIVE_LIST_ROW_HEIGHT)).toBe(386)
     expect(resolveRowHeight(0, ARCHIVE_LIST_ROW_GAP, ARCHIVE_LIST_ROW_HEIGHT)).toBe(
       ARCHIVE_LIST_ROW_HEIGHT
     )

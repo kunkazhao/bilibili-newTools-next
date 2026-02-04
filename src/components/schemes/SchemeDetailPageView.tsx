@@ -9,21 +9,18 @@ type SchemeDetailHeaderInfo = {
   itemCount: number
   createdAt: string
   onBack: () => void
+  onExportJson: () => void
+  onExportExcel: () => void
+  onOpenFeishu: () => void
 }
 
 type SchemeDetailPageViewProps = {
   header: SchemeDetailHeaderInfo
   toolbar: {
-    priceMin: string
-    priceMax: string
     sortValue: string
-    onPriceMinChange: (value: string) => void
-    onPriceMaxChange: (value: string) => void
     onSortChange: (value: string) => void
     onClearItems: () => void
     onOpenPicker: () => void
-    onExport: () => void
-    onOpenFeishu: () => void
   }
   productList: {
     items: {
@@ -47,6 +44,7 @@ type SchemeDetailPageViewProps = {
     onRemove: (id: string) => void
     onDragStart: (id: string) => void
     onDrop: (id: string) => void
+    onCardClick?: (id: string) => void
   }
   sidebar: {
     copywriting: {
@@ -115,21 +113,18 @@ export default function SchemeDetailPageView({
         itemCount={header.itemCount}
         createdAt={header.createdAt}
         onBack={header.onBack}
+        onExportJson={header.onExportJson}
+        onExportExcel={header.onExportExcel}
+        onOpenFeishu={header.onOpenFeishu}
       />
 
       <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
         <div className="space-y-6">
           <SchemeDetailToolbar
-            priceMin={toolbar.priceMin}
-            priceMax={toolbar.priceMax}
             sortValue={toolbar.sortValue}
-            onPriceMinChange={toolbar.onPriceMinChange}
-            onPriceMaxChange={toolbar.onPriceMaxChange}
             onSortChange={toolbar.onSortChange}
             onClearItems={toolbar.onClearItems}
             onOpenPicker={toolbar.onOpenPicker}
-            onExport={toolbar.onExport}
-            onOpenFeishu={toolbar.onOpenFeishu}
           />
 
           <SchemeDetailProductList
@@ -141,6 +136,7 @@ export default function SchemeDetailPageView({
             onRemove={productList.onRemove}
             onDragStart={productList.onDragStart}
             onDrop={productList.onDrop}
+            onCardClick={productList.onCardClick}
           />
         </div>
 

@@ -30,18 +30,15 @@ describe("SchemeDetailPageView", () => {
           itemCount: 0,
           createdAt: "2026-01-30",
           onBack: () => {},
+          onExportJson: () => {},
+          onExportExcel: () => {},
+          onOpenFeishu: () => {},
         }}
         toolbar={{
-          priceMin: "",
-          priceMax: "",
           sortValue: "manual",
-          onPriceMinChange: () => {},
-          onPriceMaxChange: () => {},
           onSortChange: () => {},
           onClearItems: () => {},
           onOpenPicker: () => {},
-          onExport: () => {},
-          onOpenFeishu: () => {},
         }}
         productList={{
           items: [],

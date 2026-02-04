@@ -1,7 +1,7 @@
 ﻿// @vitest-environment jsdom
 import React from "react"
 import { describe, expect, it, vi } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import SchemeDetailProductList from "./SchemeDetailProductList"
 
@@ -41,8 +41,8 @@ describe("SchemeDetailProductList", () => {
     )
 
     expect(screen.getByText("价格")).not.toBeNull()
-    expect(screen.getByText("佣金")).not.toBeNull()
     expect(screen.getByText("比例")).not.toBeNull()
+    expect(screen.queryByText("佣金")).toBeNull()
     expect(container.querySelector("img")).toBeNull()
 
     await user.click(screen.getByLabelText("生成图片"))
@@ -52,6 +52,57 @@ describe("SchemeDetailProductList", () => {
     expect(onGenerateImage).toHaveBeenCalledWith("p1")
     expect(onEdit).toHaveBeenCalledWith("p1")
     expect(onRemove).toHaveBeenCalledWith("p1")
+  })
+
+  it("renders actions row under the price row", () => {
+    const { container } = render(
+      <SchemeDetailProductList
+        items={[baseItem]}
+        totalCount={1}
+        onOpenPicker={() => {}}
+        onEdit={() => {}}
+        onRemove={() => {}}
+        onGenerateImage={() => {}}
+        onDragStart={() => {}}
+        onDrop={() => {}}
+      />
+    )
+
+    const card = container.querySelector("[data-testid='scheme-detail-card']")
+    if (!card) throw new Error("card not found")
+    const priceLabel = screen.getByText("价格")
+    const priceRow = priceLabel.closest("div")?.parentElement
+    if (!priceRow) throw new Error("price row not found")
+    const actionsRow = priceRow.nextElementSibling as HTMLElement | null
+
+    expect(actionsRow).not.toBeNull()
+    expect(actionsRow?.querySelector("[aria-label='生成图片']")).not.toBeNull()
+    expect(actionsRow?.querySelector("[aria-label='编辑']")).not.toBeNull()
+    expect(actionsRow?.querySelector("[aria-label='删除']")).not.toBeNull()
+  })
+
+  it("calls onCardClick when card body is clicked", () => {
+    const onCardClick = vi.fn()
+    const { container } = render(
+      <SchemeDetailProductList
+        items={[baseItem]}
+        totalCount={1}
+        onOpenPicker={() => {}}
+        onEdit={() => {}}
+        onRemove={() => {}}
+        onGenerateImage={() => {}}
+        onDragStart={() => {}}
+        onDrop={() => {}}
+        onCardClick={onCardClick}
+      />
+    )
+
+    const card = container.querySelector("[data-testid='scheme-detail-card']")
+    if (!card) throw new Error("card not found")
+    expect(card.className).toContain("card-interactive")
+    fireEvent.click(card)
+
+    expect(onCardClick).toHaveBeenCalledWith("p1")
   })
 
   it("renders a fixed-height scroll container for the list area", () => {
@@ -77,5 +128,6 @@ describe("SchemeDetailProductList", () => {
       "h-[var(--scheme-detail-product-scroll-height)]"
     )
     expect(scrollArea?.className || "").toContain("overflow-y-auto")
+    expect(scrollArea?.className || "").toContain("overflow-x-hidden")
   })
 })

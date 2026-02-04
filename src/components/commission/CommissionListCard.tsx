@@ -1,4 +1,5 @@
 ﻿import { Button } from "@/components/ui/button"
+import { InteractiveCard } from "@/components/ui/interactive-card"
 import { Pencil, Archive, Trash2 } from "lucide-react"
 
 export interface CommissionItemView {
@@ -22,6 +23,7 @@ interface CommissionListCardProps {
   onEdit: (id: string) => void
   onArchive: (id: string) => void
   onDelete: (id: string) => void
+  onCardClick?: () => void
 }
 
 const formatNumber = (value: number) => {
@@ -44,9 +46,16 @@ export default function CommissionListCard({
   onEdit,
   onArchive,
   onDelete,
+  onCardClick,
 }: CommissionListCardProps) {
+  const isInteractive = Boolean(onCardClick)
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
+    <InteractiveCard
+      interactive={isInteractive}
+      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card"
+      data-testid="commission-card"
+      onClick={onCardClick}
+    >
       <div className="flex gap-4">
         <div className="relative h-[120px] w-[120px] overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
           {item.image ? (
@@ -101,7 +110,10 @@ export default function CommissionListCard({
                 type="button"
                 variant="outline"
                 className="min-w-[90px]"
-                onClick={() => onEdit(item.id)}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onEdit(item.id)
+                }}
               >
                 <Pencil className="mr-2 h-4 w-4" />
                 编辑
@@ -114,7 +126,10 @@ export default function CommissionListCard({
                     ? "min-w-[90px] border-slate-200 text-slate-400"
                     : "min-w-[90px] border-violet-200 text-violet-600 hover:text-violet-700"
                 }
-                onClick={() => onArchive(item.id)}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onArchive(item.id)
+                }}
                 disabled={item.isArchived}
               >
                 <Archive className="mr-2 h-4 w-4" />
@@ -124,7 +139,10 @@ export default function CommissionListCard({
                 type="button"
                 variant="outline"
                 className="min-w-[90px] border-rose-200 text-rose-600 hover:text-rose-700"
-                onClick={() => onDelete(item.id)}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onDelete(item.id)
+                }}
               >
                 <Trash2 className="mr-2 h-4 w-4" />
                 删除
@@ -133,6 +151,6 @@ export default function CommissionListCard({
           </div>
         </div>
       </div>
-    </div>
+    </InteractiveCard>
   )
 }

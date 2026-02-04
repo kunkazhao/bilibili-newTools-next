@@ -2,6 +2,7 @@
 import PrimaryButton from "@/components/PrimaryButton"
 import Skeleton from "@/components/Skeleton"
 import { Button } from "@/components/ui/button"
+import { InteractiveCard } from "@/components/ui/interactive-card"
 import { Settings } from "lucide-react"
 import {
   Select,
@@ -127,14 +128,15 @@ export default function BenchmarkPageView({
             {entries.map((entry) => {
               const categoryColor = getCategoryColor(entry.category_id)
               const author = entry.author || entry.owner?.name || "未知作者"
+              const isInteractive = Boolean(entry.link)
               return (
-                <article
-                  key={entry.id}
-                  className="flex flex-wrap gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-card transition hover:border-slate-300"
-                  onClick={() => {
-                    if (entry.link) window.open(entry.link, "_blank")
-                  }}
-                >
+                <InteractiveCard asChild interactive={isInteractive} key={entry.id}>
+                  <article
+                    className="flex flex-wrap gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-card"
+                    onClick={() => {
+                      if (entry.link) window.open(entry.link, "_blank")
+                    }}
+                  >
                   <div className="relative h-24 w-40 shrink-0 overflow-hidden rounded-xl bg-slate-900">
                     <img
                       src={normalizeCover(entry.cover) || COVER_PLACEHOLDER}
@@ -203,7 +205,8 @@ export default function BenchmarkPageView({
                       </Button>
                     </div>
                   </div>
-                </article>
+                  </article>
+                </InteractiveCard>
               )
             })}
           </div>

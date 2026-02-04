@@ -13,7 +13,7 @@
   --tpl-muted: rgba(216, 232, 255, 0.8);
   --tpl-accent: #35f6ff;
   --tpl-accent-2: #7b93ff;
-  --tpl-highlight: #aef6ff;
+  --tpl-highlight: #f6c453;
   --tpl-border: rgba(53, 246, 255, 0.3);
   --tpl-shadow: 0 18px 40px rgba(12, 16, 24, 0.45);
   --tpl-font: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif;
@@ -60,12 +60,12 @@ body {
   font-size: 26px;
   font-weight: 800;
   letter-spacing: 0.6px;
+  color: var(--tpl-text);
 }
 .tpl-img-price {
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 800;
   color: var(--tpl-highlight);
-  text-shadow: 0 2px 12px rgba(53, 246, 255, 0.35);
 }
 .tpl-img-main {
   flex: 1;
@@ -121,10 +121,10 @@ body {
 }
 .tpl-img-remark-bar {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 14px;
-  padding: 16px 18px;
-  min-height: 78px;
+  padding: 10px 18px 12px;
+  min-height: 64px;
   border-top: 2px solid var(--tpl-accent);
   background: var(--tpl-panel-alt);
 }
@@ -136,15 +136,14 @@ body {
 }
 .tpl-img-remark-text {
   flex: 1;
+  min-width: 0;
   font-family: var(--tpl-summary-font);
   font-size: 18px;
   font-weight: 700;
-  color: #f1f6ff;
+  color: #dce4ff;
   line-height: 1.6;
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  white-space: normal;
+  word-break: break-word;
 }
 .tpl-img-hint {
   font-size: 13px;
@@ -181,7 +180,6 @@ body {
     <div class="tpl-img-remark-bar">
       <div class="tpl-img-remark-title">评价</div>
       <div class="tpl-img-remark-text tpl-remark" data-field="remark">专为电竞优化的高品质设计，详情参数见备注。</div>
-      <div class="tpl-img-hint">置顶评论直达商品链接</div>
     </div>
   </div>
 </body>
