@@ -10,6 +10,7 @@ import BenchmarkPage from "@/pages/BenchmarkPage"
 import ScriptPage from "@/pages/ScriptPage"
 import AutoCartPage from "@/pages/AutoCartPage"
 import MyAccountPage from "@/pages/MyAccountPage"
+import ZhihuRadarPage from "@/pages/ZhihuRadarPage"
 import Empty from "@/components/Empty"
 import { ToastProvider } from "@/components/Toast"
 import { openSchemeDetailPage } from "@/utils/standaloneRoutes"
@@ -43,6 +44,8 @@ export default function App() {
         return <ScriptPage />
       case 9:
         return <AutoCartPage />
+      case 10:
+        return <ZhihuRadarPage />
       default:
         return <Placeholder title="功能迁移中" />
     }

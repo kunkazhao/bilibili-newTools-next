@@ -14,6 +14,7 @@ const utilityItems = [
   "对标视频收集",
   "提取视频文案",
   "一键抠图",
+  "知乎流量雷达",
 ]
 
 interface AppLayoutProps {

@@ -1,0 +1,67 @@
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it, vi } from "vitest"
+import { cleanup, render, waitFor } from "@testing-library/react"
+import ZhihuRadarPageContent from "./ZhihuRadarPageContent"
+import { fetchZhihuKeywords, fetchZhihuQuestions } from "./zhihuApi"
+
+const showToast = vi.fn()
+let latestViewProps: any = null
+
+vi.mock("./ZhihuRadarPageView", () => ({
+  default: (props: any) => {
+    latestViewProps = props
+    return null
+  },
+}))
+
+vi.mock("./zhihuApi", () => ({
+  fetchZhihuKeywords: vi.fn(),
+  fetchZhihuQuestions: vi.fn(),
+  createZhihuKeyword: vi.fn(),
+  updateZhihuKeyword: vi.fn(),
+  deleteZhihuKeyword: vi.fn(),
+  fetchZhihuQuestionStats: vi.fn(),
+}))
+
+vi.mock("@/components/Toast", () => ({
+  useToast: () => ({ showToast }),
+  ToastProvider: ({ children }: { children: React.ReactNode }) => children,
+}))
+
+
+describe("ZhihuRadarPageContent", () => {
+  afterEach(() => {
+    cleanup()
+    vi.clearAllMocks()
+    latestViewProps = null
+  })
+
+  it("loads keywords and questions on mount", async () => {
+    vi.mocked(fetchZhihuKeywords).mockResolvedValue({
+      keywords: [{ id: "k1", name: "kw1" }],
+    })
+    vi.mocked(fetchZhihuQuestions).mockResolvedValue({
+      items: [
+        {
+          id: "q1",
+          title: "title",
+          url: "https://example.com",
+          first_keyword: "kw1",
+          view_count_total: 10,
+          answer_count_total: 1,
+          view_count_delta: 2,
+          answer_count_delta: 1,
+        },
+      ],
+      total: 1,
+    })
+
+    render(<ZhihuRadarPageContent />)
+
+    await waitFor(() => expect(fetchZhihuKeywords).toHaveBeenCalled())
+    await waitFor(() => expect(fetchZhihuQuestions).toHaveBeenCalled())
+
+    expect(latestViewProps?.keywords?.length).toBe(1)
+    expect(latestViewProps?.items?.length).toBe(1)
+  })
+})
