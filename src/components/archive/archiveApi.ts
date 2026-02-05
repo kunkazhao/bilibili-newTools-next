@@ -212,3 +212,62 @@ export async function deleteItem(itemId: string) {
     method: "DELETE",
   })
 }
+
+export async function aiFillPreview(payload: {
+  category_id: string
+  product_names: string[]
+  model?: string
+}) {
+  return apiRequest<{
+    preview: Record<string, string>[]
+    spec_fields: string[]
+    count: number
+  }>(`/api/sourcing/items/ai-fill`, {
+    method: "POST",
+    body: JSON.stringify({ ...payload, mode: "single" }),
+  })
+}
+
+export async function aiConfirm(payload: {
+  category_id: string
+  items: Record<string, string>[]
+}) {
+  return apiRequest<{ status: string; updated_count: number; not_found_count: number }>(
+    `/api/sourcing/items/ai-confirm`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }
+  )
+}
+
+export async function aiBatchStart(payload: {
+  category_id?: string
+  scheme_id?: string
+  keyword?: string
+  price_min?: number
+  price_max?: number
+  sort?: string
+  model?: string
+}) {
+  return apiRequest<{ status: string; job_id: string; total: number }>(
+    `/api/sourcing/items/ai-batch/start`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }
+  )
+}
+
+export async function aiBatchStatus(jobId: string) {
+  return apiRequest<{
+    id: string
+    status: "queued" | "running" | "done" | "error"
+    total: number
+    processed: number
+    success: number
+    failed: number
+    failures?: { name: string; reason?: string }[]
+    error?: string | null
+  }>(`/api/sourcing/items/ai-batch/status/${jobId}`)
+}

@@ -93,6 +93,7 @@ interface ArchivePageViewProps {
   onAddToScheme?: (id: string) => void
   onOpenLink?: (link: string) => void
   onCoverClick?: (id: string) => void
+  onFetchParams: (id: string) => void
   onSelectCategory: (id: string) => void
   onClearList: () => void
   onDownloadImages: () => void
@@ -150,7 +151,17 @@ interface ArchivePageViewProps {
   onFixSort: () => void
   isFixSortDisabled: boolean
   isFixSortSaving: boolean
+  aiModel: string
+  onAiModelChange: (value: string) => void
+  onBatchFetchParams: () => void
+  isAiBatchRunning?: boolean
 }
+
+const AI_MODEL_OPTIONS = [
+  { value: "qwen3-max-2026-01-23", label: "Qwen3-Max" },
+  { value: "deepseek-chat", label: "DeepSeek" },
+  { value: "glm-4.7-FlashX", label: "GLM-4.7" },
+]
 const CategorySkeleton = () => (
   <div className="space-y-3">
     {Array.from({ length: 6 }).map((_, index) => (
@@ -224,6 +235,7 @@ export default function ArchivePageView({
   onAddToScheme,
   onOpenLink,
   onCoverClick,
+  onFetchParams,
   onSelectCategory,
   onClearList,
   onDownloadImages,
@@ -250,6 +262,10 @@ export default function ArchivePageView({
   onFixSort,
   isFixSortDisabled,
   isFixSortSaving,
+  aiModel,
+  onAiModelChange,
+  onBatchFetchParams,
+  isAiBatchRunning,
 }: ArchivePageViewProps) {
   const isPriceUnset = priceRange[0] === 0 && priceRange[1] === 0
   const [minInput, setMinInput] = useState(isPriceUnset ? "" : String(priceRange[0]))
@@ -374,6 +390,21 @@ export default function ArchivePageView({
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
+                <Select value={aiModel} onValueChange={onAiModelChange}>
+                  <SelectTrigger className="w-[180px]" aria-label="AI model">
+                    <SelectValue placeholder="选择模型" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {AI_MODEL_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <PrimaryButton onClick={onBatchFetchParams} disabled={isAiBatchRunning}>
+                  {isAiBatchRunning ? "获取参数中..." : "获取参数"}
+                </PrimaryButton>
                 <PrimaryButton onClick={onOpenPresetFields}>预设参数</PrimaryButton>
                 <PrimaryButton onClick={onCreate}>新增选品</PrimaryButton>
                 <PrimaryButton onClick={onSyncFeishu}>写入飞书表格</PrimaryButton>
@@ -510,6 +541,7 @@ export default function ArchivePageView({
                     onAddToScheme={onAddToScheme}
                     onCoverClick={onCoverClick ? () => onCoverClick(item.id) : undefined}
                     onCardClick={onOpenLink ? () => onOpenLink(item.blueLink) : undefined}
+                    onFetchParams={onFetchParams}
                   />
                 </div>
               ))}

@@ -7395,6 +7395,7 @@ async def ai_fill_product_params(
     content = content.strip()
 
     try:
+        print('[AI_PARAMS_RAW]', content[:2000])
         result = json.loads(content)
     except json.JSONDecodeError as e:
         raise HTTPException(

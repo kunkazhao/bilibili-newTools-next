@@ -41,10 +41,16 @@ export default function ProgressDialog({
   onCancel,
   onOpenChange,
 }: ProgressDialogProps) {
-  const percent = total > 0 ? Math.round((processed / total) * 100) : 0
-  const failureCount = failures.length
-  const summaryTextResolved = summaryText ?? `${total}个商品 · ${failureCount}个失败`
   const isRunning = status === "running"
+  const isIndeterminate = isRunning && processed === 0 && total > 0
+  const percent = isIndeterminate ? 0 : total > 0 ? Math.round((processed / total) * 100) : 0
+  const percentLabel = isIndeterminate ? "准备中" : `${percent}%`
+  const failureCount = failures.length
+  const summaryTextResolved =
+    summaryText ??
+    (isIndeterminate
+      ? "已提交，正在准备..."
+      : `${total}个商品 · ${failureCount}个失败`)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -59,11 +65,13 @@ export default function ProgressDialog({
           <div className="flex items-center gap-3">
             <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
               <div
-                className="h-full rounded-full bg-brand transition-all"
-                style={{ width: `${percent}%` }}
+                className={`h-full rounded-full bg-brand transition-all ${
+                  isIndeterminate ? "animate-pulse" : ""
+                }`}
+                style={{ width: `${isIndeterminate ? 40 : percent}%` }}
               />
             </div>
-            <div className="text-xs text-slate-500">{percent}%</div>
+            <div className="text-xs text-slate-500">{percentLabel}</div>
           </div>
 
           {showSummary ? (

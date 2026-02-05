@@ -123,6 +123,43 @@ class ZhihuScrapeJobTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(set(detail_calls), {"1", "2"})
 
+    async def test_scrape_job_inserts_question_before_mapping(self):
+        class StrictClient(FakeClient):
+            def __init__(self):
+                super().__init__()
+                self.inserted_questions = set()
+
+            async def request(self, method, table, params=None, json_payload=None, prefer=None):
+                payload = json_payload or {}
+                if table == "zhihu_questions":
+                    qid = payload.get("id")
+                    if qid:
+                        self.inserted_questions.add(str(qid))
+                if table == "zhihu_question_keywords":
+                    qid = str(payload.get("question_id") or "")
+                    if qid and qid not in self.inserted_questions:
+                        raise RuntimeError("mapping before question insert")
+                return await super().request(method, table, params, json_payload, prefer)
+
+        client = StrictClient()
+
+        def build_item(qid, title):
+            return {"object": {"type": "question", "question": {"id": qid, "title": title}}}
+
+        async def search_fetcher(keyword):
+            return [build_item(1, "A")]
+
+        async def detail_fetcher(qid):
+            return {"visit_count": 1, "answer_count": 1}
+
+        await zhihu_scrape_job(
+            client=client,
+            search_fetcher=search_fetcher,
+            detail_fetcher=detail_fetcher,
+            today=date(2026, 2, 5),
+            now="2026-02-05T00:00:00Z",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

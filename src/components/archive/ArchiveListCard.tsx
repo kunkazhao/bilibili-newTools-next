@@ -40,6 +40,7 @@ interface ArchiveListCardProps {
   onAddToScheme?: (id: string) => void
   onCoverClick?: () => void
   onCardClick?: () => void
+  onFetchParams?: (id: string) => void
 }
 
 const TEXT = {
@@ -50,8 +51,8 @@ const TEXT = {
   comments: "评价数",
   uidLabel: "商品ID：",
   sourceLabel: "来源：",
-  matchParams: "匹配参数",
-  remarkLabel: "总结：",
+  matchParams: "\u83b7\u53d6\u53c2\u6570",
+  remarkLabel: "\u8bc4\u4ef7\uff1a",
   missingLabel: "缺失：",
   yuan: "元",
   colon: "：",
@@ -121,6 +122,7 @@ export default function ArchiveListCard({
   onAddToScheme,
   onCoverClick,
   onCardClick,
+  onFetchParams,
 }: ArchiveListCardProps) {
   const normalizedMissingTips = missingTips.map((tip) => decodeUnicodeEscapes(tip))
   const hasMissing = normalizedMissingTips.length > 0
@@ -333,7 +335,7 @@ export default function ArchiveListCard({
             size="sm"
             onClick={(event) => {
               event.stopPropagation()
-              onEdit(id)
+              onFetchParams?.(id)
             }}
           >
             {TEXT.matchParams}

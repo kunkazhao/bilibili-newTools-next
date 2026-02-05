@@ -1,6 +1,7 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import ArchivePageView from "@/components/archive/ArchivePageView"
 import ArchiveDialogs from "@/components/archive/ArchiveDialogs"
+import AiParamsPreviewDialog from "@/components/archive/AiParamsPreviewDialog"
 import { useToast } from "@/components/Toast"
 import { useListDataPipeline } from "@/hooks/useListDataPipeline"
 import {
@@ -46,12 +47,17 @@ import {
   fetchCategories,
   fetchCategoryCounts,
   fetchItems,
+  aiBatchStart,
+  aiBatchStatus,
+  aiConfirm,
+  aiFillPreview,
   updateCategory,
   updateItem,
 } from "@/components/archive/archiveApi"
 import type { ItemResponse } from "@/components/archive/archiveApi"
 import type { CategoryItem, SpecField } from "@/components/archive/types"
 import { getDefaultArchiveCategoryId } from "@/components/archive/archiveCategoryUtils"
+import ProgressDialog from "@/components/ProgressDialog"
 
 interface ArchiveItem {
   id: string
@@ -206,6 +212,28 @@ type ApiRequestFn = <T>(url: string, options?: RequestInit) => Promise<T>
 type SchemeFilterCacheEntry = {
   items: ArchiveItem[]
   timestamp: number
+}
+
+type AiPreviewField = {
+  key: string
+  oldValue: string
+  newValue: string
+}
+
+type AiPreviewData = {
+  itemId: string
+  categoryId: string
+  title: string
+  fields: AiPreviewField[]
+  specFields: string[]
+  aiItem: Record<string, string>
+  existingSpec: Record<string, string>
+  existingRemark: string
+}
+
+type AiProgressFailure = {
+  name: string
+  reason?: string
 }
 
 const SCHEME_FILTER_CACHE_TTL_MS = 5 * 60 * 1000
@@ -450,6 +478,21 @@ export default function ArchivePage() {
   const skipNextLoadRef = useRef(false)
   const lastFetchOffsetRef = useRef(0)
   const itemsRef = useRef<ArchiveItem[]>([])
+  const [aiModel, setAiModel] = useState("qwen3-max-2026-01-23")
+  const [aiProgressOpen, setAiProgressOpen] = useState(false)
+  const [aiProgressLabel, setAiProgressLabel] = useState("获取参数")
+  const [aiProgressStatus, setAiProgressStatus] = useState<
+    "running" | "done" | "error"
+  >("done")
+  const [aiProgressTotal, setAiProgressTotal] = useState(0)
+  const [aiProgressProcessed, setAiProgressProcessed] = useState(0)
+  const [aiProgressSuccess, setAiProgressSuccess] = useState(0)
+  const [aiProgressFailures, setAiProgressFailures] = useState<AiProgressFailure[]>([])
+  const [aiPreviewData, setAiPreviewData] = useState<AiPreviewData | null>(null)
+  const [aiPreviewOpen, setAiPreviewOpen] = useState(false)
+  const [aiConfirmSaving, setAiConfirmSaving] = useState(false)
+  const [aiBatchJobId, setAiBatchJobId] = useState<string | null>(null)
+  const aiBatchTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     categoryCountsRef.current = categoryCounts
@@ -1338,6 +1381,202 @@ export default function ArchivePage() {
     setIsProductFormOpen(true)
   }
 
+  const clearAiBatchTimer = () => {
+    if (aiBatchTimerRef.current) {
+      window.clearInterval(aiBatchTimerRef.current)
+      aiBatchTimerRef.current = null
+    }
+  }
+
+  useEffect(() => () => clearAiBatchTimer(), [])
+
+  const closeAiPreview = () => {
+    setAiPreviewOpen(false)
+    setAiPreviewData(null)
+  }
+
+  const applyItemUpdate = useCallback(
+    (id: string, updater: (item: ArchiveItem) => ArchiveItem) => {
+      setItems((prev) => prev.map((item) => (item.id === id ? updater(item) : item)))
+      setSchemeFilterItems((prev) => {
+        const next = prev.map((item) => (item.id === id ? updater(item) : item))
+        if (schemeFilterId) {
+          schemeFilterCacheRef.current.set(String(schemeFilterId), {
+            items: next,
+            timestamp: Date.now(),
+          })
+        }
+        return next
+      })
+    },
+    [schemeFilterId]
+  )
+
+  const buildAiPreviewFields = (
+    specFields: string[],
+    aiItem: Record<string, string>,
+    target: ArchiveItem
+  ): AiPreviewField[] => {
+    const fields = specFields.map((key) => ({
+      key,
+      oldValue: target.spec[key] || "",
+      newValue: String(aiItem[key] || ""),
+    }))
+    fields.push({
+      key: "评价",
+      oldValue: target.remark || "",
+      newValue: String(aiItem["评价"] || ""),
+    })
+    return fields
+  }
+
+  const handleFetchParams = async (id: string) => {
+    const target = baseItems.find((item) => item.id === id)
+    if (!target) {
+      showToast("未找到商品", "error")
+      return
+    }
+    setAiProgressLabel("获取参数")
+    setAiProgressOpen(true)
+    setAiProgressStatus("running")
+    setAiProgressTotal(1)
+    setAiProgressProcessed(0)
+    setAiProgressSuccess(0)
+    setAiProgressFailures([])
+    try {
+      const preview = await aiFillPreview({
+        category_id: target.categoryId,
+        product_names: [target.title],
+        model: aiModel,
+      })
+      const aiItem =
+        preview.preview.find((item) => item.name === target.title) ||
+        preview.preview[0]
+      if (!aiItem) {
+        throw new Error("AI未返回结果")
+      }
+      const fields = buildAiPreviewFields(preview.spec_fields, aiItem, target)
+      setAiPreviewData({
+        itemId: target.id,
+        categoryId: target.categoryId,
+        title: target.title,
+        fields,
+        specFields: preview.spec_fields,
+        aiItem,
+        existingSpec: target.spec,
+        existingRemark: target.remark,
+      })
+      setAiProgressProcessed(1)
+      setAiProgressSuccess(1)
+      setAiProgressStatus("done")
+      setAiProgressOpen(false)
+      setAiPreviewOpen(true)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "获取参数失败"
+      setAiProgressStatus("error")
+      setAiProgressOpen(false)
+      showToast(message, "error")
+    }
+  }
+
+  const handleAiPreviewConfirm = async () => {
+    if (!aiPreviewData || aiConfirmSaving) return
+    setAiConfirmSaving(true)
+    try {
+      const payloadItem: Record<string, string> = { name: aiPreviewData.title }
+      const specUpdates: Record<string, string> = {}
+      aiPreviewData.specFields.forEach((field) => {
+        const newValue = String(aiPreviewData.aiItem[field] || "").trim()
+        const oldValue = String(aiPreviewData.existingSpec[field] || "").trim()
+        if (!oldValue && newValue) {
+          payloadItem[field] = newValue
+          specUpdates[field] = newValue
+        }
+      })
+      let nextRemark = aiPreviewData.existingRemark
+      const reviewText = String(aiPreviewData.aiItem["评价"] || "").trim()
+      if (!nextRemark && reviewText) {
+        payloadItem["评价"] = reviewText
+        nextRemark = reviewText
+      }
+      await aiConfirm({
+        category_id: aiPreviewData.categoryId,
+        items: [payloadItem],
+      })
+      applyItemUpdate(aiPreviewData.itemId, (item) => ({
+        ...item,
+        spec: { ...item.spec, ...specUpdates },
+        remark: nextRemark || item.remark,
+      }))
+      showToast("参数已写入", "success")
+      closeAiPreview()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "参数写入失败"
+      showToast(message, "error")
+    } finally {
+      setAiConfirmSaving(false)
+    }
+  }
+
+  const handleBatchFetchParams = async () => {
+    if (aiProgressStatus === "running") return
+    setAiProgressLabel("批量获取参数")
+    setAiProgressOpen(true)
+    setAiProgressStatus("running")
+    setAiProgressProcessed(0)
+    setAiProgressSuccess(0)
+    setAiProgressFailures([])
+    try {
+      const start = await aiBatchStart({
+        category_id: categoryValue === "all" ? undefined : categoryValue,
+        scheme_id: schemeFilterId || undefined,
+        keyword: searchValue.trim() || undefined,
+        price_min: safePriceRange[0] || undefined,
+        price_max: safePriceRange[1] || undefined,
+        sort: sortValue || undefined,
+        model: aiModel,
+      })
+      setAiBatchJobId(start.job_id)
+      setAiProgressTotal(start.total)
+      clearAiBatchTimer()
+      aiBatchTimerRef.current = window.setInterval(async () => {
+        try {
+          const status = await aiBatchStatus(start.job_id)
+          setAiProgressProcessed(status.processed)
+          setAiProgressSuccess(status.success)
+          setAiProgressFailures(status.failures || [])
+          if (status.status === "done") {
+            clearAiBatchTimer()
+            setAiProgressStatus("done")
+            showToast(
+              `批量获取参数完成，成功${status.success}条，失败${status.failed}条`,
+              status.failed > 0 ? "info" : "success"
+            )
+            if (schemeFilterId) {
+              loadSchemeFilterItems(schemeFilterId, { force: true })
+            } else {
+              refreshItems()
+            }
+          } else if (status.status === "error") {
+            clearAiBatchTimer()
+            setAiProgressStatus("error")
+            showToast(status.error || "批量获取参数失败", "error")
+          }
+        } catch (error) {
+          clearAiBatchTimer()
+          setAiProgressStatus("error")
+          const message = error instanceof Error ? error.message : "批量获取参数失败"
+          showToast(message, "error")
+        }
+      }, 1200)
+    } catch (error) {
+      setAiProgressStatus("error")
+      setAiProgressOpen(false)
+      const message = error instanceof Error ? error.message : "批量获取参数失败"
+      showToast(message, "error")
+    }
+  }
+
   const handleOpenLink = (link: string) => {
     const trimmed = String(link || "").trim()
     if (!trimmed) return
@@ -1694,6 +1933,11 @@ export default function ArchivePage() {
       onDrop={handleDrop}
       onOpenLink={handleOpenLink}
       onCoverClick={handleCoverClick}
+      onFetchParams={handleFetchParams}
+      aiModel={aiModel}
+      onAiModelChange={setAiModel}
+      onBatchFetchParams={handleBatchFetchParams}
+      isAiBatchRunning={aiProgressStatus === "running"}
       onSelectCategory={(id) => setCategoryValue(id)}
       onClearList={() => {
         if (!filteredItems.length) {
@@ -1743,6 +1987,30 @@ export default function ArchivePage() {
         isClearing={isClearing}
         onClearOpenChange={setIsClearOpen}
         onConfirmClear={handleClearList}
+      />
+      <AiParamsPreviewDialog
+        open={aiPreviewOpen}
+        title="\u53c2\u6570\u53d8\u66f4\u9884\u89c8"
+        fields={aiPreviewData?.fields ?? []}
+        onConfirm={handleAiPreviewConfirm}
+        onCancel={closeAiPreview}
+        isSaving={aiConfirmSaving}
+      />
+      <ProgressDialog
+        open={aiProgressOpen}
+        title={`${aiProgressLabel}\u8fdb\u5ea6`}
+        status={aiProgressStatus}
+        total={aiProgressTotal}
+        processed={aiProgressProcessed}
+        success={aiProgressSuccess}
+        failures={aiProgressFailures}
+        showFailures={aiProgressFailures.length > 0}
+        summaryText={`${aiProgressProcessed}/${aiProgressTotal} \u00b7 \u5931\u8d25${aiProgressFailures.length}`}
+        onOpenChange={(open) => {
+          if (!open && aiProgressStatus !== "running") {
+            setAiProgressOpen(false)
+          }
+        }}
       />
       <Dialog
         open={isSchemeJoinOpen}
