@@ -41,6 +41,7 @@ from zoneinfo import ZoneInfo
 
 
 import aiohttp
+import httpx
 
 import aiofiles
 
@@ -170,6 +171,7 @@ for dir_path in [DOWNLOAD_DIR, VIDEO_DIR, SUBTITLE_DIR, COOKIE_DIR]:
 # API 密钥
 
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+BIGMODEL_API_KEY = os.getenv("BIGMODEL_API_KEY")
 
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 
@@ -324,6 +326,9 @@ zhihu_playwright = None
 zhihu_browser = None
 zhihu_job_store: Dict[str, Dict[str, Any]] = {}
 zhihu_job_lock = threading.Lock()
+
+sourcing_ai_job_store: Dict[str, Dict[str, Any]] = {}
+sourcing_ai_job_lock = threading.Lock()
 
 
 
@@ -622,6 +627,12 @@ def parse_cookie_header(cookie_value: str, domain: str) -> List[Dict[str, Any]]:
     return items
 
 
+def strip_html_tags(value: str) -> str:
+    if not value:
+        return ""
+    return re.sub(r"<[^>]+>", "", value)
+
+
 def extract_zhihu_questions(items: List[Dict[str, Any]], limit: int = 50) -> List[Dict[str, str]]:
     results: List[Dict[str, str]] = []
     seen: Set[str] = set()
@@ -629,9 +640,9 @@ def extract_zhihu_questions(items: List[Dict[str, Any]], limit: int = 50) -> Lis
         obj = item.get("object") or {}
         if obj.get("type") != "question":
             continue
-        question = obj.get("question") or {}
+        question = obj.get("question") or obj
         qid = str(question.get("id") or "").strip()
-        title = (question.get("title") or "").strip()
+        title = strip_html_tags(question.get("title") or "").strip()
         if not qid or not title:
             continue
         if qid in seen:
@@ -738,6 +749,134 @@ async def close_zhihu_browser():
         zhihu_playwright = None
 
 
+async def collect_search_payloads(
+    page: Any,
+    search_url: str,
+    offsets: List[int],
+) -> List[Dict[str, Any]]:
+    results: List[Dict[str, Any]] = []
+    if not offsets:
+        return results
+    first_offset = offsets[0]
+    try:
+        async with page.expect_response(
+            lambda r: "api/v4/search_v3" in r.url and f"offset={first_offset}" in r.url,
+            timeout=15000,
+        ) as response_info:
+            await page.goto(search_url, wait_until="domcontentloaded")
+        response = await response_info.value
+        payload = await response.json()
+        results.extend(payload.get("data") or [])
+    except Exception:
+        try:
+            response = await page.wait_for_response(
+                lambda r: "api/v4/search_v3" in r.url and f"offset={first_offset}" in r.url,
+                timeout=15000,
+            )
+            payload = await response.json()
+            results.extend(payload.get("data") or [])
+        except Exception:
+            pass
+
+    for offset in offsets[1:]:
+        try:
+            await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            response = await page.wait_for_response(
+                lambda r: "api/v4/search_v3" in r.url and f"offset={offset}" in r.url,
+                timeout=15000,
+            )
+            payload = await response.json()
+            results.extend(payload.get("data") or [])
+            await page.wait_for_timeout(800)
+        except Exception:
+            continue
+    return results
+
+
+def get_zhihu_search_headers() -> Dict[str, str]:
+    raw = os.getenv("ZHIHU_SEARCH_HEADERS", "").strip()
+    if not raw:
+        return {}
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    headers = {str(key): str(value) for key, value in payload.items() if value is not None}
+    lower_keys = {key.lower() for key in headers}
+    if ZHIHU_COOKIE and "cookie" not in lower_keys:
+        headers["cookie"] = ZHIHU_COOKIE
+    if ZHIHU_UA and "user-agent" not in lower_keys:
+        headers["User-Agent"] = ZHIHU_UA
+    return headers
+
+
+async def fetch_search_results_via_api(
+    keyword: str,
+    headers: Dict[str, str],
+    requester: Optional[
+        Callable[[int, Dict[str, Any], Dict[str, str]], Awaitable[Dict[str, Any]]]
+    ] = None,
+) -> List[Dict[str, Any]]:
+    offsets = [0, 20, 40]
+    results: List[Dict[str, Any]] = []
+    base_params = {
+        "gk_version": "gz-gaokao",
+        "t": "question",
+        "q": keyword,
+        "correction": "1",
+        "limit": 20,
+        "filter_fields": "",
+        "lc_idx": "0",
+        "show_all_topics": "0",
+        "search_source": "Normal",
+    }
+    if requester:
+        for offset in offsets:
+            params = {**base_params, "offset": offset}
+            payload = await requester(offset, params, headers)
+            results.extend(payload.get("data") or [])
+        return results
+
+    async with httpx.AsyncClient(timeout=15.0, headers=headers) as client:
+        for offset in offsets:
+            params = {**base_params, "offset": offset}
+            try:
+                response = await client.get(
+                    "https://www.zhihu.com/api/v4/search_v3", params=params
+                )
+                response.raise_for_status()
+                payload = response.json()
+                if isinstance(payload, dict):
+                    results.extend(payload.get("data") or [])
+            except Exception:
+                continue
+    return results
+
+
+async def fetch_question_stats_via_api(
+    question_id: str,
+    headers: Dict[str, str],
+    requester: Optional[
+        Callable[[str, Dict[str, Any], Dict[str, str]], Awaitable[Dict[str, Any]]]
+    ] = None,
+) -> Optional[Dict[str, Any]]:
+    params = {"include": "visit_count,answer_count"}
+    if requester:
+        return await requester(question_id, params, headers)
+
+    async with httpx.AsyncClient(timeout=15.0, headers=headers) as client:
+        response = await client.get(
+            f"https://www.zhihu.com/api/v4/questions/{question_id}", params=params
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if isinstance(payload, dict):
+            return payload
+    return None
+
+
 async def fetch_search_results_for_keyword(
     keyword: str,
     response_fetcher: Optional[Callable[[int], Awaitable[Dict[str, Any]]]] = None,
@@ -753,6 +892,10 @@ async def fetch_search_results_for_keyword(
             results.extend(payload.get("data") or [])
         return results
 
+    headers = get_zhihu_search_headers()
+    if headers:
+        return await fetch_search_results_via_api(keyword, headers)
+
     browser = await ensure_zhihu_browser()
     context = await browser.new_context(user_agent=ZHIHU_UA)
     if ZHIHU_COOKIE:
@@ -760,19 +903,7 @@ async def fetch_search_results_for_keyword(
     page = await context.new_page()
     try:
         search_url = f"https://www.zhihu.com/search?type=content&q={quote(keyword)}"
-        await page.goto(search_url, wait_until="domcontentloaded")
-        for offset in offsets:
-            try:
-                response = await page.wait_for_response(
-                    lambda r: "api/v4/search_v3" in r.url and f"offset={offset}" in r.url,
-                    timeout=15000,
-                )
-                payload = await response.json()
-                results.extend(payload.get("data") or [])
-                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                await page.wait_for_timeout(800)
-            except Exception:
-                continue
+        results.extend(await collect_search_payloads(page, search_url, offsets))
     finally:
         await context.close()
     return results
@@ -784,6 +915,10 @@ async def fetch_question_stats(
 ) -> Optional[Dict[str, Any]]:
     if response_fetcher:
         return await response_fetcher()
+
+    headers = get_zhihu_search_headers()
+    if headers:
+        return await fetch_question_stats_via_api(question_id, headers)
 
     browser = await ensure_zhihu_browser()
     context = await browser.new_context(user_agent=ZHIHU_UA)
@@ -833,6 +968,7 @@ async def zhihu_scrape_job(
     keyword_questions: Dict[str, List[Dict[str, str]]] = {}
     question_info: Dict[str, Dict[str, Any]] = {}
     question_order: List[str] = []
+    question_keywords: Dict[str, Set[str]] = {}
 
     for keyword in keywords:
         name = (keyword.get("name") or "").strip()
@@ -845,6 +981,8 @@ async def zhihu_scrape_job(
         for question in questions:
             qid = question.get("id")
             if not qid or qid in question_info:
+                if qid:
+                    question_keywords.setdefault(qid, set()).add(str(kid))
                 continue
             question_info[qid] = {
                 "title": question.get("title") or "",
@@ -852,6 +990,7 @@ async def zhihu_scrape_job(
                 "first_keyword_id": kid,
             }
             question_order.append(qid)
+            question_keywords.setdefault(qid, set()).add(str(kid))
 
     if include_existing:
         existing_ids = await fetch_existing_question_ids(client, keyword_id)
@@ -870,26 +1009,16 @@ async def zhihu_scrape_job(
     processed = 0
     success = 0
     failed = 0
+    if total == 0 and not get_zhihu_search_headers():
+        if job_id:
+            update_zhihu_job_state(
+                job_id,
+                status="error",
+                error="未配置 ZHIHU_SEARCH_HEADERS，无法抓取搜索结果",
+            )
+        return
     if job_id:
         update_zhihu_job_state(job_id, status="running", total=total, processed=0, success=0, failed=0)
-
-    for kid, questions in keyword_questions.items():
-        for question in questions:
-            qid = question.get("id")
-            if not qid:
-                continue
-            await client.request(
-                "POST",
-                "zhihu_question_keywords",
-                params={"on_conflict": "question_id,keyword_id"},
-                json_payload={
-                    "question_id": qid,
-                    "keyword_id": kid,
-                    "first_seen_at": now_value,
-                    "last_seen_at": now_value,
-                },
-                prefer="resolution=merge-duplicates,return=representation",
-            )
 
     try:
         for qid in question_order:
@@ -919,6 +1048,20 @@ async def zhihu_scrape_job(
                 json_payload=payload,
                 prefer="resolution=merge-duplicates,return=representation",
             )
+
+            for kid in sorted(question_keywords.get(qid, set())):
+                await client.request(
+                    "POST",
+                    "zhihu_question_keywords",
+                    params={"on_conflict": "question_id,keyword_id"},
+                    json_payload={
+                        "question_id": qid,
+                        "keyword_id": kid,
+                        "first_seen_at": now_value,
+                        "last_seen_at": now_value,
+                    },
+                    prefer="resolution=merge-duplicates,return=representation",
+                )
 
             detail = await detail_fetcher(qid)
             if detail:
@@ -5899,7 +6042,7 @@ async def get_scheme(scheme_id: str):
 
     if not rows:
 
-        raise HTTPException(status_code=404, detail="?????")
+        raise HTTPException(status_code=404, detail="方案不存在")
 
     return {"scheme": normalize_scheme(rows[0])}
 
@@ -6515,6 +6658,16 @@ class AiConfirmRequest(BaseModel):
     category_id: str
     items: List[Dict[str, Any]]
 
+class AiBatchStartRequest(BaseModel):
+    category_id: Optional[str] = None
+    scheme_id: Optional[str] = None
+    keyword: Optional[str] = None
+    price_min: Optional[float] = None
+    price_max: Optional[float] = None
+    sort: Optional[str] = None
+    model: Optional[str] = None
+
+
 
 
 class CommentAccountPayload(BaseModel):
@@ -7056,9 +7209,19 @@ async def ai_fill_product_params(
     Returns:
         商品参数列表，每个元素包含 name 和各字段值
     """
-    DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY")
-    if not DASHSCOPE_API_KEY:
-        raise HTTPException(status_code=500, detail="DASHSCOPE_API_KEY 未配置")
+    use_deepseek = bool(model_override and "deepseek" in model_override.lower())
+    use_bigmodel = bool(model_override and model_override.lower().startswith("glm-4.7"))
+    if use_deepseek:
+        if not DEEPSEEK_API_KEY or not deepseek_client:
+            raise HTTPException(status_code=500, detail="未配置 DeepSeek API 密钥")
+    elif use_bigmodel:
+        bigmodel_api_key = os.getenv("BIGMODEL_API_KEY") or BIGMODEL_API_KEY
+        if not bigmodel_api_key:
+            raise HTTPException(status_code=500, detail="未配置 BIGMODEL API 密钥")
+    else:
+        DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY")
+        if not DASHSCOPE_API_KEY:
+            raise HTTPException(status_code=500, detail="DASHSCOPE_API_KEY 未配置")
 
     if not spec_fields:
         raise HTTPException(status_code=400, detail="预设字段为空")
@@ -7081,40 +7244,142 @@ async def ai_fill_product_params(
     # 提取纯字段名用于返回格式
     field_keys = [f.get("key", "") for f in spec_fields if f.get("key")]
 
-    prompt = f"""你是商品参数提取助手。请联网搜索以下商品的参数信息。
+    prompt = f"""???????????????????????????????
 
-品类：{category_name}
-预设字段：{fields_str}
+???{category_name}
+?????{fields_str}
 
-商品列表：
+?????
 {products_str}
 
-要求：
-1. 严格返回JSON数组，不要markdown代码块，不要任何解释
-2. 只使用预设字段，不要添加新字段
-3. 参数值要简洁，按照格式示例的格式返回，如未知用空字符串""
+???
+1. ???? JSON ??????? markdown ??????
+2. ???????? name ????????
+3. ?????????????
+4. ????????????????????30 ????
 
-返回格式：
-[{{"name":"商品1","{field_keys[0]}":"值1","{field_keys[1]}":"值1"}},...]"""
+???
+[{{"name":"??1","??":"200??????????????????????????","{field_keys[0]}":"?1","{field_keys[1]}":"?1"}},...]
+"""
 
-    response = Generation.call(
-        api_key=DASHSCOPE_API_KEY,
-        model=model_override or "qwen3-max-2026-01-23",
-        enable_search=True,
-        search_options={"forced_search": True},
-        prompt=prompt,
-        result_format="message"
-    )
+    if use_bigmodel:
+        search_lines: List[str] = []
+        headers = {
+            "Authorization": f"Bearer {bigmodel_api_key}",
+            "Content-Type": "application/json",
+        }
+        for name in product_names:
+            query = f"{name} 参数"
+            search_payload = {
+                "search_query": query,
+                "search_engine": "search_std",
+                "count": 5,
+                "search_intent": False,
+                "content_size": "high",
+            }
+            try:
+                search_resp = httpx.post(
+                    "https://open.bigmodel.cn/api/paas/v4/web_search",
+                    headers=headers,
+                    json=search_payload,
+                    timeout=30.0,
+                )
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"网络搜索失败: {str(exc)}",
+                )
+            if search_resp.status_code != 200:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"网络搜索失败: {search_resp.text[:200]}",
+                )
+            search_data = search_resp.json() or {}
+            items = search_data.get("search_result") or []
+            if items:
+                snippets = []
+                for item in items[:3]:
+                    title = str(item.get("title") or "")
+                    content = str(item.get("content") or "")
+                    link = str(item.get("link") or "")
+                    snippets.append(f"- {title} | {content} | {link}".strip())
+                search_lines.append(f"商品：{name}\n" + "\n".join(snippets))
 
-    if response.status_code != 200:
-        raise HTTPException(
-            status_code=500,
-            detail=f"AI调用失败: {response.message}"
+        if search_lines:
+            prompt = f"{prompt}\n\n搜索结果（仅供参考）：\n" + "\n\n".join(search_lines)
+
+        chat_payload = {
+            "model": model_override or "glm-4.7-FlashX",
+            "messages": [
+                {"role": "system", "content": "你是商品参数提取助手。"},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.2,
+        }
+        try:
+            chat_resp = httpx.post(
+                "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+                headers=headers,
+                json=chat_payload,
+                timeout=300.0,
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"GLM调用失败: {str(exc)}",
+            )
+        if chat_resp.status_code != 200:
+            raise HTTPException(
+                status_code=500,
+                detail=f"GLM调用失败: {chat_resp.text[:200]}",
+            )
+        chat_data = chat_resp.json() or {}
+        choices = chat_data.get("choices") or []
+    elif use_deepseek:
+        response = await asyncio.to_thread(
+            deepseek_client.chat.completions.create,
+            model=model_override or (DEEPSEEK_MODEL or "deepseek-chat"),
+            messages=[
+                {"role": "system", "content": "你是商品参数提取助手。"},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.2
         )
+        choices = response.choices or []
+    else:
+        response = Generation.call(
+            api_key=DASHSCOPE_API_KEY,
+            model=model_override or "qwen3-max-2026-01-23",
+            enable_search=True,
+            search_options={"forced_search": True},
+            prompt=prompt,
+            result_format="message"
+        )
+
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=500,
+                detail=f"AI调用失败: {response.message}"
+            )
+        choices = response.output.choices or []
+
+    if not choices:
+        raise HTTPException(status_code=500, detail="AI 未返回结果")
+
+    def extract_choice_content(choice: Any) -> str:
+        if isinstance(choice, dict):
+            message = choice.get("message") or {}
+            if isinstance(message, dict):
+                return message.get("content", "")
+            return getattr(message, "content", "")
+        message = getattr(choice, "message", None)
+        if isinstance(message, dict):
+            return message.get("content", "")
+        return getattr(message, "content", "")
 
     # 解析 JSON
     import json
-    content = response.output.choices[0]['message']['content']
+    content = extract_choice_content(choices[0])
 
     # 清理可能的 markdown 代码块
     content = content.strip()
@@ -7150,9 +7415,10 @@ async def ai_fill_product_params(
                 status_code=500,
                 detail=f"AI返回项缺少name字段: {item}"
             )
-        # 确保只包含预设字段
+        # ?????????
+        allowed_keys = set(field_keys + ["name", "\u8bc4\u4ef7"])
         for key in list(item.keys()):
-            if key not in field_keys + ["name"]:
+            if key not in allowed_keys:
                 del item[key]
 
     return result
@@ -7160,6 +7426,242 @@ async def ai_fill_product_params(
 
 
 
+
+
+async def fetch_sourcing_items_by_id_list(client: "SupabaseClient", ids: List[str]) -> List[Dict[str, Any]]:
+    if not ids:
+        return []
+    fetched: List[Dict[str, Any]] = []
+    for chunk in chunk_list(ids, 200):
+        if not chunk:
+            continue
+        quoted = ",".join([f"\"{item_id}\"" for item_id in chunk])
+        rows = await client.select(
+            "sourcing_items",
+            params={"id": f"in.({quoted})", "select": "id,title,uid,category_id,price,remark,spec"}
+        )
+        fetched.extend(rows or [])
+    return fetched
+
+async def fetch_sourcing_items_filtered(
+    client: "SupabaseClient",
+    *,
+    category_id: Optional[str],
+    keyword: str
+) -> List[Dict[str, Any]]:
+    safe_keyword = keyword.replace("%", "").replace("*", "").strip()
+    items: List[Dict[str, Any]] = []
+    offset = 0
+    limit = 200
+    while True:
+        params: Dict[str, Any] = {
+            "select": "id,title,uid,category_id,price,remark,spec",
+            "order": "created_at.desc",
+            "limit": limit,
+            "offset": offset,
+        }
+        if category_id:
+            params["category_id"] = f"eq.{category_id}"
+        if safe_keyword:
+            params["or"] = f"(title.ilike.*{safe_keyword}*,uid.ilike.*{safe_keyword}*)"
+        rows = await client.select("sourcing_items", params=params)
+        if not rows:
+            break
+        items.extend(rows)
+        if len(rows) < limit:
+            break
+        offset += limit
+    return items
+
+def match_sourcing_keyword(item: Dict[str, Any], keyword: str) -> bool:
+    if not keyword:
+        return True
+    needle = keyword.lower()
+    title = str(item.get("title") or "").lower()
+    uid = str(item.get("uid") or "").lower()
+    return needle in title or needle in uid
+
+def match_sourcing_price(item: Dict[str, Any], price_min: Optional[float], price_max: Optional[float]) -> bool:
+    if price_min is None and price_max is None:
+        return True
+    try:
+        price = float(item.get("price") or 0)
+    except (TypeError, ValueError):
+        return False
+    if price_min is not None and price < price_min:
+        return False
+    if price_max is not None and price > price_max:
+        return False
+    return True
+
+async def resolve_sourcing_ai_batch_items(
+    client: "SupabaseClient",
+    payload: "AiBatchStartRequest"
+) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    category_id = (payload.category_id or "").strip() or None
+    scheme_id = (payload.scheme_id or "").strip() or None
+    keyword = (payload.keyword or "").strip()
+    price_min = payload.price_min
+    price_max = payload.price_max
+    items: List[Dict[str, Any]] = []
+
+    if scheme_id:
+        rows = await client.select("schemes", {"id": f"eq.{scheme_id}"})
+        if not rows:
+            raise HTTPException(status_code=404, detail="方案不存在")
+        scheme = normalize_scheme(rows[0])
+        if not category_id:
+            category_id = scheme.get("category_id") or None
+        entries = scheme.get("items") or []
+        raw_ids = []
+        seen = set()
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            raw_id = str(entry.get("source_id") or entry.get("id") or "").strip()
+            if not raw_id or raw_id in seen:
+                continue
+            seen.add(raw_id)
+            raw_ids.append(raw_id)
+        fetched = await fetch_sourcing_items_by_id_list(client, raw_ids)
+        item_map = {str(item.get("id")): item for item in fetched}
+        items = [item_map.get(item_id) for item_id in raw_ids if item_map.get(item_id)]
+    else:
+        items = await fetch_sourcing_items_filtered(
+            client,
+            category_id=category_id,
+            keyword=keyword
+        )
+
+    if category_id:
+        items = [item for item in items if str(item.get("category_id") or "") == str(category_id)]
+    if keyword:
+        items = [item for item in items if match_sourcing_keyword(item, keyword)]
+    items = [item for item in items if match_sourcing_price(item, price_min, price_max)]
+    return items, category_id
+
+async def run_sourcing_ai_batch_job(
+    job_id: str,
+    items: List[Dict[str, Any]],
+    category_name: str,
+    spec_fields_raw: List[Dict[str, Any]],
+    model_override: Optional[str]
+) -> None:
+    client = ensure_supabase()
+    field_keys = [f.get("key") for f in spec_fields_raw if f.get("key")]
+    total = len(items)
+    processed = 0
+    success = 0
+    failed = 0
+    failures: List[Dict[str, Any]] = []
+    update_sourcing_ai_job_state(
+        job_id,
+        status="running",
+        total=total,
+        processed=0,
+        success=0,
+        failed=0,
+        failures=[],
+    )
+    try:
+        for chunk in chunk_list(items, 10):
+            if not chunk:
+                continue
+            names = [str(item.get("title") or "").strip() for item in chunk]
+            try:
+                results = await ai_fill_product_params(
+                    category_name,
+                    spec_fields_raw,
+                    names,
+                    model_override=model_override,
+                )
+            except Exception as exc:
+                reason = str(exc)
+                for item in chunk:
+                    processed += 1
+                    failed += 1
+                    failures.append({
+                        "name": str(item.get("title") or ""),
+                        "reason": reason,
+                    })
+                update_sourcing_ai_job_state(
+                    job_id,
+                    processed=processed,
+                    success=success,
+                    failed=failed,
+                    failures=failures[-50:],
+                )
+                continue
+            result_map = {
+                str(item.get("name") or "").strip(): item for item in results if isinstance(item, dict)
+            }
+            fallback = results if len(results) == len(chunk) else None
+            for index, item in enumerate(chunk):
+                name = str(item.get("title") or "").strip()
+                ai_item = result_map.get(name) if name else None
+                if not ai_item and fallback:
+                    ai_item = fallback[index] if index < len(fallback) else None
+                if not ai_item or not isinstance(ai_item, dict):
+                    processed += 1
+                    failed += 1
+                    failures.append({"name": name, "reason": "AI未返回结果"})
+                    update_sourcing_ai_job_state(
+                        job_id,
+                        processed=processed,
+                        success=success,
+                        failed=failed,
+                        failures=failures[-50:],
+                    )
+                    continue
+                spec_updates: Dict[str, Any] = {}
+                existing_spec = item.get("spec") or {}
+                for field in field_keys:
+                    if not field:
+                        continue
+                    new_value = str(ai_item.get(field) or "").strip()
+                    if not new_value:
+                        continue
+                    if str(existing_spec.get(field) or "").strip():
+                        continue
+                    spec_updates[field] = new_value
+                review_text = str(ai_item.get("评价") or "").strip()
+                existing_remark = str(item.get("remark") or "").strip()
+                should_set_remark = bool(review_text) and not existing_remark
+                updates = {
+                    "updated_at": utc_now_iso(),
+                }
+                if spec_updates:
+                    merged_spec = {**existing_spec, **spec_updates}
+                    updates["spec"] = normalize_spec_payload(merged_spec)
+                if should_set_remark:
+                    updates["remark"] = review_text
+                try:
+                    if spec_updates or should_set_remark:
+                        await client.update(
+                            "sourcing_items",
+                            updates,
+                            {"id": f"eq.{item.get('id')}"}
+                        )
+                    processed += 1
+                    success += 1
+                except Exception as exc:
+                    processed += 1
+                    failed += 1
+                    failures.append({"name": name, "reason": str(exc)})
+                update_sourcing_ai_job_state(
+                    job_id,
+                    processed=processed,
+                    success=success,
+                    failed=failed,
+                    failures=failures[-50:],
+                )
+        update_sourcing_ai_job_state(job_id, status="done")
+    except Exception as exc:
+        update_sourcing_ai_job_state(
+            job_id,
+            status="error",
+            error=str(exc),
+        )
 
 def normalize_comment_account(row: Dict[str, Any]) -> Dict[str, Any]:
 
@@ -8637,26 +9139,33 @@ async def ai_confirm_sourcing_items(payload: AiConfirmRequest, request: Request)
         existing_item = existing_items[0]
         item_id = existing_item.get("id")
 
-        # 构建 spec 更新数据
+        # ?? spec ????
         spec: Dict[str, Any] = {}
 
-        # 只更新预设字段
+        # ???????
         for field in spec_fields:
             value = item_data.get(field, "")
             if value:
                 spec[field] = value
 
-        # 获取现有 spec 并合并
+        # ???? spec ???
         existing_spec = existing_item.get("spec") or {}
         merged_spec = {**existing_spec, **spec}
 
-        # 更新商品
+        review_text = str(item_data.get("评价") or item_data.get("remark") or "").strip()
+        existing_remark = str(existing_item.get("remark") or "").strip()
+
+        updates = {
+            "spec": normalize_spec_payload(merged_spec),
+            "updated_at": utc_now_iso(),
+        }
+        if review_text and not existing_remark:
+            updates["remark"] = review_text
+
+        # ????
         await client.update(
             "sourcing_items",
-            {
-                "spec": normalize_spec_payload(merged_spec),
-                "updated_at": utc_now_iso()
-            },
+            updates,
             {"id": f"eq.{item_id}"}
         )
 
@@ -8671,6 +9180,43 @@ async def ai_confirm_sourcing_items(payload: AiConfirmRequest, request: Request)
 
 
 
+
+
+@app.post("/api/sourcing/items/ai-batch/start")
+
+async def ai_batch_start(payload: AiBatchStartRequest, request: Request):
+    client = ensure_supabase()
+    items, category_id = await resolve_sourcing_ai_batch_items(client, payload)
+    if not category_id:
+        raise HTTPException(status_code=400, detail="\u8bf7\u9009\u62e9\u54c1\u7c7b")
+    categories = await client.select("sourcing_categories", {"id": f"eq.{category_id}"})
+    if not categories:
+        raise HTTPException(status_code=404, detail="\u54c1\u7c7b\u4e0d\u5b58\u5728")
+    category = categories[0]
+    spec_fields_raw = category.get("spec_fields") or []
+    if not spec_fields_raw:
+        raise HTTPException(status_code=400, detail="\u8be5\u54c1\u7c7b\u6ca1\u6709\u9884\u8bbe\u53c2\u6570\u5b57\u6bb5")
+    if not items:
+        raise HTTPException(status_code=404, detail="\u6ca1\u6709\u627e\u5230\u5546\u54c1")
+    job_state = create_sourcing_ai_job_state(total=len(items))
+    asyncio.create_task(
+        run_sourcing_ai_batch_job(
+            job_state["id"],
+            items,
+            category.get("name", ""),
+            spec_fields_raw,
+            payload.model,
+        )
+    )
+    return {"status": "queued", "job_id": job_state["id"], "total": len(items)}
+
+@app.get("/api/sourcing/items/ai-batch/status/{job_id}")
+
+async def ai_batch_status(job_id: str):
+    state = get_sourcing_ai_job_state(job_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="\u4efb\u52a1\u4e0d\u5b58\u5728")
+    return state
 
 @app.patch("/api/sourcing/items/{item_id}")
 
@@ -9448,6 +9994,29 @@ async def list_zhihu_keywords():
     return {"keywords": rows}
 
 
+@app.get("/api/zhihu/keywords/counts")
+async def list_zhihu_keyword_counts():
+    client = ensure_supabase()
+    keywords = await client.select("zhihu_keywords", params={"select": "id"})
+    mappings = await client.select(
+        "zhihu_question_keywords", params={"select": "keyword_id"}
+    )
+    questions = await client.select("zhihu_questions", params={"select": "id"})
+    counts: Dict[str, int] = {}
+    for row in mappings:
+        keyword_id = row.get("keyword_id")
+        if not keyword_id:
+            continue
+        key = str(keyword_id)
+        counts[key] = counts.get(key, 0) + 1
+    for keyword in keywords:
+        keyword_id = keyword.get("id")
+        if not keyword_id:
+            continue
+        counts.setdefault(str(keyword_id), 0)
+    return {"counts": counts, "total": len(questions)}
+
+
 @app.post("/api/zhihu/keywords")
 async def create_zhihu_keyword(payload: ZhihuKeywordPayload):
     client = ensure_supabase()
@@ -9495,7 +10064,10 @@ async def delete_zhihu_keyword(keyword_id: str):
 @app.get("/api/zhihu/questions")
 async def list_zhihu_questions(keyword_id: Optional[str] = None, q: Optional[str] = None, limit: int = 50, offset: int = 0):
     client = ensure_supabase()
+    limit = max(1, min(int(limit or 50), 200))
+    offset = max(0, int(offset or 0))
     params = {"select": "id,title,url,first_keyword_id,created_at,updated_at,last_seen_at", "order": "updated_at.desc", "limit": limit, "offset": offset}
+    safe_q = None
     if q:
         safe_q = q.replace("%", "").replace("*", "").strip()
         if safe_q:
@@ -9504,9 +10076,27 @@ async def list_zhihu_questions(keyword_id: Optional[str] = None, q: Optional[str
         mapping = await client.select("zhihu_question_keywords", {"keyword_id": f"eq.{keyword_id}", "select": "question_id"})
         ids = [row.get("question_id") for row in mapping if row.get("question_id")]
         if not ids:
-            return {"items": [], "total": 0}
+            return {
+                "items": [],
+                "total": 0,
+                "pagination": {
+                    "offset": offset,
+                    "limit": limit,
+                    "has_more": False,
+                    "next_offset": offset,
+                    "total": 0,
+                },
+            }
         params["id"] = f"in.({','.join(ids)})"
     questions = await client.select("zhihu_questions", params)
+
+    count_params = {"select": "id"}
+    if safe_q:
+        count_params["title"] = f"ilike.*{safe_q}*"
+    if keyword_id:
+        count_params["id"] = f"in.({','.join(ids)})"
+    count_rows = await client.select("zhihu_questions", count_params)
+    total = len(count_rows)
 
     today = shanghai_today()
     yesterday = today - timedelta(days=1)
@@ -9528,7 +10118,19 @@ async def list_zhihu_questions(keyword_id: Optional[str] = None, q: Optional[str
         view_delta = view_total - int(yesterday_row.get("view_count") or 0)
         answer_delta = answer_total - int(yesterday_row.get("answer_count") or 0)
         items.append({**row, "first_keyword": keyword_map.get(str(row.get("first_keyword_id")) or "", "???"), "view_count_total": view_total, "answer_count_total": answer_total, "view_count_delta": view_delta, "answer_count_delta": answer_delta})
-    return {"items": items, "total": len(items)}
+    next_offset = offset + len(items)
+    has_more = next_offset < total
+    return {
+        "items": items,
+        "total": total,
+        "pagination": {
+            "offset": offset,
+            "limit": limit,
+            "has_more": has_more,
+            "next_offset": next_offset,
+            "total": total,
+        },
+    }
 
 
 @app.get("/api/zhihu/questions/{question_id}/stats")
@@ -10344,4 +10946,3 @@ if __name__ == "__main__":
     backend_port = int(os.getenv("BACKEND_PORT", os.getenv("PORT", "8000")))
 
     uvicorn.run(app, host="127.0.0.1", port=backend_port)
-

@@ -1,6 +1,7 @@
 import CategoryManagerModal from "@/components/archive/CategoryManagerModal"
 import type { CategoryItem } from "@/components/archive/types"
 import ProgressDialog from "@/components/ProgressDialog"
+import Skeleton from "@/components/Skeleton"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -54,6 +55,13 @@ interface ZhihuRadarPageViewProps {
   items: ZhihuQuestionItem[]
   isKeywordLoading: boolean
   listLoading: boolean
+  isRefreshing: boolean
+  isUsingCache: boolean
+  listTotal: number
+  allCount: number
+  hasMore: boolean
+  isLoadingMore: boolean
+  onLoadMore: () => void
   searchValue: string
   onSearchChange: (value: string) => void
   onSelectKeyword: (id: string) => void
@@ -76,6 +84,20 @@ const KeywordSkeleton = () => (
       >
         <div className="h-4 w-20 rounded bg-slate-100" />
         <div className="h-3 w-10 rounded bg-slate-100" />
+      </div>
+    ))}
+  </div>
+)
+
+const ListSkeleton = () => (
+  <div className="space-y-3 p-4" data-testid="zhihu-list-skeleton">
+    {Array.from({ length: 6 }).map((_, index) => (
+      <div key={index} className="flex items-center gap-4">
+        <Skeleton className="h-4 w-48" />
+        <Skeleton className="h-4 w-20" />
+        <Skeleton className="h-4 w-20" />
+        <Skeleton className="h-4 w-20" />
+        <Skeleton className="h-4 w-16" />
       </div>
     ))}
   </div>
@@ -105,6 +127,13 @@ export default function ZhihuRadarPageView({
   items,
   isKeywordLoading,
   listLoading,
+  isRefreshing,
+  isUsingCache,
+  listTotal,
+  allCount,
+  hasMore,
+  isLoadingMore,
+  onLoadMore,
   searchValue,
   onSearchChange,
   onSelectKeyword,
@@ -117,6 +146,23 @@ export default function ZhihuRadarPageView({
   updateDialog,
   progressDialog,
 }: ZhihuRadarPageViewProps) {
+  const showCategorySkeleton = isKeywordLoading && keywords.length === 0
+  const showListSkeleton = listLoading && (!isUsingCache || items.length === 0)
+  const loadMoreContent = hasMore ? (
+    <div className="flex items-center justify-center border-t border-slate-100 px-4 py-3">
+      {isLoadingMore ? (
+        <span className="text-xs text-slate-400">正在加载更多...</span>
+      ) : (
+        <button
+          className="text-xs font-medium text-slate-500 hover:text-slate-700"
+          type="button"
+          onClick={onLoadMore}
+        >
+          加载更多
+        </button>
+      )}
+    </div>
+  ) : null
   return (
     <>
       <div className="grid gap-8 lg:grid-cols-[260px_1fr]">
@@ -132,7 +178,7 @@ export default function ZhihuRadarPageView({
             </button>
           </div>
           <div className="mt-4 space-y-2">
-            {isKeywordLoading && keywords.length === 0 ? (
+            {showCategorySkeleton ? (
               <KeywordSkeleton />
             ) : (
               <>
@@ -146,7 +192,7 @@ export default function ZhihuRadarPageView({
                   onClick={() => onSelectKeyword("all")}
                 >
                   <span>全部</span>
-                  <span className="text-xs text-slate-400">{items.length} 条</span>
+                  <span className="text-xs text-slate-400">{allCount} 条</span>
                 </button>
                 {keywords.map((keyword) => (
                   <button
@@ -176,7 +222,12 @@ export default function ZhihuRadarPageView({
                 <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-500">
                   {items.length}
                 </span>
-                {listLoading ? (
+                <span className="text-xs text-slate-500">
+                  已加载 {items.length} / 总数 {listTotal}
+                </span>
+                {isRefreshing ? (
+                  <span className="text-xs text-slate-400">刷新中...</span>
+                ) : listLoading ? (
                   <span className="text-xs text-slate-400">加载中...</span>
                 ) : null}
               </div>
@@ -196,76 +247,83 @@ export default function ZhihuRadarPageView({
           </div>
 
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-100 text-slate-600">
-                <tr>
-                  <th className="px-4 py-3 font-semibold">问题标题</th>
-                  <th className="px-4 py-3 font-semibold">所属分类</th>
-                  <th className="px-4 py-3 font-semibold">总阅读量</th>
-                  <th className="px-4 py-3 font-semibold">总回答数</th>
-                  <th className="px-4 py-3 font-semibold">新增阅读数</th>
-                  <th className="px-4 py-3 font-semibold">新增回答数</th>
-                  <th className="px-4 py-3 font-semibold">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={7}
-                      className="px-4 py-8 text-center text-slate-400"
-                    >
-                      暂无数据
-                    </td>
-                  </tr>
-                ) : (
-                  items.map((row, index) => (
-                    <tr
-                      key={row.id}
-                      className={`transition ${
-                        index % 2 === 0 ? "bg-white" : "bg-slate-50"
-                      } hover:bg-slate-100`}
-                    >
-                      <td className="px-4 py-3 text-slate-700">
-                        <a
-                          href={row.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="line-clamp-2 text-sm font-medium text-slate-900 hover:text-brand"
-                        >
-                          {row.title || "--"}
-                        </a>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {row.first_keyword || "未分类"}
-                      </td>
-                      <td className="px-4 py-3 text-slate-700">
-                        {formatNumber(row.view_count_total)}
-                      </td>
-                      <td className="px-4 py-3 text-slate-700">
-                        {formatNumber(row.answer_count_total)}
-                      </td>
-                      <td className={`px-4 py-3 ${getGrowthClass(row.view_count_delta)}`}>
-                        {formatGrowth(row.view_count_delta)}
-                      </td>
-                      <td className={`px-4 py-3 ${getGrowthClass(row.answer_count_delta)}`}>
-                        {formatGrowth(row.answer_count_delta)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-brand/40 hover:text-brand"
-                          type="button"
-                          onClick={() => onOpenTrend(row)}
-                          aria-label="趋势分析"
-                        >
-                          <TrendingUp className="h-4 w-4" />
-                        </button>
-                      </td>
+            {showListSkeleton ? (
+              <ListSkeleton />
+            ) : (
+              <>
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-100 text-slate-600">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">问题标题</th>
+                      <th className="px-4 py-3 font-semibold">所属分类</th>
+                      <th className="px-4 py-3 font-semibold">总阅读量</th>
+                      <th className="px-4 py-3 font-semibold">总回答数</th>
+                      <th className="px-4 py-3 font-semibold">新增阅读数</th>
+                      <th className="px-4 py-3 font-semibold">新增回答数</th>
+                      <th className="px-4 py-3 font-semibold">操作</th>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody>
+                    {items.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={7}
+                          className="px-4 py-8 text-center text-slate-400"
+                        >
+                          暂无数据
+                        </td>
+                      </tr>
+                    ) : (
+                      items.map((row, index) => (
+                        <tr
+                          key={row.id}
+                          className={`transition ${
+                            index % 2 === 0 ? "bg-white" : "bg-slate-50"
+                          } hover:bg-slate-100`}
+                        >
+                          <td className="px-4 py-3 text-slate-700">
+                            <a
+                              href={row.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="line-clamp-2 text-sm font-medium text-slate-900 hover:text-brand"
+                            >
+                              {row.title || "--"}
+                            </a>
+                          </td>
+                          <td className="px-4 py-3 text-slate-600">
+                            {row.first_keyword || "未分类"}
+                          </td>
+                          <td className="px-4 py-3 text-slate-700">
+                            {formatNumber(row.view_count_total)}
+                          </td>
+                          <td className="px-4 py-3 text-slate-700">
+                            {formatNumber(row.answer_count_total)}
+                          </td>
+                          <td className={`px-4 py-3 ${getGrowthClass(row.view_count_delta)}`}>
+                            {formatGrowth(row.view_count_delta)}
+                          </td>
+                          <td className={`px-4 py-3 ${getGrowthClass(row.answer_count_delta)}`}>
+                            {formatGrowth(row.answer_count_delta)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <button
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-brand/40 hover:text-brand"
+                              type="button"
+                              onClick={() => onOpenTrend(row)}
+                              aria-label="趋势分析"
+                            >
+                              <TrendingUp className="h-4 w-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+                {items.length > 0 ? loadMoreContent : null}
+              </>
+            )}
           </div>
         </section>
       </div>

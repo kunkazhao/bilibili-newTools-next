@@ -6,6 +6,7 @@ import {
   fetchZhihuKeywords,
   fetchZhihuQuestionStats,
   fetchZhihuQuestions,
+  fetchZhihuKeywordCounts,
   fetchZhihuScrapeStatus,
   runZhihuScrape,
   updateZhihuKeyword,
@@ -42,13 +43,20 @@ describe("zhihuApi", () => {
   })
 
   it("fetchZhihuQuestions builds query", async () => {
-    await fetchZhihuQuestions({ keywordId: "kid", q: "hello" })
-    expect(apiRequest).toHaveBeenCalledWith("/api/zhihu/questions?keyword_id=kid&q=hello")
+    await fetchZhihuQuestions({ keywordId: "kid", q: "hello", limit: 50, offset: 0 })
+    expect(apiRequest).toHaveBeenCalledWith(
+      "/api/zhihu/questions?keyword_id=kid&q=hello&limit=50&offset=0"
+    )
   })
 
   it("fetchZhihuQuestionStats hits stats endpoint", async () => {
     await fetchZhihuQuestionStats("qid")
     expect(apiRequest).toHaveBeenCalledWith("/api/zhihu/questions/qid/stats?days=15")
+  })
+
+  it("fetchZhihuKeywordCounts hits counts endpoint", async () => {
+    await fetchZhihuKeywordCounts()
+    expect(apiRequest).toHaveBeenCalledWith("/api/zhihu/keywords/counts")
   })
 
   it("runZhihuScrape posts keyword id", async () => {
@@ -57,6 +65,13 @@ describe("zhihuApi", () => {
       method: "POST",
       body: JSON.stringify({ keyword_id: "kid" }),
     })
+  })
+
+  it("runZhihuScrape normalizes job id from id field", async () => {
+    const mockApi = vi.mocked(apiRequest)
+    mockApi.mockResolvedValueOnce({ id: "job-1", status: "queued" })
+    const result = await runZhihuScrape({ keywordId: "kid" })
+    expect(result.job_id).toBe("job-1")
   })
 
   it("fetchZhihuScrapeStatus hits status endpoint", async () => {

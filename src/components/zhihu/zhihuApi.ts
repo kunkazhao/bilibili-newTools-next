@@ -42,6 +42,11 @@ export type ZhihuScrapeJobState = {
 export const fetchZhihuKeywords = () =>
   apiRequest<{ keywords: ZhihuKeyword[] }>("/api/zhihu/keywords")
 
+export const fetchZhihuKeywordCounts = () =>
+  apiRequest<{ counts: Record<string, number>; total: number }>(
+    "/api/zhihu/keywords/counts"
+  )
+
 export const createZhihuKeyword = (name: string) =>
   apiRequest<{ keyword: ZhihuKeyword }>("/api/zhihu/keywords", {
     method: "POST",
@@ -66,10 +71,20 @@ export const fetchZhihuQuestions = (params: {
   const query = new URLSearchParams()
   if (params.keywordId) query.set("keyword_id", params.keywordId)
   if (params.q) query.set("q", params.q)
-  if (params.limit) query.set("limit", String(params.limit))
-  if (params.offset) query.set("offset", String(params.offset))
+  if (typeof params.limit === "number") query.set("limit", String(params.limit))
+  if (typeof params.offset === "number") query.set("offset", String(params.offset))
   const suffix = query.toString()
-  return apiRequest<{ items: ZhihuQuestionItem[]; total: number }>(
+  return apiRequest<{
+    items: ZhihuQuestionItem[]
+    total: number
+    pagination?: {
+      offset: number
+      limit: number
+      has_more: boolean
+      next_offset: number
+      total: number
+    }
+  }>(
     `/api/zhihu/questions${suffix ? `?${suffix}` : ""}`
   )
 }
@@ -79,14 +94,23 @@ export const fetchZhihuQuestionStats = (id: string, days = 15) =>
     `/api/zhihu/questions/${id}/stats?days=${days}`
   )
 
-export const runZhihuScrape = (params: { keywordId?: string }) =>
-  apiRequest<{ job_id: string; status: ZhihuScrapeJobStatus }>(
-    "/api/zhihu/scrape/run",
-    {
-      method: "POST",
-      body: JSON.stringify({ keyword_id: params.keywordId }),
-    }
-  )
+export const runZhihuScrape = async (params: { keywordId?: string }) => {
+  const data = await apiRequest<{
+    job_id?: string
+    id?: string
+    status?: ZhihuScrapeJobStatus
+  }>("/api/zhihu/scrape/run", {
+    method: "POST",
+    body: JSON.stringify({ keyword_id: params.keywordId }),
+  })
+  if (data?.job_id || data?.id) {
+    return {
+      ...data,
+      job_id: data.job_id ?? data.id,
+    } as { job_id: string; status: ZhihuScrapeJobStatus }
+  }
+  return data as { job_id: string; status: ZhihuScrapeJobStatus }
+}
 
 export const fetchZhihuScrapeStatus = (jobId: string) =>
   apiRequest<ZhihuScrapeJobState>(`/api/zhihu/scrape/status/${jobId}`)

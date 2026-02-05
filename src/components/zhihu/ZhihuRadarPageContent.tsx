@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useToast } from "@/components/Toast"
 import type { CategoryItem } from "@/components/archive/types"
+import { useListDataPipeline } from "@/hooks/useListDataPipeline"
 import ZhihuRadarPageView from "./ZhihuRadarPageView"
 import {
   createZhihuKeyword,
   deleteZhihuKeyword,
+  fetchZhihuKeywordCounts,
   fetchZhihuKeywords,
   fetchZhihuQuestionStats,
   fetchZhihuQuestions,
@@ -17,23 +19,63 @@ import {
 
 const buildCategoryItems = (
   keywords: ZhihuKeyword[],
-  counts: Map<string, number>
+  counts: Record<string, number> | null
 ): CategoryItem[] =>
   keywords.map((keyword, index) => ({
     id: keyword.id,
     name: keyword.name,
     sortOrder: (index + 1) * 10,
-    count: counts.get(keyword.id) ?? 0,
+    count: counts?.[keyword.id] ?? 0,
   }))
+
+const CACHE_KEYS = {
+  keywords: "zhihu_keywords_cache_v1",
+  counts: "zhihu_keyword_counts_cache_v1",
+}
+
+const CACHE_TTL = {
+  keywords: 5 * 60 * 1000,
+  counts: 3 * 60 * 1000,
+}
+
+type CachePayload<T> = { timestamp: number; data: T }
+
+const getCache = <T,>(key: string) => {
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return null
+    return JSON.parse(raw) as CachePayload<T>
+  } catch {
+    return null
+  }
+}
+
+const setCache = <T,>(key: string, payload: T) => {
+  try {
+    localStorage.setItem(
+      key,
+      JSON.stringify({ timestamp: Date.now(), data: payload })
+    )
+  } catch {
+    // ignore
+  }
+}
+
+const isFresh = (cache: CachePayload<unknown> | null, ttl: number) => {
+  if (!cache?.timestamp) return false
+  return Date.now() - cache.timestamp < ttl
+}
 
 export default function ZhihuRadarPageContent() {
   const { showToast } = useToast()
   const [keywords, setKeywords] = useState<ZhihuKeyword[]>([])
+  const [keywordCounts, setKeywordCounts] = useState<Record<string, number> | null>(null)
+  const [keywordTotal, setKeywordTotal] = useState(0)
   const [isKeywordLoading, setIsKeywordLoading] = useState(false)
-  const [items, setItems] = useState<ZhihuQuestionItem[]>([])
-  const [listLoading, setListLoading] = useState(false)
+  const [isCountLoading, setIsCountLoading] = useState(false)
   const [activeKeywordId, setActiveKeywordId] = useState("all")
   const [searchValue, setSearchValue] = useState("")
+  const [listTotal, setListTotal] = useState(0)
   const [keywordManagerOpen, setKeywordManagerOpen] = useState(false)
   const [trendState, setTrendState] = useState({
     open: false,
@@ -53,6 +95,7 @@ export default function ZhihuRadarPageContent() {
     failed: 0,
   })
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
+  const lastFetchOffsetRef = useRef(0)
   const pollingRef = useRef<number | null>(null)
 
   const loadKeywords = useCallback(async () => {
@@ -61,6 +104,7 @@ export default function ZhihuRadarPageContent() {
       const data = await fetchZhihuKeywords()
       const list = Array.isArray(data?.keywords) ? data.keywords : []
       setKeywords(list)
+      setCache(CACHE_KEYS.keywords, list)
     } catch (error) {
       const message = error instanceof Error ? error.message : "加载关键词失败"
       showToast(message, "error")
@@ -69,32 +113,102 @@ export default function ZhihuRadarPageContent() {
     }
   }, [showToast])
 
-  const loadQuestions = useCallback(async () => {
-    setListLoading(true)
+  const loadCounts = useCallback(async () => {
+    setIsCountLoading(true)
     try {
-      const keywordId = activeKeywordId !== "all" ? activeKeywordId : undefined
-      const query = searchValue.trim()
-      const data = await fetchZhihuQuestions({
-        keywordId,
-        q: query ? query : undefined,
-        limit: 50,
-      })
-      setItems(Array.isArray(data?.items) ? data.items : [])
+      const data = await fetchZhihuKeywordCounts()
+      const counts = data?.counts ?? {}
+      const total = typeof data?.total === "number" ? data.total : 0
+      setKeywordCounts(counts)
+      setKeywordTotal(total)
+      setCache(CACHE_KEYS.counts, { counts, total })
     } catch (error) {
-      const message = error instanceof Error ? error.message : "加载问题列表失败"
+      const message = error instanceof Error ? error.message : "加载关键词数量失败"
       showToast(message, "error")
     } finally {
-      setListLoading(false)
+      setIsCountLoading(false)
     }
-  }, [activeKeywordId, searchValue, showToast])
+  }, [showToast])
+
+  const {
+    items,
+    status: listStatus,
+    error: listError,
+    setFilters,
+    refresh: refreshQuestions,
+    loadMore,
+    hasMore,
+    isLoadingMore,
+  } = useListDataPipeline<
+    ZhihuQuestionItem,
+    { keywordId: string; keyword: string },
+    {
+      items: ZhihuQuestionItem[]
+      total?: number
+      pagination?: {
+        offset: number
+        limit: number
+        has_more: boolean
+        next_offset: number
+        total: number
+      }
+    }
+  >({
+    cacheKey: "zhihu-questions",
+    ttlMs: 3 * 60 * 1000,
+    pageSize: 50,
+    initialFilters: { keywordId: "all", keyword: "" },
+    fetcher: async ({ filters, offset, limit }) => {
+      lastFetchOffsetRef.current = offset
+      return fetchZhihuQuestions({
+        keywordId: filters.keywordId === "all" ? undefined : filters.keywordId,
+        q: filters.keyword || undefined,
+        limit,
+        offset,
+      })
+    },
+    mapResponse: (response) => {
+      const list = Array.isArray(response?.items) ? response.items : []
+      const pagination = response?.pagination
+      const total = pagination?.total ?? response?.total ?? list.length
+      setListTotal(total)
+      const nextOffset =
+        pagination?.next_offset ?? lastFetchOffsetRef.current + list.length
+      const hasMore = pagination?.has_more ?? nextOffset < total
+      return {
+        items: list,
+        pagination: { hasMore, nextOffset },
+      }
+    },
+  })
 
   useEffect(() => {
+    const cached = getCache<ZhihuKeyword[]>(CACHE_KEYS.keywords)
+    if (isFresh(cached, CACHE_TTL.keywords)) {
+      setKeywords(cached.data)
+    }
     loadKeywords()
   }, [loadKeywords])
 
   useEffect(() => {
-    loadQuestions()
-  }, [loadQuestions])
+    const cached = getCache<{ counts: Record<string, number>; total: number }>(
+      CACHE_KEYS.counts
+    )
+    if (isFresh(cached, CACHE_TTL.counts)) {
+      setKeywordCounts(cached.data.counts)
+      setKeywordTotal(cached.data.total)
+    }
+    loadCounts()
+  }, [loadCounts])
+
+  useEffect(() => {
+    setFilters({ keywordId: activeKeywordId, keyword: searchValue.trim() })
+  }, [activeKeywordId, searchValue, setFilters])
+
+  useEffect(() => {
+    if (!listError) return
+    showToast(listError, "error")
+  }, [listError, showToast])
 
   useEffect(() => {
     if (activeKeywordId === "all") return
@@ -102,18 +216,6 @@ export default function ZhihuRadarPageContent() {
       setActiveKeywordId("all")
     }
   }, [activeKeywordId, keywords])
-
-  const keywordCounts = useMemo(() => {
-    const map = new Map<string, number>()
-    const keywordIdByName = new Map(keywords.map((keyword) => [keyword.name, keyword.id]))
-    items.forEach((item) => {
-      const name = item.first_keyword || ""
-      const id = keywordIdByName.get(name)
-      if (!id) return
-      map.set(id, (map.get(id) ?? 0) + 1)
-    })
-    return map
-  }, [items, keywords])
 
   const categoryItems = useMemo(
     () => buildCategoryItems(keywords, keywordCounts),
@@ -142,6 +244,8 @@ export default function ZhihuRadarPageContent() {
           await deleteZhihuKeyword(item.id)
         }
         await loadKeywords()
+        await loadCounts()
+        await refreshQuestions()
         if (activeKeywordId !== "all" && !nextMap.has(activeKeywordId)) {
           setActiveKeywordId("all")
         }
@@ -151,7 +255,7 @@ export default function ZhihuRadarPageContent() {
         showToast(message, "error")
       }
     },
-    [activeKeywordId, keywords, loadKeywords, showToast]
+    [activeKeywordId, keywords, loadCounts, loadKeywords, refreshQuestions, showToast]
   )
 
   const handleOpenTrend = useCallback(
@@ -240,7 +344,8 @@ export default function ZhihuRadarPageContent() {
         if (data.status === "done") {
           stopPolling()
           setActiveJobId(null)
-          await loadQuestions()
+          await refreshQuestions()
+          await loadCounts()
           showToast("数据更新完成", "success")
         } else if (data.status === "error") {
           stopPolling()
@@ -262,7 +367,11 @@ export default function ZhihuRadarPageContent() {
       cancelled = true
       stopPolling()
     }
-  }, [activeJobId, loadQuestions, showToast, stopPolling])
+  }, [activeJobId, loadCounts, refreshQuestions, showToast, stopPolling])
+
+  const isListLoading = listStatus === "loading" || listStatus === "warmup"
+  const isRefreshing = listStatus === "refreshing"
+  const isUsingCache = listStatus === "refreshing"
 
   return (
     <ZhihuRadarPageView
@@ -270,7 +379,14 @@ export default function ZhihuRadarPageContent() {
       activeKeywordId={activeKeywordId}
       items={items}
       isKeywordLoading={isKeywordLoading}
-      listLoading={listLoading}
+      listLoading={isListLoading}
+      isRefreshing={isRefreshing}
+      isUsingCache={isUsingCache}
+      listTotal={listTotal}
+      allCount={keywordTotal || listTotal}
+      hasMore={hasMore}
+      isLoadingMore={isLoadingMore}
+      onLoadMore={loadMore}
       searchValue={searchValue}
       onSearchChange={setSearchValue}
       onSelectKeyword={setActiveKeywordId}
