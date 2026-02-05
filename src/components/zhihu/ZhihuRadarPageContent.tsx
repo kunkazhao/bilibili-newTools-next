@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useToast } from "@/components/Toast"
 import type { CategoryItem } from "@/components/archive/types"
 import ZhihuRadarPageView from "./ZhihuRadarPageView"
@@ -8,6 +8,8 @@ import {
   fetchZhihuKeywords,
   fetchZhihuQuestionStats,
   fetchZhihuQuestions,
+  fetchZhihuScrapeStatus,
+  runZhihuScrape,
   updateZhihuKeyword,
   type ZhihuKeyword,
   type ZhihuQuestionItem,
@@ -39,6 +41,19 @@ export default function ZhihuRadarPageContent() {
     stats: [],
     loading: false,
   })
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
+  const [updateKeywordId, setUpdateKeywordId] = useState("all")
+  const [updateSubmitting, setUpdateSubmitting] = useState(false)
+  const [progressState, setProgressState] = useState({
+    open: false,
+    status: "running" as "running" | "done" | "error",
+    total: 0,
+    processed: 0,
+    success: 0,
+    failed: 0,
+  })
+  const [activeJobId, setActiveJobId] = useState<string | null>(null)
+  const pollingRef = useRef<number | null>(null)
 
   const loadKeywords = useCallback(async () => {
     setIsKeywordLoading(true)
@@ -159,6 +174,96 @@ export default function ZhihuRadarPageContent() {
     [showToast]
   )
 
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current) {
+      window.clearInterval(pollingRef.current)
+      pollingRef.current = null
+    }
+  }, [])
+
+  const updateOptions = useMemo(
+    () => [{ id: "all", name: "全部" }, ...keywords.map((item) => ({ id: item.id, name: item.name }))],
+    [keywords]
+  )
+
+  useEffect(() => {
+    if (updateKeywordId === "all") return
+    if (!updateOptions.some((item) => item.id === updateKeywordId)) {
+      setUpdateKeywordId("all")
+    }
+  }, [updateKeywordId, updateOptions])
+
+  const handleRunUpdate = useCallback(async () => {
+    if (updateSubmitting) return
+    setUpdateSubmitting(true)
+    try {
+      const keywordId = updateKeywordId === "all" ? undefined : updateKeywordId
+      const data = await runZhihuScrape({ keywordId })
+      const jobId = data?.job_id
+      if (!jobId) {
+        throw new Error("未获取到任务 ID")
+      }
+      setActiveJobId(jobId)
+      setProgressState({
+        open: true,
+        status: "running",
+        total: 0,
+        processed: 0,
+        success: 0,
+        failed: 0,
+      })
+      setUpdateDialogOpen(false)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "更新数据失败"
+      showToast(message, "error")
+    } finally {
+      setUpdateSubmitting(false)
+    }
+  }, [showToast, updateKeywordId, updateSubmitting])
+
+  useEffect(() => {
+    if (!activeJobId) return
+    let cancelled = false
+    const poll = async () => {
+      try {
+        const data = await fetchZhihuScrapeStatus(activeJobId)
+        if (cancelled) return
+        setProgressState((prev) => ({
+          ...prev,
+          open: true,
+          status: data.status === "error" ? "error" : data.status === "done" ? "done" : "running",
+          total: data.total ?? prev.total,
+          processed: data.processed ?? prev.processed,
+          success: data.success ?? prev.success,
+          failed: data.failed ?? prev.failed,
+        }))
+        if (data.status === "done") {
+          stopPolling()
+          setActiveJobId(null)
+          await loadQuestions()
+          showToast("数据更新完成", "success")
+        } else if (data.status === "error") {
+          stopPolling()
+          setActiveJobId(null)
+          showToast(data.error || "数据更新失败", "error")
+        }
+      } catch (error) {
+        if (cancelled) return
+        stopPolling()
+        setActiveJobId(null)
+        const message = error instanceof Error ? error.message : "数据更新失败"
+        showToast(message, "error")
+      }
+    }
+
+    poll()
+    pollingRef.current = window.setInterval(poll, 2000)
+    return () => {
+      cancelled = true
+      stopPolling()
+    }
+  }, [activeJobId, loadQuestions, showToast, stopPolling])
+
   return (
     <ZhihuRadarPageView
       keywords={categoryItems}
@@ -184,6 +289,27 @@ export default function ZhihuRadarPageContent() {
             stats: open ? prev.stats : [],
             title: open ? prev.title : "",
           })),
+      }}
+      updateDialog={{
+        open: updateDialogOpen,
+        keywordId: updateKeywordId,
+        options: updateOptions,
+        submitting: updateSubmitting,
+        onOpenChange: setUpdateDialogOpen,
+        onKeywordChange: setUpdateKeywordId,
+        onConfirm: handleRunUpdate,
+      }}
+      progressDialog={{
+        open: progressState.open,
+        status: progressState.status,
+        total: progressState.total,
+        processed: progressState.processed,
+        success: progressState.success,
+        failed: progressState.failed,
+        onOpenChange: (open) => {
+          if (progressState.status === "running") return
+          setProgressState((prev) => ({ ...prev, open }))
+        },
       }}
     />
   )

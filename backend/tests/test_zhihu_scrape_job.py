@@ -81,6 +81,48 @@ class ZhihuScrapeJobTests(unittest.IsolatedAsyncioTestCase):
         # cleanup should run
         self.assertTrue(any(call[0] == "zhihu_question_stats" for call in client.delete_calls))
 
+    async def test_scrape_job_includes_existing_questions(self):
+        class ExistingClient(FakeClient):
+            async def select(self, table, params=None):
+                self.select_calls.append((table, params))
+                if table == "zhihu_keywords":
+                    return [{"id": "k1", "name": "kw1"}]
+                if table == "zhihu_question_keywords":
+                    if (params or {}).get("keyword_id") == "eq.k1":
+                        return [{"question_id": "2"}]
+                    return []
+                if table == "zhihu_questions":
+                    qid = (params or {}).get("id")
+                    if qid == "eq.2":
+                        return [{"id": "2", "title": "Old", "url": "https://www.zhihu.com/question/2", "first_keyword_id": "k1"}]
+                    return []
+                return []
+
+        client = ExistingClient()
+        detail_calls = []
+
+        def build_item(qid, title):
+            return {"object": {"type": "question", "question": {"id": qid, "title": title}}}
+
+        async def search_fetcher(keyword):
+            return [build_item(1, "New")]
+
+        async def detail_fetcher(qid):
+            detail_calls.append(qid)
+            return {"visit_count": 10, "answer_count": 1}
+
+        await zhihu_scrape_job(
+            client=client,
+            search_fetcher=search_fetcher,
+            detail_fetcher=detail_fetcher,
+            today=date(2026, 2, 5),
+            now="2026-02-05T00:00:00Z",
+            keyword_id="k1",
+            include_existing=True,
+        )
+
+        self.assertEqual(set(detail_calls), {"1", "2"})
+
 
 if __name__ == "__main__":
     unittest.main()

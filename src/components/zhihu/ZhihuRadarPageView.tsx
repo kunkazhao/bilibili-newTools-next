@@ -1,13 +1,22 @@
 import CategoryManagerModal from "@/components/archive/CategoryManagerModal"
 import type { CategoryItem } from "@/components/archive/types"
+import ProgressDialog from "@/components/ProgressDialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { TrendingUp } from "lucide-react"
 import type { ZhihuQuestionItem, ZhihuQuestionStat } from "./zhihuApi"
 
@@ -16,6 +25,26 @@ interface TrendDialogState {
   title: string
   stats: ZhihuQuestionStat[]
   loading: boolean
+  onOpenChange: (open: boolean) => void
+}
+
+interface UpdateDialogState {
+  open: boolean
+  keywordId: string
+  options: Array<{ id: string; name: string }>
+  submitting: boolean
+  onOpenChange: (open: boolean) => void
+  onKeywordChange: (value: string) => void
+  onConfirm: () => void
+}
+
+interface ProgressDialogState {
+  open: boolean
+  status: "running" | "done" | "error"
+  total: number
+  processed: number
+  success: number
+  failed: number
   onOpenChange: (open: boolean) => void
 }
 
@@ -34,6 +63,8 @@ interface ZhihuRadarPageViewProps {
   onSaveKeywords: (next: CategoryItem[]) => void
   onOpenTrend: (item: ZhihuQuestionItem) => void
   trendDialog: TrendDialogState
+  updateDialog: UpdateDialogState
+  progressDialog: ProgressDialogState
 }
 
 const KeywordSkeleton = () => (
@@ -83,6 +114,8 @@ export default function ZhihuRadarPageView({
   onSaveKeywords,
   onOpenTrend,
   trendDialog,
+  updateDialog,
+  progressDialog,
 }: ZhihuRadarPageViewProps) {
   return (
     <>
@@ -154,6 +187,9 @@ export default function ZhihuRadarPageView({
                   value={searchValue}
                   onChange={(event) => onSearchChange(event.target.value)}
                 />
+                <Button variant="outline" onClick={() => updateDialog.onOpenChange(true)}>
+                  更新数据
+                </Button>
                 <Button onClick={onOpenKeywordManager}>添加监控关键词</Button>
               </div>
             </div>
@@ -242,6 +278,53 @@ export default function ZhihuRadarPageView({
           onSave={onSaveKeywords}
         />
       ) : null}
+
+      <Dialog open={updateDialog.open} onOpenChange={updateDialog.onOpenChange}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold text-slate-900">
+              更新数据
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <div className="text-sm text-slate-600">选择关键词范围</div>
+            <Select value={updateDialog.keywordId} onValueChange={updateDialog.onKeywordChange}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="请选择" />
+              </SelectTrigger>
+              <SelectContent>
+                {updateDialog.options.map((option) => (
+                  <SelectItem key={option.id} value={option.id}>
+                    {option.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => updateDialog.onOpenChange(false)}>
+              取消
+            </Button>
+            <Button onClick={updateDialog.onConfirm} disabled={updateDialog.submitting}>
+              {updateDialog.submitting ? "更新中..." : "开始更新"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ProgressDialog
+        open={progressDialog.open}
+        title="更新数据"
+        status={progressDialog.status}
+        total={progressDialog.total}
+        processed={progressDialog.processed}
+        success={progressDialog.success}
+        summaryText={`共 ${progressDialog.total} 个问题 · 成功 ${progressDialog.success} · 失败 ${progressDialog.failed}`}
+        failures={[]}
+        showFailures={false}
+        allowCancel={false}
+        onOpenChange={progressDialog.onOpenChange}
+      />
 
       <Dialog open={trendDialog.open} onOpenChange={trendDialog.onOpenChange}>
         <DialogContent className="sm:max-w-[720px]">

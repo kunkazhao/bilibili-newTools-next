@@ -24,6 +24,21 @@ export type ZhihuQuestionStat = {
   answer_count: number
 }
 
+export type ZhihuScrapeJobStatus = "queued" | "running" | "done" | "error"
+
+export type ZhihuScrapeJobState = {
+  id: string
+  status: ZhihuScrapeJobStatus
+  keyword_id?: string | null
+  total: number
+  processed: number
+  success?: number
+  failed?: number
+  error?: string | null
+  started_at?: string
+  updated_at?: string
+}
+
 export const fetchZhihuKeywords = () =>
   apiRequest<{ keywords: ZhihuKeyword[] }>("/api/zhihu/keywords")
 
@@ -63,3 +78,15 @@ export const fetchZhihuQuestionStats = (id: string, days = 15) =>
   apiRequest<{ stats: ZhihuQuestionStat[] }>(
     `/api/zhihu/questions/${id}/stats?days=${days}`
   )
+
+export const runZhihuScrape = (params: { keywordId?: string }) =>
+  apiRequest<{ job_id: string; status: ZhihuScrapeJobStatus }>(
+    "/api/zhihu/scrape/run",
+    {
+      method: "POST",
+      body: JSON.stringify({ keyword_id: params.keywordId }),
+    }
+  )
+
+export const fetchZhihuScrapeStatus = (jobId: string) =>
+  apiRequest<ZhihuScrapeJobState>(`/api/zhihu/scrape/status/${jobId}`)

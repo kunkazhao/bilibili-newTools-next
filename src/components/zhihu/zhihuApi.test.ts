@@ -6,6 +6,8 @@ import {
   fetchZhihuKeywords,
   fetchZhihuQuestionStats,
   fetchZhihuQuestions,
+  fetchZhihuScrapeStatus,
+  runZhihuScrape,
   updateZhihuKeyword,
 } from "./zhihuApi"
 
@@ -47,5 +49,18 @@ describe("zhihuApi", () => {
   it("fetchZhihuQuestionStats hits stats endpoint", async () => {
     await fetchZhihuQuestionStats("qid")
     expect(apiRequest).toHaveBeenCalledWith("/api/zhihu/questions/qid/stats?days=15")
+  })
+
+  it("runZhihuScrape posts keyword id", async () => {
+    await runZhihuScrape({ keywordId: "kid" })
+    expect(apiRequest).toHaveBeenCalledWith("/api/zhihu/scrape/run", {
+      method: "POST",
+      body: JSON.stringify({ keyword_id: "kid" }),
+    })
+  })
+
+  it("fetchZhihuScrapeStatus hits status endpoint", async () => {
+    await fetchZhihuScrapeStatus("job-1")
+    expect(apiRequest).toHaveBeenCalledWith("/api/zhihu/scrape/status/job-1")
   })
 })

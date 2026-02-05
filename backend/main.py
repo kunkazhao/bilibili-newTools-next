@@ -32,6 +32,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from typing import List, Optional, Dict, Any, Tuple, Set, Literal, Callable, Awaitable
+from uuid import uuid4
 
 from urllib.parse import urlencode, urlparse, parse_qs, quote
 
@@ -321,6 +322,8 @@ supabase_client: Optional["SupabaseClient"] = None
 zhihu_scheduler: Optional[AsyncIOScheduler] = None
 zhihu_playwright = None
 zhihu_browser = None
+zhihu_job_store: Dict[str, Dict[str, Any]] = {}
+zhihu_job_lock = threading.Lock()
 
 
 
@@ -640,6 +643,82 @@ def extract_zhihu_questions(items: List[Dict[str, Any]], limit: int = 50) -> Lis
     return results
 
 
+def create_zhihu_job_state(total: int, keyword_id: Optional[str]) -> Dict[str, Any]:
+    job_id = str(uuid4())
+    now = utc_now_iso()
+    state = {
+        "id": job_id,
+        "status": "queued",
+        "keyword_id": keyword_id,
+        "total": total,
+        "processed": 0,
+        "success": 0,
+        "failed": 0,
+        "error": None,
+        "started_at": now,
+        "updated_at": now,
+    }
+    with zhihu_job_lock:
+        zhihu_job_store[job_id] = state
+    return state
+
+
+def update_zhihu_job_state(job_id: str, **updates: Any) -> None:
+    with zhihu_job_lock:
+        state = zhihu_job_store.get(job_id)
+        if not state:
+            return
+        state.update(updates)
+        state["updated_at"] = utc_now_iso()
+
+
+def get_zhihu_job_state(job_id: str) -> Optional[Dict[str, Any]]:
+    with zhihu_job_lock:
+        state = zhihu_job_store.get(job_id)
+        return dict(state) if state else None
+
+
+def chunk_list(values: List[str], size: int) -> List[List[str]]:
+    if size <= 0:
+        return [values]
+    return [values[i : i + size] for i in range(0, len(values), size)]
+
+
+async def fetch_existing_question_ids(
+    client: "SupabaseClient", keyword_id: Optional[str]
+) -> List[str]:
+    if keyword_id:
+        rows = await client.select(
+            "zhihu_question_keywords",
+            {"keyword_id": f"eq.{keyword_id}", "select": "question_id"},
+        )
+        return [row.get("question_id") for row in rows if row.get("question_id")]
+    rows = await client.select("zhihu_questions", {"select": "id"})
+    return [row.get("id") for row in rows if row.get("id")]
+
+
+async def fetch_existing_questions_map(
+    client: "SupabaseClient", question_ids: List[str]
+) -> Dict[str, Dict[str, Any]]:
+    existing: Dict[str, Dict[str, Any]] = {}
+    for chunk in chunk_list(question_ids, 200):
+        if not chunk:
+            continue
+        rows = await client.select(
+            "zhihu_questions",
+            {
+                "id": f"in.({','.join(chunk)})",
+                "select": "id,title,url,first_keyword_id",
+            },
+        )
+        for row in rows:
+            qid = str(row.get("id") or "").strip()
+            if not qid:
+                continue
+            existing[qid] = row
+    return existing
+
+
 async def ensure_zhihu_browser():
     global zhihu_playwright, zhihu_browser
     if zhihu_browser:
@@ -731,10 +810,19 @@ async def zhihu_scrape_job(
     detail_fetcher: Optional[Callable[[str], Awaitable[Optional[Dict[str, Any]]]]] = None,
     today: Optional[date] = None,
     now: Optional[str] = None,
+    keyword_id: Optional[str] = None,
+    include_existing: bool = False,
+    job_id: Optional[str] = None,
 ) -> None:
     client = client or ensure_supabase()
-    keywords = await client.select("zhihu_keywords", params={"order": "created_at.asc"})
+    if keyword_id:
+        keywords = await client.select("zhihu_keywords", {"id": f"eq.{keyword_id}"})
+    else:
+        keywords = await client.select("zhihu_keywords", params={"order": "created_at.asc"})
+
     if not keywords:
+        if job_id:
+            update_zhihu_job_state(job_id, status="done", total=0, processed=0)
         return
 
     today_value = today or shanghai_today()
@@ -742,49 +830,86 @@ async def zhihu_scrape_job(
     search_fetcher = search_fetcher or fetch_search_results_for_keyword
     detail_fetcher = detail_fetcher or fetch_question_stats
 
-    processed_questions: Set[str] = set()
+    keyword_questions: Dict[str, List[Dict[str, str]]] = {}
+    question_info: Dict[str, Dict[str, Any]] = {}
+    question_order: List[str] = []
 
     for keyword in keywords:
         name = (keyword.get("name") or "").strip()
-        keyword_id = keyword.get("id")
-        if not name or not keyword_id:
+        kid = keyword.get("id")
+        if not name or not kid:
             continue
-
         raw_items = await search_fetcher(name)
         questions = extract_zhihu_questions(raw_items, limit=50)
+        keyword_questions[str(kid)] = questions
+        for question in questions:
+            qid = question.get("id")
+            if not qid or qid in question_info:
+                continue
+            question_info[qid] = {
+                "title": question.get("title") or "",
+                "url": question.get("url") or f"https://www.zhihu.com/question/{qid}",
+                "first_keyword_id": kid,
+            }
+            question_order.append(qid)
 
+    if include_existing:
+        existing_ids = await fetch_existing_question_ids(client, keyword_id)
+        for qid in existing_ids:
+            qid_value = str(qid or "").strip()
+            if not qid_value:
+                continue
+            if qid_value in question_info:
+                continue
+            question_info[qid_value] = {}
+            question_order.append(qid_value)
+
+    existing_map = await fetch_existing_questions_map(client, question_order)
+
+    total = len(question_order)
+    processed = 0
+    success = 0
+    failed = 0
+    if job_id:
+        update_zhihu_job_state(job_id, status="running", total=total, processed=0, success=0, failed=0)
+
+    for kid, questions in keyword_questions.items():
         for question in questions:
             qid = question.get("id")
             if not qid:
                 continue
-
             await client.request(
                 "POST",
                 "zhihu_question_keywords",
                 params={"on_conflict": "question_id,keyword_id"},
                 json_payload={
                     "question_id": qid,
-                    "keyword_id": keyword_id,
+                    "keyword_id": kid,
                     "first_seen_at": now_value,
                     "last_seen_at": now_value,
                 },
                 prefer="resolution=merge-duplicates,return=representation",
             )
 
-            if qid in processed_questions:
-                continue
-
-            existing = await client.select("zhihu_questions", {"id": f"eq.{qid}"})
-            first_keyword_id = existing[0].get("first_keyword_id") if existing else None
+    try:
+        for qid in question_order:
+            info = question_info.get(qid) or {}
+            existing_row = existing_map.get(qid) or {}
+            title = info.get("title") or existing_row.get("title") or ""
+            url = info.get("url") or existing_row.get("url") or f"https://www.zhihu.com/question/{qid}"
+            first_keyword_id = (
+                existing_row.get("first_keyword_id")
+                or info.get("first_keyword_id")
+            )
             payload = {
                 "id": qid,
-                "title": question.get("title") or "",
-                "url": question.get("url") or f"https://www.zhihu.com/question/{qid}",
-                "first_keyword_id": first_keyword_id or keyword_id,
+                "title": title,
+                "url": url,
+                "first_keyword_id": first_keyword_id,
                 "updated_at": now_value,
                 "last_seen_at": now_value,
             }
-            if not existing:
+            if not existing_row:
                 payload["created_at"] = now_value
 
             await client.request(
@@ -796,28 +921,44 @@ async def zhihu_scrape_job(
             )
 
             detail = await detail_fetcher(qid)
-            if not detail:
-                processed_questions.add(qid)
-                continue
+            if detail:
+                stat = {
+                    "question_id": qid,
+                    "stat_date": str(today_value),
+                    "view_count": int(detail.get("visit_count") or 0),
+                    "answer_count": int(detail.get("answer_count") or 0),
+                    "fetched_at": now_value,
+                }
+                await client.request(
+                    "POST",
+                    "zhihu_question_stats",
+                    params={"on_conflict": "question_id,stat_date"},
+                    json_payload=stat,
+                    prefer="resolution=merge-duplicates,return=representation",
+                )
+                success += 1
+            else:
+                failed += 1
 
-            stat = {
-                "question_id": qid,
-                "stat_date": str(today_value),
-                "view_count": int(detail.get("visit_count") or 0),
-                "answer_count": int(detail.get("answer_count") or 0),
-                "fetched_at": now_value,
-            }
-            await client.request(
-                "POST",
-                "zhihu_question_stats",
-                params={"on_conflict": "question_id,stat_date"},
-                json_payload=stat,
-                prefer="resolution=merge-duplicates,return=representation",
-            )
-            processed_questions.add(qid)
+            processed += 1
+            if job_id:
+                update_zhihu_job_state(
+                    job_id,
+                    processed=processed,
+                    success=success,
+                    failed=failed,
+                    status="running",
+                )
 
-    cutoff = today_value - timedelta(days=15)
-    await client.delete("zhihu_question_stats", {"stat_date": f"lt.{cutoff}"})
+        cutoff = today_value - timedelta(days=15)
+        await client.delete("zhihu_question_stats", {"stat_date": f"lt.{cutoff}"})
+
+        if job_id:
+            update_zhihu_job_state(job_id, status="done", processed=processed, success=success, failed=failed)
+    except Exception as exc:
+        if job_id:
+            update_zhihu_job_state(job_id, status="error", error=str(exc))
+        raise
 
 
 def init_zhihu_scheduler() -> None:
@@ -6403,6 +6544,9 @@ class ZhihuKeywordPayload(BaseModel):
 class ZhihuKeywordUpdate(BaseModel):
     name: Optional[str] = None
 
+class ZhihuScrapeRunPayload(BaseModel):
+    keyword_id: Optional[str] = None
+
 
 
 
@@ -9395,9 +9539,23 @@ async def get_zhihu_question_stats(question_id: str, days: int = 15):
 
 
 @app.post("/api/zhihu/scrape/run")
-async def run_zhihu_scrape():
-    asyncio.create_task(zhihu_scrape_job())
-    return {"status": "started"}
+async def run_zhihu_scrape(payload: Optional[ZhihuScrapeRunPayload] = None, dry_run: bool = False):
+    keyword_id = payload.keyword_id if payload else None
+    job_state = create_zhihu_job_state(total=0, keyword_id=keyword_id)
+    job_id = job_state["id"]
+    if not dry_run:
+        asyncio.create_task(
+            zhihu_scrape_job(keyword_id=keyword_id, include_existing=True, job_id=job_id)
+        )
+    return {"status": "queued", "job_id": job_id}
+
+
+@app.get("/api/zhihu/scrape/status/{job_id}")
+async def get_zhihu_scrape_status(job_id: str):
+    state = get_zhihu_job_state(job_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    return state
 
 
 @app.post("/api/comment/combos")

@@ -21,6 +21,8 @@ vi.mock("./zhihuApi", () => ({
   updateZhihuKeyword: vi.fn(),
   deleteZhihuKeyword: vi.fn(),
   fetchZhihuQuestionStats: vi.fn(),
+  runZhihuScrape: vi.fn(),
+  fetchZhihuScrapeStatus: vi.fn(),
 }))
 
 vi.mock("@/components/Toast", () => ({
