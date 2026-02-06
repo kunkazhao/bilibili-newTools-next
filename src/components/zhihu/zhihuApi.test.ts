@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest"
 import { apiRequest } from "@/lib/api"
 import {
   createZhihuKeyword,
+  createZhihuQuestion,
   deleteZhihuKeyword,
   fetchZhihuKeywords,
   fetchZhihuQuestionStats,
@@ -52,6 +53,20 @@ describe("zhihuApi", () => {
   it("fetchZhihuQuestionStats hits stats endpoint", async () => {
     await fetchZhihuQuestionStats("qid")
     expect(apiRequest).toHaveBeenCalledWith("/api/zhihu/questions/qid/stats?days=15")
+  })
+
+  it("createZhihuQuestion posts question link and keyword", async () => {
+    await createZhihuQuestion({
+      questionUrl: "https://www.zhihu.com/question/1",
+      keywordId: "kid",
+    })
+    expect(apiRequest).toHaveBeenCalledWith("/api/zhihu/questions", {
+      method: "POST",
+      body: JSON.stringify({
+        question_url: "https://www.zhihu.com/question/1",
+        keyword_id: "kid",
+      }),
+    })
   })
 
   it("fetchZhihuKeywordCounts hits counts endpoint", async () => {

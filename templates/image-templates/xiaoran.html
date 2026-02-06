@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Template</title>
 <style>
+@font-face {
+  font-family: "Noto Sans SC";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/noto-sans-sc/NotoSansSC-VariableFont_wght.ttf") format("truetype");
+}
 :root {
   --tpl-card-bg: transparent;
   --tpl-panel: rgba(10, 14, 26, 0.96);
@@ -16,9 +23,12 @@
   --tpl-highlight: #f6c453;
   --tpl-border: rgba(53, 246, 255, 0.3);
   --tpl-shadow: 0 18px 40px rgba(12, 16, 24, 0.45);
-  --tpl-font: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif;
-  --tpl-title-font: "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --tpl-summary-font: "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --tpl-font: "Noto Sans SC", "Microsoft YaHei", "PingFang SC", sans-serif;
+  --tpl-title-font: "Noto Sans SC", "Microsoft YaHei", "PingFang SC", sans-serif;
+  --tpl-summary-font: "Noto Sans SC", "Microsoft YaHei", "PingFang SC", sans-serif;
+  --tpl-title-line: 1.4;
+  --tpl-summary-line: 1.6;
+  --tpl-title-offset: 0px;
   --tpl-cover-w: 260px;
   --tpl-cover-h: 220px;
 }
@@ -28,6 +38,9 @@ body {
   background: transparent;
   font-family: var(--tpl-font);
   color: var(--tpl-text);
+}
+.tpl-title {
+  transform: translateY(var(--tpl-title-offset));
 }
 .tpl-img-card {
   width: 970px;
@@ -51,7 +64,7 @@ body {
 
 .tpl-img-title-wrap {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   gap: 14px;
 }
 
@@ -61,6 +74,8 @@ body {
   font-weight: 800;
   letter-spacing: 0.6px;
   color: var(--tpl-text);
+  line-height: var(--tpl-title-line);
+  margin-top: -2px;
 }
 .tpl-img-price {
   font-size: 28px;
@@ -141,7 +156,7 @@ body {
   font-size: 18px;
   font-weight: 700;
   color: #dce4ff;
-  line-height: 1.6;
+  line-height: var(--tpl-summary-line);
   white-space: normal;
   word-break: break-word;
 }

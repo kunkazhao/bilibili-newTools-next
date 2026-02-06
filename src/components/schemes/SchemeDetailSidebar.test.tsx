@@ -10,14 +10,21 @@ const copyLabel = "\u590d\u5236"
 const baseProps = {
   copywriting: {
     title: "",
-    intro: "",
     vote: "",
     onTitleChange: () => {},
-    onIntroChange: () => {},
     onVoteChange: () => {},
     onOpenPrompt: () => {},
     onCopy: () => {},
     onGenerate: () => {},
+  },
+  productLinks: {
+    output: "",
+    onOutputChange: () => {},
+    onCopy: () => {},
+    onGenerate: () => {},
+    canToggleMode: false,
+    toggleModeLabel: "\u5012\u5e8f\u6392\u5217",
+    onToggleMode: () => {},
   },
   commentReply: {
     count: 1,
@@ -53,11 +60,9 @@ const baseProps = {
     activeCategory: "",
     activeTemplateId: "",
     emptyValue: "__empty__",
-    missingMessage: "",
     status: null,
     onCategoryChange: () => {},
     onTemplateChange: () => {},
-    onRefreshMissing: () => {},
     onGenerate: () => {},
   },
 }
@@ -75,6 +80,32 @@ describe("SchemeDetailSidebar", () => {
 
   it("shows three blue link actions and copy icon", () => {
     render(<SchemeDetailSidebar {...baseProps} />)
-    expect(screen.getAllByLabelText(copyLabel).length).toBeGreaterThan(0)
+    expect(screen.getAllByLabelText(copyLabel).length).toBeGreaterThan(1)
   })
+
+  it("replaces intro card with product links card", () => {
+    render(<SchemeDetailSidebar {...baseProps} />)
+    expect(screen.queryByText("\u751f\u6210\u7b80\u4ecb")).toBeNull()
+    expect(screen.getAllByText("\u751f\u6210\u5546\u54c1\u94fe\u63a5").length).toBeGreaterThan(0)
+  })
+
+  it("hides toggle button before product links are generated", () => {
+    render(<SchemeDetailSidebar {...baseProps} />)
+    expect(screen.queryByRole("button", { name: "\u5012\u5e8f\u6392\u5217" })).toBeNull()
+  })
+
+  it("shows toggle button after product links are generated", () => {
+    render(
+      <SchemeDetailSidebar
+        {...baseProps}
+        productLinks={{
+          ...baseProps.productLinks,
+          canToggleMode: true,
+          toggleModeLabel: "\u6b63\u5e8f\u6392\u5217",
+        }}
+      />
+    )
+    expect(screen.getByRole("button", { name: "\u6b63\u5e8f\u6392\u5217" })).not.toBeNull()
+  })
+
 })

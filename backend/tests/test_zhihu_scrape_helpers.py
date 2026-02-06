@@ -4,7 +4,7 @@ import unittest
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from main import parse_cookie_header, extract_zhihu_questions
+from main import parse_cookie_header, extract_zhihu_question_id, extract_zhihu_questions
 
 
 class ZhihuScrapeHelperTests(unittest.TestCase):
@@ -32,6 +32,19 @@ class ZhihuScrapeHelperTests(unittest.TestCase):
         self.assertEqual(result[0]["id"], "123")
         self.assertEqual(result[0]["title"], "A")
         self.assertTrue(result[0]["url"].endswith("/question/123"))
+
+
+    def test_extract_zhihu_question_id(self):
+        self.assertEqual(
+            extract_zhihu_question_id("https://www.zhihu.com/question/123456?utm_source=test"),
+            "123456",
+        )
+        self.assertEqual(
+            extract_zhihu_question_id("https://www.zhihu.com/question/99887766/answer/11223344"),
+            "99887766",
+        )
+        self.assertEqual(extract_zhihu_question_id("445566"), "445566")
+        self.assertEqual(extract_zhihu_question_id("https://example.com/foo"), "")
 
 
 if __name__ == "__main__":

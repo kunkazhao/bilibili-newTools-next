@@ -25,8 +25,8 @@ describe("SchemeDetailPageView", () => {
     const { container } = render(
       <SchemeDetailPageView
         header={{
-          name: "方案",
-          categoryName: "分类",
+          name: "??",
+          categoryName: "??",
           itemCount: 0,
           createdAt: "2026-01-30",
           onBack: () => {},
@@ -53,14 +53,21 @@ describe("SchemeDetailPageView", () => {
         sidebar={{
           copywriting: {
             title: "",
-            intro: "",
             vote: "",
             onTitleChange: () => {},
-            onIntroChange: () => {},
             onVoteChange: () => {},
             onOpenPrompt: () => {},
             onCopy: () => {},
             onGenerate: () => {},
+          },
+          productLinks: {
+            output: "",
+            onOutputChange: () => {},
+            onCopy: () => {},
+            onGenerate: () => {},
+            canToggleMode: false,
+            toggleModeLabel: "",
+            onToggleMode: () => {},
           },
           commentReply: {
             count: 1,
@@ -93,20 +100,15 @@ describe("SchemeDetailPageView", () => {
             activeCategory: "",
             activeTemplateId: "",
             emptyValue: "",
-            missingMessage: "",
             status: null,
             onCategoryChange: () => {},
             onTemplateChange: () => {},
-            onRefreshMissing: () => {},
             onGenerate: () => {},
           },
         }}
       />
     )
 
-    expect(
-      container.querySelector('.lg\\:grid-cols-\\[320px_1fr\\]')
-    ).not.toBeNull()
+    expect(container.innerHTML.includes("lg:grid-cols-[320px_1fr]")).toBe(true)
   })
 })
-

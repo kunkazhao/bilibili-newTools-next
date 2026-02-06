@@ -1,4 +1,5 @@
 ﻿import { useEffect, useState } from "react"
+import { Settings } from "lucide-react"
 import Empty from "@/components/Empty"
 import PrimaryButton from "@/components/PrimaryButton"
 import ArchiveListCard from "@/components/archive/ArchiveListCard"
@@ -9,6 +10,7 @@ import ProductFormModal from "@/components/archive/ProductFormModal"
 import Skeleton from "@/components/Skeleton"
 import type { CategoryItem, SpecField } from "@/components/archive/types"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
 import {
   Select,
   SelectContent,
@@ -96,6 +98,7 @@ interface ArchivePageViewProps {
   onFetchParams: (id: string) => void
   onSelectCategory: (id: string) => void
   onClearList: () => void
+  onOpenReplaceCover?: () => void
   onDownloadImages: () => void
   onExport: () => void
   onSyncFeishu: () => void
@@ -238,6 +241,7 @@ export default function ArchivePageView({
   onFetchParams,
   onSelectCategory,
   onClearList,
+  onOpenReplaceCover,
   onDownloadImages,
   onExport,
   onSyncFeishu,
@@ -329,13 +333,17 @@ export default function ArchivePageView({
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card min-h-[calc(100vh-240px)]">
           <div className="flex items-center justify-between">
             <h3 className="text-base font-semibold text-slate-900">选品分类</h3>
-            <button
-              className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-500"
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-slate-500"
               type="button"
               onClick={onOpenCategoryManager}
+              aria-label="Category settings"
+              title="Category settings"
             >
-              ＋
-            </button>
+              <Settings className="h-4 w-4" aria-hidden="true" />
+            </Button>
           </div>
           <div className="mt-4 space-y-2">
             {showCategorySkeleton ? (
@@ -368,7 +376,7 @@ export default function ArchivePageView({
         </section>
         <div className="space-y-6">
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <h3 className="text-base font-semibold text-slate-900">商品列表</h3>
                 <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-500">
@@ -407,6 +415,7 @@ export default function ArchivePageView({
                 </PrimaryButton>
                 <PrimaryButton onClick={onOpenPresetFields}>预设参数</PrimaryButton>
                 <PrimaryButton onClick={onCreate}>新增选品</PrimaryButton>
+                <PrimaryButton onClick={onOpenReplaceCover}>替换封面</PrimaryButton>
                 <PrimaryButton onClick={onSyncFeishu}>写入飞书表格</PrimaryButton>
               </div>
             </div>

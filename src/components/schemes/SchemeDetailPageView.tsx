@@ -49,14 +49,21 @@ type SchemeDetailPageViewProps = {
   sidebar: {
     copywriting: {
       title: string
-      intro: string
       vote: string
       onTitleChange: (value: string) => void
-      onIntroChange: (value: string) => void
       onVoteChange: (value: string) => void
-      onOpenPrompt: (type: "title" | "intro" | "vote") => void
+      onOpenPrompt: (type: "title" | "vote") => void
       onCopy: (text: string, message: string) => void
-      onGenerate: (type: "title" | "intro" | "vote") => void
+      onGenerate: (type: "title" | "vote") => void
+    }
+    productLinks: {
+      output: string
+      onOutputChange: (value: string) => void
+      onCopy: (text: string, message: string) => void
+      onGenerate: () => void
+      canToggleMode: boolean
+      toggleModeLabel: string
+      onToggleMode: () => void
     }
     commentReply: {
       count: number
@@ -89,11 +96,9 @@ type SchemeDetailPageViewProps = {
       activeCategory: string
       activeTemplateId: string
       emptyValue: string
-      missingMessage: string
       status: { type: "success" | "error" | "info"; message: string } | null
       onCategoryChange: (value: string) => void
       onTemplateChange: (value: string) => void
-      onRefreshMissing: () => void
       onGenerate: () => void
     }
   }
@@ -142,6 +147,7 @@ export default function SchemeDetailPageView({
 
         <SchemeDetailSidebar
           copywriting={sidebar.copywriting}
+          productLinks={sidebar.productLinks}
           commentReply={sidebar.commentReply}
           blueLink={sidebar.blueLink}
           image={sidebar.image}

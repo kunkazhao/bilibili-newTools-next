@@ -16,7 +16,6 @@ export default function SchemeDetailHeader({
   categoryName,
   itemCount,
   createdAt,
-  onBack,
   onExportJson,
   onExportExcel,
   onOpenFeishu,
@@ -38,9 +37,6 @@ export default function SchemeDetailHeader({
         </Button>
         <Button variant="outline" onClick={onOpenFeishu}>
           写入飞书表格
-        </Button>
-        <Button variant="outline" onClick={onBack}>
-          返回方案列表
         </Button>
       </div>
     </div>

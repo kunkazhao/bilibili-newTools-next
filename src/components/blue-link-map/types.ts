@@ -29,6 +29,7 @@ export interface SourcingItem {
   commission_rate?: number
   cover_url?: string
   link?: string
+  taobao_link?: string
   updated_at?: string
   created_at?: string
   category_id?: string

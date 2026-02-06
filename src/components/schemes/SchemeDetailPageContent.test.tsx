@@ -11,7 +11,17 @@ const schemeDetailViewCapture = vi.hoisted(() => ({
   props: null as null | {
     header: { onExportJson: () => void; onExportExcel: () => void; onOpenFeishu: () => void }
     productList: { totalCount: number; onGenerateImage: (id: string) => void }
-    sidebar: { image: { activeTemplateId: string; onGenerate: () => Promise<void> | void } }
+    sidebar: {
+      image: { activeTemplateId: string; onGenerate: () => Promise<void> | void }
+      productLinks: {
+        output: string
+        onGenerate: () => void
+        canToggleMode: boolean
+        toggleModeLabel: string
+        onToggleMode: () => void
+      }
+      blueLink: { onGenerate: () => void }
+    }
   },
 }))
 
@@ -119,7 +129,7 @@ describe("SchemeDetailPageContent", () => {
     zipFileCalls.length = 0
   })
 
-  it("loads blue link state via v2 helper", async () => {
+  it("loads blue link state on demand", async () => {
     vi.mocked(fetchBlueLinkMapState).mockResolvedValue({
       accounts: [],
       categories: [],
@@ -128,9 +138,16 @@ describe("SchemeDetailPageContent", () => {
 
     render(<SchemeDetailPageContent schemeId="s1" onBack={() => {}} />)
 
-    await waitFor(() =>
+    await waitFor(() => {
+      expect(schemeDetailViewCapture.props?.productList.totalCount).toBe(1)
+    })
+    expect(fetchBlueLinkMapState).not.toHaveBeenCalled()
+
+    schemeDetailViewCapture.props?.sidebar.blueLink.onGenerate()
+
+    await waitFor(() => {
       expect(fetchBlueLinkMapState).toHaveBeenCalledWith(["p1"])
-    )
+    })
   })
 
   it("downloads image zip named with scheme, template, and timestamp", async () => {
@@ -326,6 +343,138 @@ describe("SchemeDetailPageContent", () => {
     revokeUrlSpy.mockRestore()
     createUrlSpy.mockRestore()
     createElementSpy.mockRestore()
+    apiMock.mockImplementation(baseImpl ?? (() => Promise.resolve({})))
+  })
+
+  it("truncates jd and tmall links in generated product links", async () => {
+    const apiMock = vi.mocked(apiRequest)
+    const baseImpl = apiMock.getMockImplementation()
+    apiMock.mockImplementation((path: string, options?: RequestInit) => {
+      if (path.startsWith("/api/schemes/")) {
+        return Promise.resolve({
+          scheme: {
+            id: "s1",
+            name: "Scheme",
+            category_id: "cat-1",
+            category_name: "Category",
+            items: [
+              {
+                id: "item-1",
+                source_id: "p1",
+                title: "Product A",
+                price: 99,
+                link: "https://item.jd.com/100148265520.html?unionMediaTag=2_0_1&uabt=872_12138_1_0&cu=true",
+                taobao_link:
+                  "https://detail.tmall.com/item.htm?abbucket=10&id=881167534932&pisk=fGesM0xxPFY_WPl9aoIePa75P3MjCP6z",
+                spec: {},
+              },
+            ],
+          },
+        })
+      }
+      return baseImpl ? baseImpl(path, options) : Promise.resolve({})
+    })
+
+    render(<SchemeDetailPageContent schemeId="s1-truncate" onBack={() => {}} />)
+
+    await waitFor(() => {
+      expect(schemeDetailViewCapture.props?.productList.totalCount).toBe(1)
+    })
+
+    schemeDetailViewCapture.props?.sidebar.productLinks.onGenerate()
+
+    await waitFor(() => {
+      const output = schemeDetailViewCapture.props?.sidebar.productLinks.output || ""
+      expect(output).toContain("https://item.jd.com/100148265520.html")
+      expect(output).toContain("https://detail.tmall.com/item.htm?abbucket=10&id=881167534932")
+      expect(output).not.toContain("unionMediaTag=")
+      expect(output).not.toContain("&pisk=")
+    })
+
+    apiMock.mockImplementation(baseImpl ?? (() => Promise.resolve({})))
+  })
+
+  it("toggles product links output between normal and reverse mode", async () => {
+    const apiMock = vi.mocked(apiRequest)
+    const baseImpl = apiMock.getMockImplementation()
+    apiMock.mockImplementation((path: string, options?: RequestInit) => {
+      if (path.startsWith("/api/schemes/")) {
+        return Promise.resolve({
+          scheme: {
+            id: "s1",
+            name: "Scheme",
+            category_id: "cat-1",
+            category_name: "Category",
+            items: [
+              {
+                id: "item-1",
+                source_id: "p1",
+                title: "Product A",
+                price: 99,
+                link: "https://item.jd.com/111.html?utm_source=test",
+                taobao_link: "https://detail.tmall.com/item.htm?abbucket=1&id=222&spm=test",
+                spec: {},
+              },
+              {
+                id: "item-2",
+                source_id: "p2",
+                title: "Product B",
+                price: 199,
+                link: "https://item.jd.com/333.html?utm_source=test",
+                taobao_link: "https://detail.tmall.com/item.htm?abbucket=2&id=444&spm=test",
+                spec: {},
+              },
+            ],
+          },
+        })
+      }
+      return baseImpl ? baseImpl(path, options) : Promise.resolve({})
+    })
+
+    render(<SchemeDetailPageContent schemeId="s1" onBack={() => {}} />)
+
+    await waitFor(() => {
+      expect(schemeDetailViewCapture.props?.productList.totalCount).toBe(2)
+      expect(schemeDetailViewCapture.props?.sidebar.productLinks.canToggleMode).toBe(false)
+    })
+
+    schemeDetailViewCapture.props?.sidebar.productLinks.onGenerate()
+
+    await waitFor(() => {
+      const links = schemeDetailViewCapture.props?.sidebar.productLinks
+      expect(links?.canToggleMode).toBe(true)
+      expect(links?.toggleModeLabel).toBe("\u5012\u5e8f\u6392\u5217")
+      expect(links?.output).toContain("Product A,99\u5143")
+      expect(links?.output).toContain("Product B,199\u5143")
+    })
+
+    schemeDetailViewCapture.props?.sidebar.productLinks.onToggleMode()
+
+    await waitFor(() => {
+      const links = schemeDetailViewCapture.props?.sidebar.productLinks
+      const lines = String(links?.output || "")
+        .split("\n")
+        .filter(Boolean)
+      expect(links?.toggleModeLabel).toBe("\u6b63\u5e8f\u6392\u5217")
+      expect(lines).toEqual([
+        "https://detail.tmall.com/item.htm?abbucket=2&id=444",
+        "https://item.jd.com/333.html",
+        "https://detail.tmall.com/item.htm?abbucket=1&id=222",
+        "https://item.jd.com/111.html",
+      ])
+      expect(links?.output).not.toContain("Product A,99\u5143")
+      expect(links?.output).not.toContain("Product B,199\u5143")
+    })
+
+    schemeDetailViewCapture.props?.sidebar.productLinks.onToggleMode()
+
+    await waitFor(() => {
+      const links = schemeDetailViewCapture.props?.sidebar.productLinks
+      expect(links?.toggleModeLabel).toBe("\u5012\u5e8f\u6392\u5217")
+      expect(links?.output).toContain("Product A,99\u5143")
+      expect(links?.output).toContain("Product B,199\u5143")
+    })
+
     apiMock.mockImplementation(baseImpl ?? (() => Promise.resolve({})))
   })
 

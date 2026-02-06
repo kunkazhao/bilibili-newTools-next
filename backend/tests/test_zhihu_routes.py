@@ -27,6 +27,7 @@ class ZhihuRouteTests(unittest.TestCase):
         self.assertTrue(has_route("/api/zhihu/keywords/{keyword_id}", {"DELETE"}))
         self.assertTrue(has_route("/api/zhihu/keywords/counts", {"GET"}))
         self.assertTrue(has_route("/api/zhihu/questions", {"GET"}))
+        self.assertTrue(has_route("/api/zhihu/questions", {"POST"}))
         self.assertTrue(has_route("/api/zhihu/questions/{question_id}/stats", {"GET"}))
         self.assertTrue(has_route("/api/zhihu/scrape/run", {"POST"}))
 

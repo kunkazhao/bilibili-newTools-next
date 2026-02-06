@@ -16,10 +16,17 @@ import {
 } from "@/components/commission/commissionExport"
 import { buildCommissionArchiveSpec } from "@/components/commission/commissionArchive"
 import {
+  BiliApiError,
   extractLinksFromComment,
   getPinnedComments,
   isBilibiliInput,
 } from "@/lib/bilibili"
+import {
+  createAsyncQueue,
+  retryWithBackoff,
+  runQueueWithConcurrency,
+  runWithConcurrency,
+} from "@/lib/asyncPool"
 
 interface CommissionItem {
   id: string
@@ -50,6 +57,16 @@ const CATEGORY_CACHE_KEY = "sourcing_category_cache_v1"
 const CATEGORY_CACHE_TTL = 5 * 60 * 1000
 const BENCHMARK_PICK_CACHE_KEY = "benchmark_pick_cache_v1"
 const BENCHMARK_PICK_CACHE_TTL = 5 * 60 * 1000
+const VIDEO_CONCURRENCY = 4
+const PRODUCT_CONCURRENCY = 8
+const BILI_RETRYABLE_CODES = new Set([
+  "-403",
+  "-412",
+  "-509",
+  "-352",
+  "-1202",
+  "-1209",
+])
 
 interface ArchiveCategory {
   id: string
@@ -156,6 +173,18 @@ const isJdLink = (link: string) =>
 
 const isTaobaoLink = (link: string) =>
   /taobao\.com|tmall\.com|tmall\.hk|click\.taobao|uland\.taobao/i.test(link)
+
+const JD_PROMO_LINK_REQUIRED_MESSAGE =
+  "京东普通商品链接暂不支持，请使用京东联盟推广链接（union-click/jdc/jingfen）"
+
+const normalizeExtractionError = (reason: string) => {
+  const message = String(reason || "").trim()
+  if (!message) return "链接解析失败，请检查后重试"
+  if (/sceneId|SKUID/i.test(message)) {
+    return JD_PROMO_LINK_REQUIRED_MESSAGE
+  }
+  return message.length > 120 ? `${message.slice(0, 120)}...` : message
+}
 
 const parseLines = (raw: string) =>
   raw
@@ -286,7 +315,15 @@ const fetchJdProduct = async (keyword: string, originalLink: string) => {
   })
   const queryResult = extractQueryResult(data as Record<string, any>)
   const product = queryResult?.data?.[0] as Record<string, any> | undefined
+  const queryMessage =
+    typeof queryResult?.message === "string" ? queryResult.message.trim() : ""
   if (!product) {
+    if (/sceneId|SKUID/i.test(queryMessage)) {
+      throw new Error(JD_PROMO_LINK_REQUIRED_MESSAGE)
+    }
+    if (queryMessage) {
+      throw new Error(queryMessage)
+    }
     throw new Error("未获取到商品信息")
   }
   const materialUrl = ensureHttp(product?.materialUrl || originalLink)
@@ -694,6 +731,14 @@ export default function CommissionPage() {
       { label: "重复", value: `${summary.duplicateCount} 条` },
       { label: "失败", value: `${summary.failedLinks.length} 条` },
     ])
+    if (summary.failedLinks.length > 0) {
+      const firstFailureReason = normalizeExtractionError(summary.failedLinks[0]?.reason || "")
+      if (summary.newCount === 0) {
+        showToast(firstFailureReason, "error")
+      } else {
+        showToast(`部分链接解析失败：${firstFailureReason}`, "info")
+      }
+    }
     setResultHighlight({ label: "新增商品", value: `${summary.newCount} 条` })
     setResultOpen(true)
   }
@@ -727,17 +772,16 @@ export default function CommissionPage() {
       )
       if (key) dedupeMap.set(key, item)
     })
-    const tracker = { total: 0, processed: 0 }
-
-    const addProductLinks = async (
-      links: string[],
+    const commentTracker = { total: uniqueVideos.length, started: 0 }
+    const productTracker = { total: 0, processed: 0 }
+    const productQueue = createAsyncQueue<{
+      link: string
       context: { sourceLink?: string; sourceAuthor?: string }
-    ) => {
-      if (!links.length) return
-      tracker.total += links.length
-      setProgress({ current: tracker.processed, total: tracker.total })
-      setProgressMessage("正在获取商品信息...")
-      for (const link of links) {
+    }>()
+    const productRunner = runQueueWithConcurrency(
+      productQueue,
+      PRODUCT_CONCURRENCY,
+      async ({ link, context }) => {
         try {
           const product = await fetchCommissionProduct(link)
           const promoLink = product.standardUrl || product.materialUrl || product.originalLink || link
@@ -761,17 +805,41 @@ export default function CommissionPage() {
           const message = error instanceof Error ? error.message : "解析失败"
           summary.failedLinks.push({ link, reason: message })
         } finally {
-          tracker.processed += 1
-          setProgress({ current: tracker.processed, total: tracker.total })
+          productTracker.processed += 1
+          setProgress({ current: productTracker.processed, total: productTracker.total })
         }
       }
+    )
+
+    const enqueueProductLinks = (
+      links: string[],
+      context: { sourceLink?: string; sourceAuthor?: string }
+    ) => {
+      if (!links.length) return
+      productTracker.total += links.length
+      setProgress({ current: productTracker.processed, total: productTracker.total })
+      links.forEach((link) => productQueue.push({ link, context }))
     }
 
-    for (let i = 0; i < uniqueVideos.length; i += 1) {
-      const link = uniqueVideos[i]
+    const isRetryableBiliError = (error: unknown) => {
+      if (error instanceof BiliApiError) {
+        return BILI_RETRYABLE_CODES.has(String(error.code))
+      }
+      if (error instanceof Error && /HTTP 429/i.test(error.message)) {
+        return true
+      }
+      return false
+    }
+
+    await runWithConcurrency(uniqueVideos, VIDEO_CONCURRENCY, async (link) => {
+      commentTracker.started += 1
+      setProgressMessage(`正在获取评论 (${commentTracker.started}/${commentTracker.total})`)
       try {
-        setProgressMessage(`正在获取评论 (${i + 1}/${uniqueVideos.length})`)
-        const commentData = await getPinnedComments(link)
+        const commentData = await retryWithBackoff(() => getPinnedComments(link), {
+          retries: 2,
+          shouldRetry: isRetryableBiliError,
+          baseDelayMs: 500,
+        })
         const sourceAuthor = commentData.videoInfo?.author || ""
         const linkObjects: string[] = []
         commentData.pinnedComments.forEach((comment) => {
@@ -794,12 +862,16 @@ export default function CommissionPage() {
         const taobaoLinks = uniqueLinks.filter((item) => isTaobaoLink(item))
         summary.jdLinks += jdLinks.length
         summary.taobaoLinks += taobaoLinks.length
-        await addProductLinks([...jdLinks, ...taobaoLinks], { sourceLink: link, sourceAuthor })
+        enqueueProductLinks([...jdLinks, ...taobaoLinks], { sourceLink: link, sourceAuthor })
       } catch (error) {
         const message = error instanceof Error ? error.message : "解析视频失败"
         summary.failedLinks.push({ link, reason: message })
       }
-    }
+    })
+
+    productQueue.close()
+    setProgressMessage("正在获取商品信息...")
+    await productRunner
 
     finishProcessing()
     if (summary.totalLinks === 0) {

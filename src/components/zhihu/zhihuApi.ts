@@ -12,6 +12,7 @@ export type ZhihuQuestionItem = {
   title: string
   url: string
   first_keyword?: string
+  last_seen_at?: string
   view_count_total?: number
   answer_count_total?: number
   view_count_delta?: number
@@ -89,10 +90,26 @@ export const fetchZhihuQuestions = (params: {
   )
 }
 
+
+export const createZhihuQuestion = (payload: {
+  questionUrl: string
+  keywordId: string
+}) =>
+  apiRequest<{ item: ZhihuQuestionItem; is_new: boolean }>("/api/zhihu/questions", {
+    method: "POST",
+    body: JSON.stringify({
+      question_url: payload.questionUrl,
+      keyword_id: payload.keywordId,
+    }),
+  })
+
 export const fetchZhihuQuestionStats = (id: string, days = 15) =>
   apiRequest<{ stats: ZhihuQuestionStat[] }>(
     `/api/zhihu/questions/${id}/stats?days=${days}`
   )
+
+export const deleteZhihuQuestion = (id: string) =>
+  apiRequest(`/api/zhihu/questions/${id}`, { method: "DELETE" })
 
 export const runZhihuScrape = async (params: { keywordId?: string }) => {
   const data = await apiRequest<{

@@ -10,6 +10,12 @@ interface ListPipelineOptions<TItem, TFilters, TResponse> {
   ttlMs: number
   pageSize: number
   initialFilters: TFilters
+  skipRefreshIfCached?: boolean
+  onCacheHit?: (payload: {
+    items: TItem[]
+    pagination: { hasMore: boolean; nextOffset: number }
+    total?: number
+  }) => void
   fetcher: (args: { filters: TFilters; offset: number; limit: number }) => Promise<TResponse>
   mapResponse: (response: TResponse) => {
     items: TItem[]
@@ -34,7 +40,16 @@ interface ListPipelineResult<TItem, TFilters> {
 export function useListDataPipeline<TItem, TFilters, TResponse>(
   options: ListPipelineOptions<TItem, TFilters, TResponse>
 ): ListPipelineResult<TItem, TFilters> {
-  const { cacheKey, ttlMs, pageSize, initialFilters, fetcher, mapResponse } = options
+  const {
+    cacheKey,
+    ttlMs,
+    pageSize,
+    initialFilters,
+    fetcher,
+    mapResponse,
+    skipRefreshIfCached = false,
+    onCacheHit,
+  } = options
   const fetcherRef = useRef(fetcher)
   const mapResponseRef = useRef(mapResponse)
   const [filters, setFilters] = useState<TFilters>(initialFilters)
@@ -55,15 +70,20 @@ export function useListDataPipeline<TItem, TFilters, TResponse>(
   )
 
   const applyCache = useCallback(() => {
-    const cached = getListCache<{ items: TItem[]; pagination: { hasMore: boolean; nextOffset: number } }>(storageKey)
+    const cached = getListCache<{
+      items: TItem[]
+      pagination: { hasMore: boolean; nextOffset: number }
+      total?: number
+    }>(storageKey)
     if (cached && isFresh(cached, ttlMs)) {
       setItems(cached.data.items)
       setHasMore(Boolean(cached.data.pagination?.hasMore))
       setNextOffset(cached.data.pagination?.nextOffset ?? cached.data.items.length)
+      onCacheHit?.(cached.data)
       return true
     }
     return false
-  }, [storageKey, ttlMs])
+  }, [storageKey, ttlMs, onCacheHit])
 
   useEffect(() => {
     fetcherRef.current = fetcher
@@ -88,7 +108,7 @@ export function useListDataPipeline<TItem, TFilters, TResponse>(
       setNextOffset(mapped.pagination?.nextOffset ?? mapped.items.length)
       setStatus("ready")
       setListCache(storageKey, {
-        data: { items: mapped.items, pagination: mapped.pagination },
+        data: { items: mapped.items, pagination: mapped.pagination, total: mapped.total },
         timestamp: Date.now(),
         filters,
       })
@@ -111,7 +131,7 @@ export function useListDataPipeline<TItem, TFilters, TResponse>(
       setHasMore(Boolean(mapped.pagination?.hasMore))
       setNextOffset(mapped.pagination?.nextOffset ?? merged.length)
       setListCache(storageKey, {
-        data: { items: merged, pagination: mapped.pagination },
+        data: { items: merged, pagination: mapped.pagination, total: mapped.total },
         timestamp: Date.now(),
         filters,
       })
@@ -129,11 +149,15 @@ export function useListDataPipeline<TItem, TFilters, TResponse>(
   useEffect(() => {
     setStatus("warmup")
     const usedCache = applyCache()
+    if (usedCache && skipRefreshIfCached) {
+      setStatus("ready")
+      return
+    }
     refresh().catch(() => {})
     if (usedCache) {
       setStatus("refreshing")
     }
-  }, [applyCache, refresh, storageKey])
+  }, [applyCache, refresh, skipRefreshIfCached, storageKey])
 
   useEffect(() => {
     isMountedRef.current = true

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest"
-import { cleanup, render, screen } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import ArchivePageView from "./ArchivePageView"
 
 const baseItem = {
@@ -107,5 +107,20 @@ describe("ArchivePageView list rendering", () => {
     rerender(<ArchivePageView {...buildProps(updatedItems)} />)
 
     expect(screen.getByText("Item B")).toBeTruthy()
+  })
+
+  it("renders replace cover button", () => {
+    const onOpenReplaceCover = vi.fn()
+
+    render(
+      <ArchivePageView
+        {...buildProps([])}
+        onOpenReplaceCover={onOpenReplaceCover}
+      />
+    )
+
+    const button = screen.getByRole("button", { name: "替换封面" })
+    fireEvent.click(button)
+    expect(onOpenReplaceCover).toHaveBeenCalledTimes(1)
   })
 })

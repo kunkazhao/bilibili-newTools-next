@@ -271,3 +271,23 @@ export async function aiBatchStatus(jobId: string) {
     error?: string | null
   }>(`/api/sourcing/items/ai-batch/status/${jobId}`)
 }
+
+export async function uploadCoverByUid(uid: string, file: File) {
+  const formData = new FormData()
+  formData.append("uid", uid)
+  formData.append("file", file)
+  const response = await fetch(`${API_BASE}/api/sourcing/batch-cover`, {
+    method: "POST",
+    body: formData,
+  })
+  if (!response.ok) {
+    const message = await response.text()
+    throw new Error(message || `HTTP ${response.status}`)
+  }
+  return response.json() as Promise<{
+    success: boolean
+    uid?: string
+    url?: string
+    message?: string
+  }>
+}

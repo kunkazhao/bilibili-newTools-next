@@ -23,6 +23,7 @@ import re
 import time
 
 import hashlib
+import html
 import threading
 
 from datetime import datetime, timezone, date, timedelta
@@ -34,7 +35,7 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any, Tuple, Set, Literal, Callable, Awaitable
 from uuid import uuid4
 
-from urllib.parse import urlencode, urlparse, parse_qs, quote
+from urllib.parse import urlencode, urlparse, parse_qs, quote, unquote
 
 from zoneinfo import ZoneInfo
 
@@ -89,6 +90,236 @@ from pydantic import BaseModel, Field, validator
 load_dotenv()
 
 
+# ==================== Request Models ====================
+
+class SourcingItemsByIdsRequest(BaseModel):
+    ids: Optional[List[str]] = None
+
+
+class SourcingCategoryCreate(BaseModel):
+    name: str
+    color: Optional[str] = None
+    spec_fields: Optional[List[Dict[str, Any]]] = None
+    sort_order: Optional[int] = None
+
+
+class SourcingCategoryUpdate(BaseModel):
+    name: Optional[str] = None
+    color: Optional[str] = None
+    spec_fields: Optional[List[Dict[str, Any]]] = None
+    sort_order: Optional[int] = None
+
+
+class SourcingItemBase(BaseModel):
+    title: Optional[str] = None
+    link: Optional[str] = None
+    taobao_link: Optional[str] = None
+    price: Optional[float] = None
+    commission: Optional[float] = None
+    commission_rate: Optional[float] = None
+    jd_price: Optional[float] = None
+    jd_commission: Optional[float] = None
+    jd_commission_rate: Optional[float] = None
+    jd_sales: Optional[float] = None
+    tb_price: Optional[float] = None
+    tb_commission: Optional[float] = None
+    tb_commission_rate: Optional[float] = None
+    tb_sales: Optional[float] = None
+    source_type: Optional[str] = None
+    source_ref: Optional[str] = None
+    cover_url: Optional[str] = None
+    remark: Optional[str] = None
+    spec: Optional[Dict[str, Any]] = None
+    tags: Optional[List[str]] = None
+
+
+class SourcingItemCreate(SourcingItemBase):
+    category_id: str
+    title: str
+
+
+class SourcingItemBatchEntry(SourcingItemBase):
+    title: str
+
+
+class SourcingItemBatchCreate(BaseModel):
+    category_id: str
+    items: List[SourcingItemBatchEntry]
+
+
+class SourcingItemUpdate(SourcingItemBase):
+    title: Optional[str] = None
+
+
+class AiFillRequest(BaseModel):
+    category_id: str
+    mode: Literal["single", "batch", "selected"] = "single"
+    product_names: Optional[List[str]] = None
+    model: Optional[str] = None
+
+
+class AiConfirmRequest(BaseModel):
+    category_id: str
+    items: List[Dict[str, Any]]
+
+
+class AiBatchStartRequest(BaseModel):
+    category_id: Optional[str] = None
+    scheme_id: Optional[str] = None
+    keyword: Optional[str] = None
+    price_min: Optional[float] = None
+    price_max: Optional[float] = None
+    sort: Optional[str] = None
+    model: Optional[str] = None
+
+
+class SchemeGenerateRequest(BaseModel):
+    type: str
+    prompt: Optional[str] = ""
+    items: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class SchemeCreate(BaseModel):
+    name: str
+    category_id: str
+    category_name: Optional[str] = None
+    remark: Optional[str] = None
+    items: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class SchemeUpdate(BaseModel):
+    name: Optional[str] = None
+    category_id: Optional[str] = None
+    category_name: Optional[str] = None
+    remark: Optional[str] = None
+    items: Optional[List[Dict[str, Any]]] = None
+
+
+class PromptTemplateUpdate(BaseModel):
+    content: Optional[str] = None
+
+
+class CommentAccountPayload(BaseModel):
+    name: str
+    homepage_link: Optional[str] = None
+
+
+class CommentAccountUpdate(BaseModel):
+    name: Optional[str] = None
+    homepage_link: Optional[str] = None
+
+
+class MyAccountSyncPayload(BaseModel):
+    account_id: str
+
+
+class ZhihuKeywordPayload(BaseModel):
+    name: str
+
+
+class ZhihuKeywordUpdate(BaseModel):
+    name: Optional[str] = None
+
+
+class ZhihuScrapeRunPayload(BaseModel):
+    keyword_id: Optional[str] = None
+
+
+class ZhihuQuestionCreatePayload(BaseModel):
+    question_url: str
+    keyword_id: str
+
+
+class CommentComboCreate(BaseModel):
+    account_id: str
+    name: str
+    content: str
+    remark: Optional[str] = None
+    source_link: Optional[str] = None
+    source_type: Optional[str] = None
+
+
+class CommentComboUpdate(BaseModel):
+    name: Optional[str] = None
+    content: Optional[str] = None
+    remark: Optional[str] = None
+    source_link: Optional[str] = None
+    source_type: Optional[str] = None
+
+
+class BlueLinkMapCategoryCreate(BaseModel):
+    account_id: str
+    name: str
+    color: Optional[str] = None
+
+
+class BlueLinkMapCategoryUpdate(BaseModel):
+    name: Optional[str] = None
+    color: Optional[str] = None
+
+
+class BlueLinkMapEntryPayload(BaseModel):
+    account_id: str
+    category_id: str
+    product_id: Optional[str] = None
+    sku_id: Optional[str] = None
+    source_link: Optional[str] = None
+    remark: Optional[str] = None
+
+
+class BlueLinkMapBatchPayload(BaseModel):
+    entries: List[BlueLinkMapEntryPayload]
+
+
+class BlueLinkMapClearPayload(BaseModel):
+    account_id: Optional[str] = None
+    category_id: Optional[str] = None
+
+
+class BlueLinkMapEntryUpdate(BaseModel):
+    category_id: Optional[str] = None
+    source_link: Optional[str] = None
+    product_id: Optional[str] = None
+    sku_id: Optional[str] = None
+    remark: Optional[str] = None
+
+
+class BenchmarkCategoryPayload(BaseModel):
+    name: str
+    color: Optional[str] = None
+
+
+class BenchmarkEntryPayload(BaseModel):
+    category_id: str
+    title: str
+    link: Optional[str] = None
+    bvid: Optional[str] = None
+    cover: Optional[str] = None
+    author: Optional[str] = None
+    duration: Optional[int] = None
+    pub_time: Optional[Any] = None
+    note: Optional[str] = None
+    owner: Optional[Dict[str, Any]] = None
+    stats: Optional[Dict[str, Any]] = None
+    payload: Optional[Dict[str, Any]] = None
+    page: Optional[int] = None
+
+
+class BenchmarkEntryUpdate(BaseModel):
+    title: Optional[str] = None
+    link: Optional[str] = None
+    bvid: Optional[str] = None
+    cover: Optional[str] = None
+    author: Optional[str] = None
+    duration: Optional[int] = None
+    pub_time: Optional[Any] = None
+    note: Optional[str] = None
+    owner: Optional[Dict[str, Any]] = None
+    stats: Optional[Dict[str, Any]] = None
+    payload: Optional[Dict[str, Any]] = None
+    page: Optional[int] = None
+
+
 def get_hf_endpoint() -> Optional[str]:
     return os.getenv("HF_ENDPOINT") or os.getenv("HF_HUB_ENDPOINT")
 
@@ -126,9 +357,11 @@ IS_VERCEL = bool(os.getenv("VERCEL")) or bool(os.getenv("VERCEL_ENV"))
 CACHE_TTL_SECONDS = 2.0
 SOURCING_CATEGORY_COUNT_TTL_SECONDS = 60.0
 BLUE_LINK_MAP_CACHE_TTL_SECONDS = 10.0
+ZHIHU_KEYWORDS_MAP_CACHE_TTL_SECONDS = 300.0
 
 BLUE_LINK_MAP_CACHE: Dict[str, Any] = {"timestamp": 0.0, "data": None}
 SOURCING_CATEGORY_COUNT_CACHE: Dict[str, Any] = {"timestamp": 0.0, "data": None}
+ZHIHU_KEYWORDS_MAP_CACHE: Dict[str, Any] = {"timestamp": 0.0, "data": None}
 
 SOURCING_ITEMS_CACHE: Dict[Tuple[str, str, int, int, str], Dict[str, Any]] = {}
 
@@ -305,8 +538,6 @@ PROMPT_TEMPLATE_DEFAULTS = {
 
     "title": "你是电商标题策划，请基于选品信息生成 5 条短标题，突出卖点与价格优势，避免夸张与重复。",
 
-    "intro": "你是电商视频文案助手，请基于选品信息生成一段视频简介，信息完整、结构清晰，控制在 120 字以内。",
-
     "vote": "你是电商投票策划，请基于选品信息生成投票文案，包含简短背景、候选项要点与引导语。",
 
     "image": "你是电商视觉策划，结合选品参数生成商品图的文案与标题。",
@@ -314,6 +545,73 @@ PROMPT_TEMPLATE_DEFAULTS = {
     "comment_reply": "你是电商评论运营助手，请基于选品信息生成 {{count}} 组评论和回复，语气可信、互动自然，包含购买引导。{{prompt}}输出格式：\n评论：...\n回复：..."
 
 }
+
+PROMPT_TEMPLATE_STORE_PATH = DOWNLOAD_DIR / "prompt-templates.json"
+PROMPT_TEMPLATE_OVERRIDES: Dict[str, str] = {}
+PROMPT_TEMPLATE_LOCK = threading.Lock()
+
+
+def load_prompt_template_overrides() -> None:
+    if not PROMPT_TEMPLATE_STORE_PATH.exists():
+        return
+    try:
+        raw = PROMPT_TEMPLATE_STORE_PATH.read_text(encoding="utf-8")
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            PROMPT_TEMPLATE_OVERRIDES.clear()
+            for key, value in data.items():
+                if isinstance(key, str) and isinstance(value, str):
+                    PROMPT_TEMPLATE_OVERRIDES[key] = value
+    except Exception:
+        return
+
+
+def save_prompt_template_overrides() -> None:
+    payload = json.dumps(PROMPT_TEMPLATE_OVERRIDES, ensure_ascii=False, indent=2)
+    tmp_path = PROMPT_TEMPLATE_STORE_PATH.with_suffix(".tmp")
+    tmp_path.write_text(payload, encoding="utf-8")
+    tmp_path.replace(PROMPT_TEMPLATE_STORE_PATH)
+
+
+def get_prompt_template_overrides(keys: Optional[List[str]] = None) -> Dict[str, str]:
+    with PROMPT_TEMPLATE_LOCK:
+        if not keys:
+            return dict(PROMPT_TEMPLATE_OVERRIDES)
+        return {key: PROMPT_TEMPLATE_OVERRIDES[key] for key in keys if key in PROMPT_TEMPLATE_OVERRIDES}
+
+
+load_prompt_template_overrides()
+
+
+IMAGE_TEMPLATE_DEFAULT_CATEGORY = "默认模板"
+
+
+def extract_template_title(html: str) -> Optional[str]:
+    match = re.search(r"<title[^>]*>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+    if not match:
+        return None
+    title = re.sub(r"\s+", " ", match.group(1)).strip()
+    return title or None
+
+
+def load_local_image_templates() -> List[Dict[str, Any]]:
+    templates: List[Dict[str, Any]] = []
+    if not LOCAL_IMAGE_TEMPLATE_DIR.exists():
+        return templates
+    for path in sorted(LOCAL_IMAGE_TEMPLATE_DIR.glob("*.html")):
+        try:
+            html = path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        templates.append(
+            {
+                "id": path.stem,
+                "name": path.stem,
+                "category": IMAGE_TEMPLATE_DEFAULT_CATEGORY,
+                "html": html,
+            }
+        )
+    return templates
 
 
 
@@ -485,6 +783,80 @@ class SupabaseClient:
 
 
 
+    async def count(self, table: str, params: Optional[Dict[str, Any]] = None) -> int:
+
+        query = dict(params or {})
+
+        query.setdefault("select", "id")
+
+        query.setdefault("limit", 1)
+
+        url = f"{self.rest_url}/{table.lstrip('/')}"
+
+        headers = {
+
+            "apikey": self.service_key,
+
+            "Authorization": f"Bearer {self.service_key}",
+
+            "Accept": "application/json",
+
+            "Prefer": "count=exact",
+
+        }
+
+        try:
+
+            response = await self._client.request("GET", url, params=query, headers=headers)
+
+        except httpx.RequestError as exc:
+
+            raise SupabaseError(0, f"Supabase network error: {exc}") from exc
+
+        if response.status_code >= 400:
+
+            try:
+
+                detail = response.json()
+
+                if isinstance(detail, dict):
+
+                    message = detail.get("message") or detail.get("error") or detail
+
+                else:
+
+                    message = detail
+
+            except ValueError:
+
+                message = response.text or "Unexpected Supabase error"
+
+            raise SupabaseError(response.status_code, str(message))
+
+        content_range = response.headers.get("Content-Range") or ""
+
+        match = re.search(r"/(\d+)$", content_range.strip())
+
+        if match:
+
+            return int(match.group(1))
+
+        try:
+
+            payload = response.json()
+
+        except ValueError:
+
+            return 0
+
+        if isinstance(payload, list):
+
+            return len(payload)
+
+        return int(payload or 0)
+
+
+
     async def insert(self, table: str, payload: Any) -> List[Dict[str, Any]]:
 
         return await self.request(
@@ -606,9 +978,32 @@ def shanghai_today() -> date:
     return datetime.now(tz=ZHIHU_TIMEZONE).date()
 
 
-async def fetch_zhihu_keywords_map(client: SupabaseClient) -> Dict[str, str]:
+def invalidate_zhihu_keywords_map_cache() -> None:
+    ZHIHU_KEYWORDS_MAP_CACHE["timestamp"] = 0.0
+    ZHIHU_KEYWORDS_MAP_CACHE["data"] = None
+
+
+async def fetch_zhihu_keywords_map(client: SupabaseClient, force: bool = False) -> Dict[str, str]:
+    now = time.time()
+    cached = ZHIHU_KEYWORDS_MAP_CACHE.get("data")
+    if not force and cached and now - ZHIHU_KEYWORDS_MAP_CACHE.get("timestamp", 0.0) < ZHIHU_KEYWORDS_MAP_CACHE_TTL_SECONDS:
+        return cached
     rows = await client.select("zhihu_keywords", params={"select": "id,name"})
-    return {str(row.get("id")): row.get("name") or "" for row in rows}
+    payload = {str(row.get("id")): row.get("name") or "" for row in rows}
+    ZHIHU_KEYWORDS_MAP_CACHE["timestamp"] = now
+    ZHIHU_KEYWORDS_MAP_CACHE["data"] = payload
+    return payload
+
+
+async def fetch_supabase_count(client: Any, table: str, params: Optional[Dict[str, Any]] = None) -> int:
+    query = dict(params or {})
+    query.pop("limit", None)
+    query.pop("offset", None)
+    if hasattr(client, "count"):
+        return await client.count(table, query)
+    query["select"] = "id"
+    rows = await client.select(table, query)
+    return len(rows)
 
 
 def parse_cookie_header(cookie_value: str, domain: str) -> List[Dict[str, Any]]:
@@ -633,7 +1028,7 @@ def strip_html_tags(value: str) -> str:
     return re.sub(r"<[^>]+>", "", value)
 
 
-def extract_zhihu_questions(items: List[Dict[str, Any]], limit: int = 50) -> List[Dict[str, str]]:
+def extract_zhihu_questions(items: List[Dict[str, Any]], limit: int = 200) -> List[Dict[str, str]]:
     results: List[Dict[str, str]] = []
     seen: Set[str] = set()
     for item in items or []:
@@ -652,6 +1047,32 @@ def extract_zhihu_questions(items: List[Dict[str, Any]], limit: int = 50) -> Lis
         if len(results) >= limit:
             break
     return results
+
+
+def extract_zhihu_question_id(raw_value: str) -> str:
+    value = str(raw_value or "").strip()
+    if not value:
+        return ""
+    if value.isdigit():
+        return value
+
+    path_match = re.search(r"/question/(\d+)", value)
+    if path_match:
+        return path_match.group(1)
+
+    target = value if "://" in value else f"https://{value.lstrip('/')}"
+    try:
+        parsed = urlparse(target)
+    except Exception:
+        return ""
+
+    query = parse_qs(parsed.query or "")
+    for key in ("question_id", "qid"):
+        candidate = str((query.get(key) or [""])[0] or "").strip()
+        if candidate.isdigit():
+            return candidate
+
+    return ""
 
 
 def create_zhihu_job_state(total: int, keyword_id: Optional[str]) -> Dict[str, Any]:
@@ -819,7 +1240,7 @@ async def fetch_search_results_via_api(
         Callable[[int, Dict[str, Any], Dict[str, str]], Awaitable[Dict[str, Any]]]
     ] = None,
 ) -> List[Dict[str, Any]]:
-    offsets = [0, 20, 40]
+    offsets = list(range(0, 200, 20))
     results: List[Dict[str, Any]] = []
     base_params = {
         "gk_version": "gz-gaokao",
@@ -862,7 +1283,7 @@ async def fetch_question_stats_via_api(
         Callable[[str, Dict[str, Any], Dict[str, str]], Awaitable[Dict[str, Any]]]
     ] = None,
 ) -> Optional[Dict[str, Any]]:
-    params = {"include": "visit_count,answer_count"}
+    params = {"include": "title,visit_count,answer_count"}
     if requester:
         return await requester(question_id, params, headers)
 
@@ -881,7 +1302,7 @@ async def fetch_search_results_for_keyword(
     keyword: str,
     response_fetcher: Optional[Callable[[int], Awaitable[Dict[str, Any]]]] = None,
 ) -> List[Dict[str, Any]]:
-    offsets = [0, 20, 40]
+    offsets = list(range(0, 200, 20))
     results: List[Dict[str, Any]] = []
     if response_fetcher:
         for offset in offsets:
@@ -976,7 +1397,7 @@ async def zhihu_scrape_job(
         if not name or not kid:
             continue
         raw_items = await search_fetcher(name)
-        questions = extract_zhihu_questions(raw_items, limit=50)
+        questions = extract_zhihu_questions(raw_items, limit=200)
         keyword_questions[str(kid)] = questions
         for question in questions:
             qid = question.get("id")
@@ -2437,6 +2858,108 @@ async def taobao_click_extract(url: str) -> Dict[str, Any]:
     }
 
 
+def extract_taobao_item_id(raw_text: str) -> str:
+    if not raw_text:
+        return ""
+
+    candidates: List[str] = []
+
+    def collect(text: str):
+        if not text:
+            return
+        patterns = [
+            r"[?&](?:id|itemId|item_id|num_iid)=(\d{5,})",
+            r"/i(\d{5,})\.htm",
+            r"item\.(?:htm|html)/(\d{5,})",
+        ]
+        for pattern in patterns:
+            for match in re.findall(pattern, text, flags=re.IGNORECASE):
+                if match:
+                    candidates.append(match)
+
+    collect(raw_text)
+    try:
+        decoded = unquote(raw_text)
+        if decoded != raw_text:
+            collect(decoded)
+    except Exception:
+        pass
+
+    for candidate in candidates:
+        value = str(candidate).strip()
+        if value.isdigit() and len(value) >= 5:
+            return value
+    return ""
+
+
+def extract_taobao_tar_target(raw_url: str) -> str:
+    parsed = urlparse(str(raw_url or "").strip())
+    if not parsed.query:
+        return ""
+
+    query = parse_qs(parsed.query)
+    tar_value = (query.get("tar") or [""])[0]
+    tar_value = html.unescape(str(tar_value or "")).strip()
+    if not tar_value:
+        return ""
+
+    try:
+        return unquote(tar_value)
+    except Exception:
+        return tar_value
+
+
+async def resolve_taobao_url(url: str) -> Tuple[str, str]:
+    target = str(url or "").strip()
+    if not target:
+        return "", ""
+
+    timeout = aiohttp.ClientTimeout(total=15)
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/132.0.0.0 Safari/537.36"
+        )
+    }
+
+    try:
+        async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+            async with session.get(target, allow_redirects=True) as response:
+                resolved_url = str(response.url)
+                page_text = await response.text(errors="ignore")
+
+            jump_match = re.search(
+                r'real_jump_address\s*=\s*[\'"]([^\'"]+)[\'"]',
+                page_text,
+                flags=re.IGNORECASE,
+            )
+            jump_url = html.unescape(jump_match.group(1) or "").strip() if jump_match else ""
+            if jump_url:
+                try:
+                    async with session.get(
+                        jump_url,
+                        allow_redirects=False,
+                        headers={"Referer": resolved_url or target},
+                    ) as jump_response:
+                        redirect_location = html.unescape(
+                            str(jump_response.headers.get("Location") or "")
+                        ).strip()
+                except Exception:
+                    redirect_location = ""
+
+                if redirect_location:
+                    tar_target = extract_taobao_tar_target(redirect_location)
+                    resolved_url = tar_target or redirect_location
+                else:
+                    tar_target = extract_taobao_tar_target(jump_url)
+                    resolved_url = tar_target or jump_url
+
+        return resolved_url or target, page_text
+    except Exception:
+        return target, ""
+
+
 async def taobao_item_details(item_id: str) -> Dict[str, Any]:
     params: Dict[str, Any] = {"item_id": item_id}
     data = await taobao_api_request("taobao.tbk.item.details.upgrade.get", params)
@@ -2459,12 +2982,42 @@ async def taobao_item_details(item_id: str) -> Dict[str, Any]:
 
 @app.post("/api/taobao/resolve")
 async def taobao_resolve(request: dict):
-    """????/????????ID"""
+    """Resolve Taobao/Tmall link and return product IDs for mapping."""
     url = (request or {}).get("url") or ""
     url = str(url).strip()
     if not url:
-        raise HTTPException(status_code=400, detail="?? url ??")
-    return await taobao_click_extract(url)
+        raise HTTPException(status_code=400, detail="Missing url")
+
+    resolved_url, page_text = await resolve_taobao_url(url)
+    parsed_item_id = extract_taobao_item_id(f"{resolved_url}\n{page_text}\n{url}")
+
+    candidates = [resolved_url, url]
+    seen: Set[str] = set()
+    for candidate in candidates:
+        normalized = str(candidate or "").strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        try:
+            extracted = await taobao_click_extract(normalized)
+        except Exception:
+            extracted = {}
+        item_id = str(extracted.get("itemId") or "").strip()
+        open_iid = str(extracted.get("openIid") or "").strip()
+        if item_id or open_iid:
+            return {
+                "itemId": item_id or parsed_item_id,
+                "openIid": open_iid,
+                "sourceLink": url,
+                "resolvedUrl": resolved_url,
+            }
+
+    return {
+        "itemId": parsed_item_id,
+        "openIid": "",
+        "sourceLink": url,
+        "resolvedUrl": resolved_url,
+    }
 
 
 @app.post("/api/taobao/product")
@@ -2484,26 +3037,80 @@ async def taobao_product_info(request: dict):
 
 @app.post("/api/jd/resolve")
 async def jd_resolve_url(request: dict):
-    """?????????????????"""
+    """Resolve short/union links and return a JD URL usable for SKU extraction."""
     import re
+
+    def extract_jingfen_token(raw_url: str) -> str:
+        if not raw_url:
+            return ""
+        detail_match = re.search(r"jingfen\.jd\.com/detail/([a-zA-Z0-9_-]+)\.html", raw_url)
+        if detail_match:
+            return detail_match.group(1)
+        item_match = re.search(r"jingfen\.jd\.com/item\.html\?[^#]*?\bsku=([a-zA-Z0-9_-]+)", raw_url)
+        if item_match:
+            return item_match.group(1)
+        return ""
 
     try:
         url = request.get("url")
         if not url:
-            raise HTTPException(status_code=400, detail="?? url ??")
+            raise HTTPException(status_code=400, detail="missing url")
 
         if "item.jd.com" in url:
             return {"resolvedUrl": url}
 
-        print(f"[????] ????: {url[:80]}...")
+        print(f"[jd-resolve] input: {url[:80]}...")
 
         headers = build_bilibili_headers()
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers, allow_redirects=True, timeout=aiohttp.ClientTimeout(total=10)) as response:
-                resolved_url = str(response.url)
-                print(f"[????] ??URL: {resolved_url[:80]}...")
 
-                if len(response.history) > 0:
+            async def resolve_jingfen_detail(raw_url: str) -> str:
+                token = extract_jingfen_token(raw_url)
+                if not token:
+                    return ""
+                detail_url = f"https://jingfen.jd.com/detail/{token}.html"
+                try:
+                    async with session.get(
+                        detail_url,
+                        headers=headers,
+                        allow_redirects=False,
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as detail_resp:
+                        location = detail_resp.headers.get("Location") or ""
+                        if "item.jd.com" in location:
+                            return location
+                except Exception:
+                    pass
+
+                try:
+                    async with session.get(
+                        detail_url,
+                        headers=headers,
+                        allow_redirects=True,
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as detail_follow:
+                        for redirect in detail_follow.history:
+                            redirect_url = str(redirect.url)
+                            if "item.jd.com" in redirect_url:
+                                return redirect_url
+                        final_url = str(detail_follow.url)
+                        if "item.jd.com" in final_url:
+                            return final_url
+                except Exception:
+                    pass
+
+                return detail_url
+
+            async with session.get(
+                url,
+                headers=headers,
+                allow_redirects=True,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response:
+                resolved_url = str(response.url)
+                print(f"[jd-resolve] resolved: {resolved_url[:80]}...")
+
+                if response.history:
                     for redirect in response.history:
                         redirect_url = str(redirect.url)
                         if "item.jd.com" in redirect_url:
@@ -2512,34 +3119,52 @@ async def jd_resolve_url(request: dict):
                 if "item.jd.com" in resolved_url:
                     return {"resolvedUrl": resolved_url}
 
-                # b23 -> union-click/jdc -> html contains hrl -> union-click/jda -> item.jd.com
+                # b23 -> union-click/jdc (html includes hrl) -> union-click/jda -> jingfen/item or item.jd.com
                 if "union-click.jd.com/jdc" in resolved_url:
                     html = await response.text()
                     match = re.search(r"var hrl='([^']+)'", html)
                     if match:
                         jda_url = match.group(1)
-                        async with session.get(jda_url, headers=headers, allow_redirects=False, timeout=aiohttp.ClientTimeout(total=10)) as jda_resp:
-                            location = jda_resp.headers.get("Location")
-                            if location:
+                        async with session.get(
+                            jda_url,
+                            headers=headers,
+                            allow_redirects=False,
+                            timeout=aiohttp.ClientTimeout(total=10),
+                        ) as jda_resp:
+                            location = jda_resp.headers.get("Location") or ""
+                            if "item.jd.com" in location:
                                 return {"resolvedUrl": location}
+                            jingfen_item = await resolve_jingfen_detail(location)
+                            if jingfen_item:
+                                return {"resolvedUrl": jingfen_item}
 
                 if "union-click.jd.com/jda" in resolved_url:
-                    async with session.get(resolved_url, headers=headers, allow_redirects=False, timeout=aiohttp.ClientTimeout(total=10)) as jda_resp:
-                        location = jda_resp.headers.get("Location")
-                        if location:
+                    async with session.get(
+                        resolved_url,
+                        headers=headers,
+                        allow_redirects=False,
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as jda_resp:
+                        location = jda_resp.headers.get("Location") or ""
+                        if "item.jd.com" in location:
                             return {"resolvedUrl": location}
+                        jingfen_item = await resolve_jingfen_detail(location)
+                        if jingfen_item:
+                            return {"resolvedUrl": jingfen_item}
 
-                jingfen_match = re.search(r"jingfen\.jd\.com/detail/([a-zA-Z0-9_-]+)\.html", url)
-                if jingfen_match:
-                    return {"resolvedUrl": url}
+                jingfen_item = await resolve_jingfen_detail(resolved_url)
+                if jingfen_item:
+                    return {"resolvedUrl": jingfen_item}
 
                 return {"resolvedUrl": resolved_url}
 
-    except Exception as e:
-        print(f"[????] ??: {e}")
+    except Exception as exc:
+        print(f"[jd-resolve] error: {exc}")
         import traceback
+
         traceback.print_exc()
         return {"resolvedUrl": request.get("url", "")}
+
 
 @app.get("/api/bilibili/resolve")
 
@@ -3687,51 +4312,24 @@ async def get_subtitle(
 
 
 @app.post("/api/subtitle/segment")
-
 async def segment_subtitle(request: dict):
-
     """使用 DeepSeek 对字幕进行语义分段"""
-
     try:
-
-        # 解析字幕数据
-
         events = request.get('events', [])
-
         if not events:
-
             raise HTTPException(status_code=400, detail="字幕数据格式错误")
 
-
-
-        # 构建无时间戳的原始文本
-
         text_parts = []
-
         for event in events:
-
             content = (event.get('content') or '').strip()
-
             if content:
-
                 text_parts.append(content)
 
-
-
         raw_text = "\n".join(text_parts).strip()
-
-
-
         if not raw_text:
-
             raise HTTPException(status_code=400, detail="字幕内容为空")
 
-
-
-        # 调用 DeepSeek API 进行智能排版
-
         trimmed_text = raw_text[:10000]
-
         instruction = """【你是一位资深的文案排版助手。我会给你一段没有标点的视频字幕提取文案，请按以下要求处理：
 
 添加标点： 为文案补充正确的标点符号，使逻辑清晰。
@@ -3744,3452 +4342,45 @@ async def segment_subtitle(request: dict):
 
 只输出排版后的文案，不要包含任何多余的开场白或解释。】"""
 
-        prompt = f"""{instruction}
+        prompt = f"""{instruction}\n\n\n\n文案内容：\n\n{trimmed_text}\n\n\n\n请严格按照要求输出排版后的文案。"""
 
-
-
-文案内容：
-
-{trimmed_text}
-
-
-
-请严格按照要求输出排版后的文案。"""
-
-
+        if not DEEPSEEK_API_KEY or not deepseek_client:
+            raise HTTPException(status_code=500, detail="未配置 DeepSeek API 密钥")
 
         response = await asyncio.to_thread(
-
             deepseek_client.chat.completions.create,
-
-            model=DEEPSEEK_MODEL,
-
+            model=DEEPSEEK_MODEL or "deepseek-chat",
             messages=[
-
-                {"role": "system", "content": "你是电商文案排版助手，只能在不改动原始词汇的前提下添加标点与分段。"},
-
-                {"role": "user", "content": prompt}
-
+                {
+                    "role": "system",
+                    "content": "你是电商文案排版助手，只能在不改动原始词汇的前提下添加标点与分段。",
+                },
+                {"role": "user", "content": prompt},
             ],
-
-            temperature=0.2
-
+            temperature=0.2,
         )
 
-
-
-        result_text = response.choices[0].message.content.strip()
-
-        if not result_text:
-
-            raise HTTPException(status_code=500, detail="AI 排版返回为空")
-
-
-
-        return {
-
-            "status": "success",
-
-            "original": events,
-
-            "segmented": result_text
-
-        }
-
-
-
-    except Exception as e:
-
-        raise HTTPException(status_code=500, detail=f"语义分段失败: {str(e)}")
-
-
-
-
-
-# ==================== 图片参数识别 ====================
-
-
-
-PRICE_PATTERN = re.compile(
-
-    r'(?:¥|￥)\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?\s*(?:元|块|人民币|rmb|cny|港币|块钱)',
-
-    re.IGNORECASE
-
-)
-
-
-
-
-
-def normalize_price_value(value: Optional[str]) -> Optional[str]:
-
-    if value is None:
-
-        return None
-
-    cleaned = str(value).replace(',', '').strip()
-
-    if not cleaned:
-
-        return None
-
-
-
-    if re.search(r'(?:g|kg|克|斤|磅)(?:$|\b)', cleaned, re.IGNORECASE):
-
-        return None
-
-
-
-    digits = re.search(r'\d+(?:\.\d+)?', cleaned)
-
-    if not digits:
-
-        return None
-
-    amount = digits.group(0)
-
-    if '.' in amount:
-
-        amount = amount.rstrip('0').rstrip('.')
-
-        if not amount:
-
-            amount = digits.group(0)
-
-    return f"{amount}元"
-
-
-
-
-
-def extract_price_from_text(text: str) -> Optional[str]:
-
-    if not text:
-
-        return None
-
-    match = PRICE_PATTERN.search(text)
-
-    if not match:
-
-        return None
-
-    return normalize_price_value(match.group(0))
-
-
-
-@app.post("/api/image/recognize")
-
-async def recognize_image_params(file: UploadFile = File(...)):
-
-    """使用通义千问 VL 识别图片中的产品参数"""
-
-    try:
-
-        # 读取图片
-
-        contents = await file.read()
-
-        image_base64 = base64.b64encode(contents).decode('utf-8')
-
-
-
-        prompt_text = (
-
-            "请识别这张图片中的所有产品参数，尤其是价格。"
-
-            "输出必须严格符合 JSON 模板，禁止出现任何无关字符。"
-
-            'JSON 模板：{"product_name":"xxx","price":"178元","parameters":[{"name":"参数名","value":"参数值"}],"additional_notes":["总结1","总结2"]}。'
-
-            "price 字段只能使用“数字+元”格式（如“178元”“259.9元”），不要保留￥符号，也不要把“273g”等重量误判为价格。"
-
-            "务必提取价格：只要图片中出现“￥499”“建议入手价 369”“售价 860 左右”等描述，都需要解析成价格；若只出现“约 499”，也要补全为“499元”。"
-
-            "若出现整体卖点或一句话总结，请按原意放入 additional_notes 数组，一条信息一行。"
-
-        )
-
-
-
-        # 调用通义千问 VL API
-
-        messages = [
-
-            {
-
-                'role': 'system',
-
-                'content': '你是专业的产品参数识别助手。请从图片中识别所有产品参数，并以 JSON 格式返回。'
-
-            },
-
-            {
-
-                'role': 'user',
-
-                'content': [
-
-                    {'image': f"data:image/jpeg;base64,{image_base64}"},
-
-                    {'text': prompt_text}
-
-                ]
-
-            }
-
-        ]
-
-
-
-        response = MultiModalConversation.call(
-
-            model='qwen-vl-plus',
-
-            api_key=DASHSCOPE_API_KEY,
-
-            messages=messages,
-
-            result_format='message'
-
-        )
-
-
-
-        result_text = response.output.choices[0].message.content[0]['text']
-
-
-
-        # 尝试解析 JSON
-
-        try:
-
-            params = json.loads(result_text)
-
-        except json.JSONDecodeError:
-
-            match = re.search(r'\{[\s\S]*\}', result_text)
-
-            if match:
-
-                params = json.loads(match.group())
-
-            else:
-
-                params = {"raw_text": result_text}
-
-
-
-        if not isinstance(params, dict):
-
-            params = {"raw_text": result_text}
-
-
-
-        parameters = params.get("parameters")
-
-        if not isinstance(parameters, list):
-
-            parameters = []
-
-        params["parameters"] = parameters
-
-
-
-        if not params.get("product_name") and params.get("product"):
-
-            params["product_name"] = params.get("product")
-
-
-
-        price_from_params = next(
-
-            (item.get("value") for item in parameters
-
-             if isinstance(item, dict) and item.get("name") and '价' in item.get("name")),
-
-            None
-
-        )
-
-        extracted_price = extract_price_from_text(result_text)
-
-        price_text = None
-
-        for candidate in (params.get("price"), price_from_params):
-
-            normalized = normalize_price_value(candidate)
-
-            if normalized:
-
-                price_text = normalized
-
-                break
-
-        if not price_text and extracted_price:
-
-            price_text = extracted_price
-
-        if price_text:
-
-            params["price"] = price_text
-
-            price_entry_found = False
-
-            for item in parameters:
-
-                if isinstance(item, dict) and item.get("name") and '价' in item.get("name"):
-
-                    item["value"] = price_text
-
-                    price_entry_found = True
-
-            if not price_entry_found:
-
-                parameters.append({"name": "价格", "value": price_text})
-
-
-
-        additional_notes = params.get("additional_notes")
-
-        if isinstance(additional_notes, str) and additional_notes.strip():
-
-            params["additional_notes"] = [additional_notes.strip()]
-
-        elif not isinstance(additional_notes, list):
-
-            params["additional_notes"] = []
-
-
-
-        return {
-
-            "status": "success",
-
-            "params": params
-
-        }
-
-
-
-    except Exception as e:
-
-        raise HTTPException(status_code=500, detail=f"识别失败: {str(e)}")
-
-
-
-
-
-# ==================== 京东主图抓取 ====================
-
-
-
-class SummaryRewriteRequest(BaseModel):
-
-    name: str = ''
-
-    price: str = ''
-
-    params: Dict[str, str] = Field(default_factory=dict)
-
-    summary: Optional[str] = ''
-
-
-
-
-
-@app.post("/api/image/rewrite-summary")
-
-async def rewrite_image_summary(req: SummaryRewriteRequest):
-
-    if not DEEPSEEK_API_KEY:
-
-        raise HTTPException(status_code=500, detail="未配置 DeepSeek API 密钥")
-
-    try:
-
-        param_lines = []
-
-        for key, value in (req.params or {}).items():
-
-            if value is None:
-
-                continue
-
-            param_lines.append(f"- {key}: {value}")
-
-        param_text = "\n".join(param_lines) if param_lines else "暂无详细参数"
-
-        prompt = (
-
-            "请扮演资深品牌创意编辑，基于下方产品信息提炼一句或两句极短的总结。"
-
-            "避免堆砌参数，只捕捉能让用户立即产生兴趣的核心亮点，语言要有画面感、易读且不夸张。"
-
-        )
-
-        user_content = (
-
-            f"{prompt}\n\n"
-
-            f"产品名称：{req.name or '未知产品'}\n"
-
-            f"价格：{req.price or '未知价格'}\n"
-
-            f"参数：\n{param_text}\n"
-
-            f"已有总结：{req.summary or '暂无'}"
-
-        )
-
-        async def request_summary(model_name: str):
-
-            return await asyncio.to_thread(
-
-                deepseek_client.chat.completions.create,
-
-                model=model_name,
-
-                messages=[
-
-                    {"role": "system", "content": "你是电商商品文案专家，会客观凝练总结卖点。"},
-
-                    {"role": "user", "content": user_content}
-
-                ],
-
-                temperature=0.2
-
-            )
-
-
-
-        model_in_use = DEEPSEEK_MODEL or "deepseek-chat"
-
-        try:
-
-            response = await request_summary(model_in_use)
-
-        except Exception as e:
-
-            err = str(e)
-
-            if "Model Not Exist" in err and model_in_use != "deepseek-chat":
-
-                response = await request_summary("deepseek-chat")
-
-            else:
-
-                raise
-
-        summary_text = response.choices[0].message.content.strip()
-
-        if not summary_text:
-
-            raise HTTPException(status_code=500, detail="AI 未返回总结")
-
-        return {"status": "success", "summary": summary_text}
-
-    except HTTPException:
-
-        raise
-
-    except Exception as e:
-
-        message = str(e)
-
-        if "Model Not Exist" in message:
-
-            raise HTTPException(
-
-                status_code=500,
-
-                detail="总结改写失败：DeepSeek 模型无效，请将 DEEPSEEK_MODEL 设置为可用的模型（建议 deepseek-chat）。"
-
-            )
-
-        raise HTTPException(status_code=500, detail=f"总结改写失败: {message}")
-
-
-
-@app.post("/api/jd/images")
-
-async def fetch_jd_images(url: str = Form(...)):
-
-    """获取京东商品前5张主图"""
-
-    try:
-
-        # 提取商品 ID
-
-        sku_match = re.search(r'/(\d+)\.html', url)
-
-        if not sku_match:
-
-            sku_match = re.search(r'item\.jd\.com.*?(\d+)', url)
-
-        if not sku_match:
-
-            raise HTTPException(status_code=400, detail="无法识别京东商品链接")
-
-
-
-        sku_id = sku_match.group(1)
-
-
-
-        # 调用京东 API
-
-        api_url = f"https://item.jd.com/{sku_id}.html"
-
-
-
-        async with aiohttp.ClientSession() as session:
-
-            async with session.get(api_url) as resp:
-
-                if resp.status != 200:
-
-                    raise HTTPException(status_code=400, detail="获取商品页面失败")
-
-                html = await resp.text(errors='ignore')
-
-
-
-        # 提取图片数据
-
-        images = []
-
-        for pattern in [
-
-            r'"imgUrl":"([^"]+)"',
-
-            r'"imageList":\s*\[([^\]]+)\]',
-
-            r'//img\d+\.360buyimg\.com/[^"]+\.jpg'
-
-        ]:
-
-            matches = re.findall(pattern, html)
-
-            for match in matches[:5]:
-
-                img_url = match if isinstance(match, str) else match[0]
-
-                if img_url.startswith('//'):
-
-                    img_url = 'https:' + img_url
-
-                images.append(img_url)
-
-            if images:
-
-                break
-
-
-
-        # 去重并限制数量
-
-        seen = set()
-
-        unique_images = []
-
-        for img in images:
-
-            if img not in seen:
-
-                seen.add(img)
-
-                unique_images.append(img)
-
-            if len(unique_images) >= 5:
-
-                break
-
-
-
-        return {
-
-            "status": "success",
-
-            "sku_id": sku_id,
-
-            "images": [{"url": url} for url in unique_images]
-
-        }
-
-
-
-    except Exception as e:
-
-        raise HTTPException(status_code=500, detail=f"获取图片失败: {str(e)}")
-
-
-
-
-
-# ==================== 一键抠图 ====================
-
-
-
-async def ensure_rembg_ready():
-
-    """确保 RMBG 模型已就绪"""
-
-    global rembg_session, rembg_error
-
-    if rembg_session is not None:
-
-        return
-
-
-
-    await init_rembg_model()
-
-    for _ in range(200):
-
-        await asyncio.sleep(0.1)
-
-        if rembg_session is not None:
-
-            return
-        if rembg_error:
-            break
-
-    if rembg_error:
-        raise RuntimeError(rembg_error)
-    raise RuntimeError("RMBG 模型正在加载，请稍后再试")
-
-
-
-
-
-def improve_alpha_edges(output_image: Image.Image, mode: str = 'standard') -> Image.Image:
-
-    """细化 alpha 边缘并自动裁剪"""
-
-    if output_image.mode != 'RGBA':
-
-        output_image = output_image.convert('RGBA')
-
-    alpha = output_image.split()[3]
-
-    try:
-
-        alpha = alpha.point(lambda p: 0 if p < 25 else p)
-
-        if mode == 'precise':
-
-            alpha = alpha.filter(ImageFilter.MaxFilter(5))
-
-        alpha = alpha.filter(ImageFilter.MaxFilter(3))
-
-        alpha = alpha.filter(ImageFilter.MinFilter(3))
-
-        alpha = alpha.filter(ImageFilter.SMOOTH)
-
-        alpha = alpha.filter(ImageFilter.GaussianBlur(1.2))
-
-    except ValueError:
-
-        pass
-
-    output_image.putalpha(alpha)
-
-
-
-    mask = alpha.point(lambda p: 255 if p > 10 else 0)
-
-    bbox = mask.getbbox()
-
-    if bbox:
-
-        output_image = output_image.crop(bbox)
-
-    return output_image
-
-
-def run_rmbg_model(input_image: Image.Image) -> Image.Image:
-
-    global rembg_session, rembg_transform, rembg_device, rembg_to_pil
-
-    if rembg_session is None or rembg_transform is None or rembg_device is None:
-        raise RuntimeError("RMBG 模型未初始化")
-
-    image = ImageOps.exif_transpose(input_image)
-    rgb_image = image.convert('RGB')
-    input_tensor = rembg_transform(rgb_image).unsqueeze(0).to(rembg_device)
-
-    with torch.no_grad():
-        pred = rembg_session(input_tensor)[-1].sigmoid().cpu()
-
-    mask = rembg_to_pil(pred[0].squeeze())
-    mask = mask.resize(image.size)
-
-    output_image = image.convert('RGBA')
-    output_image.putalpha(mask)
-    return output_image
-
-
-
-
-
-async def remove_background_from_bytes(contents: bytes, mode: str = 'standard') -> Tuple[bytes, str]:
-
-    """抠图并返回 PNG 字节与 base64 预览"""
-
-    await ensure_rembg_ready()
-
-
-
-    input_image = Image.open(io.BytesIO(contents))
-
-    if input_image.mode != 'RGBA':
-
-        input_image = input_image.convert('RGBA')
-    output_image = run_rmbg_model(input_image)
-
-    output_image = improve_alpha_edges(output_image, mode)
-
-
-
-    buffered = io.BytesIO()
-
-    output_image.save(buffered, format='PNG')
-
-    png_bytes = buffered.getvalue()
-
-    preview_base64 = base64.b64encode(png_bytes).decode('utf-8')
-
-    return png_bytes, preview_base64
-
-
-
-@app.post("/api/image/removebg")
-
-async def remove_background(
-
-    file: UploadFile = File(...),
-
-    mode: str = Form('standard')
-
-):
-
-    """去除图片背景"""
-
-    global rembg_session, rembg_error
-
-
-
-    if rembg_session is None:
-
-        # 尝试初始化模型
-
-        await init_rembg_model()
-
-        # 等待模型加载
-
-        for _ in range(100):
-
-            await asyncio.sleep(0.1)
-
-            if rembg_session is not None:
-
-                break
-            if rembg_error:
-                break
-
-
-
-    if rembg_session is None:
-
-        detail = rembg_error or "模型正在加载中，请稍后再试"
-        raise HTTPException(status_code=503, detail=detail)
-
-
-
-    try:
-
-        # 读取图片
-
-        contents = await file.read()
-
-        input_image = Image.open(io.BytesIO(contents))
-
-
-
-        # 转换为 RGBA
-
-        if input_image.mode != 'RGBA':
-
-            input_image = input_image.convert('RGBA')
-
-
-
-        # 去除背景
-        output_image = run_rmbg_model(input_image)
-        output_image = improve_alpha_edges(output_image, mode)
-
-
-
-        # 保存到临时文件
-
-        temp_path = DOWNLOAD_DIR / "temp_images" / "removebg"
-
-        temp_path.mkdir(parents=True, exist_ok=True)
-
-
-
-        output_filename = f"nobg_{file.filename.rsplit('.', 1)[0] if '.' in file.filename else 'image'}.png"
-
-        output_path = temp_path / output_filename
-
-
-
-        # 保存
-
-        output_image.save(output_path, 'PNG')
-
-
-
-        # 转换为 base64 返回预览
-
-        buffered = io.BytesIO()
-
-        output_image.save(buffered, format='PNG')
-
-        img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-
-
-
-        return {
-
-            "status": "success",
-
-            "filename": output_filename,
-
-            "preview": f"data:image/png;base64,{img_base64}",
-
-            "path": str(output_path)
-
-        }
-
-
-
-    except Exception as e:
-
-        raise HTTPException(status_code=500, detail=f"抠图失败: {str(e)}")
-
-
-
-
-
-# ==================== 飞书多维表格 ====================
-
-
-
-
-
-class FeishuTableConfig(BaseModel):
-
-    link: str
-
-    mode: Literal['append', 'replace'] = 'append'
-
-
-
-    @validator('link')
-
-    def validate_link(cls, value: str) -> str:
-
-        return (value or '').strip()
-
-
-
-    @validator('mode')
-
-    def normalize_mode(cls, value: str) -> str:
-
-        return (value or 'append').lower()
-
-
-
-
-
-class FeishuExportRequest(BaseModel):
-
-    productTable: FeishuTableConfig
-
-    specTable: Optional[FeishuTableConfig] = None
-
-    products: List[Dict[str, Any]]
-
-
-
-    @validator('products')
-
-    def validate_products(cls, value: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-
-        if not value:
-
-            raise ValueError("没有可写入的商品数据")
-
-        return value
-
-
-
-
-
-async def get_feishu_http_client() -> httpx.AsyncClient:
-
-    global feishu_http_client
-
-    if feishu_http_client is None:
-
-        feishu_http_client = httpx.AsyncClient(timeout=30.0)
-
-    return feishu_http_client
-
-
-
-
-
-async def get_feishu_token() -> str:
-
-    if not FEISHU_APP_ID or not FEISHU_APP_SECRET:
-
-        raise HTTPException(status_code=400, detail="尚未配置 FEISHU_APP_ID/FEISHU_APP_SECRET")
-
-
-
-    now = time.time()
-
-    cached = feishu_token_cache.get("token")
-
-    if cached and now < feishu_token_cache.get("expires_at", 0) - 60:
-
-        return cached
-
-
-
-    client = await get_feishu_http_client()
-
-    try:
-
-        resp = await client.post(
-
-            f"{FEISHU_API_BASE}/auth/v3/tenant_access_token/internal/",
-
-            json={
-
-                "app_id": FEISHU_APP_ID,
-
-                "app_secret": FEISHU_APP_SECRET
-
-            },
-
-            timeout=30
-
-        )
-
-        resp.raise_for_status()
-
-    except httpx.HTTPError as exc:
-
-        raise HTTPException(status_code=502, detail=f"获取飞书 token 失败: {exc}") from exc
-
-
-
-    payload = resp.json()
-
-    if payload.get("code", 0) != 0:
-
-        raise HTTPException(status_code=400, detail=f"获取飞书 token 失败: {payload.get('msg')}")
-
-
-
-    token = payload.get("tenant_access_token")
-
-    expires_in = payload.get("expire", payload.get("expire_in", 7200))
-
-    feishu_token_cache.update({
-
-        "token": token,
-
-        "expires_at": now + max(expires_in, 60)
-
-    })
-
-    return token
-
-
-
-
-
-async def feishu_request(
-
-    method: str,
-
-    endpoint: str,
-
-    token: str,
-
-    *,
-
-    params: Optional[Dict[str, Any]] = None,
-
-    json_payload: Optional[Dict[str, Any]] = None,
-
-    data: Optional[Dict[str, Any]] = None,
-
-    files: Optional[Dict[str, Any]] = None,
-
-) -> Dict[str, Any]:
-
-    client = await get_feishu_http_client()
-
-    url = endpoint if endpoint.startswith("http") else f"{FEISHU_API_BASE}{endpoint}"
-
-    headers = {
-
-        "Authorization": f"Bearer {token}"
-
-    }
-
-    if json_payload is not None:
-
-        headers["Content-Type"] = "application/json"
-
-    try:
-
-        response = await client.request(
-
-            method,
-
-            url,
-
-            params=params,
-
-            json=json_payload,
-
-            data=data,
-
-            files=files,
-
-            headers=headers,
-
-            timeout=30
-
-        )
-
-        response.raise_for_status()
-
-    except httpx.HTTPError as exc:
-
-        raise HTTPException(status_code=502, detail=f"飞书接口网络异常: {exc}") from exc
-
-
-
-    payload = response.json()
-
-    if payload.get("code", 0) != 0:
-
-        raise HTTPException(status_code=400, detail=f"飞书接口报错: {payload.get('msg')}")
-
-    return payload.get("data") or {}
-
-
-
-
-
-def parse_bitable_link(link: str) -> Tuple[str, str]:
-
-    parsed = urlparse(link)
-
-    query = parse_qs(parsed.query)
-
-
-
-    app_token = ''
-
-    table_id = ''
-
-
-
-    for key in ('appToken', 'app_token', 'appId', 'app_id'):
-
-        if query.get(key):
-
-            app_token = query[key][0]
-
-            break
-
-
-
-    for key in ('tableId', 'table_id', 'tbl'):
-
-        if query.get(key):
-
-            table_id = query[key][0]
-
-            break
-
-
-
-    segments = [segment for segment in parsed.path.split('/') if segment]
-
-    for segment in segments:
-
-        if not app_token and segment.startswith('app'):
-
-            app_token = segment
-
-        if not table_id and segment.startswith('tbl'):
-
-            table_id = segment
-
-
-
-    if not app_token:
-
-        match = re.search(r'(app[a-zA-Z0-9]{6,})', link)
-
-        if match:
-
-            app_token = match.group(1)
-
-    if not table_id:
-
-        match = re.search(r'(tbl[a-zA-Z0-9]{6,})', link)
-
-        if match:
-
-            table_id = match.group(1)
-
-
-
-    if not app_token or not table_id:
-
-        raise ValueError("无法解析飞书链接，请粘贴包含 appToken/tableId 的地址")
-
-    return app_token, table_id
-
-
-
-
-
-async def list_bitable_fields(token: str, app_token: str, table_id: str) -> Dict[str, Dict[str, Any]]:
-
-    fields: Dict[str, Dict[str, Any]] = {}
-
-    page_token = None
-
-    while True:
-
-        params = {"page_size": 200}
-
-        if page_token:
-
-            params["page_token"] = page_token
-
-        data = await feishu_request(
-
-            "GET",
-
-            f"/bitable/v1/apps/{app_token}/tables/{table_id}/fields",
-
-            token,
-
-            params=params
-
-        )
-
-        for item in data.get("items", []):
-
-            name = item.get("field_name")
-
-            if name:
-
-                fields[name] = item
-
-        if not data.get("has_more"):
-
-            break
-
-        page_token = data.get("page_token")
-
-        if not page_token:
-
-            break
-
-    return fields
-
-
-
-
-
-async def ensure_bitable_fields(
-
-    token: str,
-
-    app_token: str,
-
-    table_id: str,
-
-    required_fields: List[Dict[str, Any]]
-
-) -> None:
-
-    existing = await list_bitable_fields(token, app_token, table_id)
-
-    for field in required_fields:
-
-        name = field["name"]
-
-        if name in existing:
-
-            continue
-
-        payload = {
-
-            "field_name": name,
-
-            "type": field["type"],
-
-            "property": field.get("property") or {}
-
-        }
-
-        await feishu_request(
-
-            "POST",
-
-            f"/bitable/v1/apps/{app_token}/tables/{table_id}/fields",
-
-            token,
-
-            json_payload=payload
-
-        )
-
-
-
-
-
-async def delete_all_bitable_records(token: str, app_token: str, table_id: str) -> None:
-
-    page_token = None
-
-    while True:
-
-        params = {"page_size": 200}
-
-        if page_token:
-
-            params["page_token"] = page_token
-
-        data = await feishu_request(
-
-            "GET",
-
-            f"/bitable/v1/apps/{app_token}/tables/{table_id}/records",
-
-            token,
-
-            params=params
-
-        )
-
-        record_ids = [item["record_id"] for item in data.get("items", []) if item.get("record_id")]
-
-        if record_ids:
-
-            await feishu_request(
-
-                "POST",
-
-                f"/bitable/v1/apps/{app_token}/tables/{table_id}/records/batch_delete",
-
-                token,
-
-                json_payload={"record_ids": record_ids}
-
-            )
-
-        if not data.get("has_more"):
-
-            break
-
-        page_token = data.get("page_token")
-
-        if not page_token:
-
-            break
-
-
-
-
-
-async def upload_bitable_image(token: str, app_token: str, filename: str, png_bytes: bytes) -> Optional[str]:
-
-    data = {
-
-        "file_name": filename,
-
-        "parent_type": "bitable_image",
-
-        "parent_token": app_token
-
-    }
-
-    files = {
-
-        "file": (filename, png_bytes, "image/png")
-
-    }
-
-    result = await feishu_request(
-
-        "POST",
-
-        "/drive/v1/medias/upload_all",
-
-        token,
-
-        data=data,
-
-        files=files
-
-    )
-
-    return result.get("file_token")
-
-
-
-
-
-def chunk_list(items: List[Dict[str, Any]], size: int = 100) -> List[List[Dict[str, Any]]]:
-
-    return [items[i:i + size] for i in range(0, len(items), size)]
-
-
-
-
-
-async def batch_create_records(
-
-    token: str,
-
-    app_token: str,
-
-    table_id: str,
-
-    rows: List[Dict[str, Any]]
-
-) -> int:
-
-    if not rows:
-
-        return 0
-
-    total = 0
-
-    for chunk in chunk_list(rows, 100):
-
-        payload = {"records": [{"fields": row} for row in chunk]}
-
-        await feishu_request(
-
-            "POST",
-
-            f"/bitable/v1/apps/{app_token}/tables/{table_id}/records/batch_create",
-
-            token,
-
-            json_payload=payload
-
-        )
-
-        total += len(chunk)
-
-    return total
-
-
-
-
-
-def normalize_http_url(url: Optional[str]) -> Optional[str]:
-
-    if not url:
-
-        return None
-
-    url = url.strip()
-
-    if url.startswith('data:'):
-
-        return url
-
-    if url.startswith('//'):
-
-        return 'https:' + url
-
-    if re.match(r'^https?://', url):
-
-        return url
-
-    if url.startswith('www.'):
-
-        return f"https://{url}"
-
-    return url
-
-
-
-
-
-async def fetch_image_bytes(session: aiohttp.ClientSession, url: str) -> Optional[bytes]:
-
-    normalized = normalize_http_url(url)
-
-    if not normalized or normalized.startswith('data:'):
-
-        return None
-
-    try:
-
-        async with session.get(normalized, timeout=aiohttp.ClientTimeout(total=20)) as resp:
-
-            if resp.status == 200:
-
-                return await resp.read()
-
-    except Exception as exc:
-
-        print(f"[feishu] 下载图片失败: {exc}")
-
-    return None
-
-
-
-
-
-async def build_transparent_png(
-
-    product: Dict[str, Any],
-
-    session: aiohttp.ClientSession
-
-) -> Optional[bytes]:
-
-    explicit = product.get("transparentImage") or product.get("transparent_image")
-
-    if isinstance(explicit, str) and explicit.startswith('data:'):
-
-        try:
-
-            _, encoded = explicit.split(',', 1)
-
-            return base64.b64decode(encoded)
-
-        except Exception:
-
-            pass
-
-
-
-    image_url = explicit or product.get("image")
-
-    if not image_url:
-
-        return None
-
-
-
-    if isinstance(image_url, str) and image_url.startswith('data:'):
-
-        try:
-
-            _, encoded = image_url.split(',', 1)
-
-            return base64.b64decode(encoded)
-
-        except Exception:
-
-            return None
-
-
-
-    raw_bytes = await fetch_image_bytes(session, image_url)
-
-    if not raw_bytes:
-
-        return None
-
-
-
-    try:
-
-        png_bytes, _ = await remove_background_from_bytes(raw_bytes)
-
-        return png_bytes
-
-    except Exception as exc:
-
-        print(f"[feishu] 生成透明图失败: {exc}")
-
-        return None
-
-
-
-
-
-def build_image_cache_key(product: Dict[str, Any]) -> Optional[str]:
-
-    for key in ("transparentImageKey", "image", "standardUrl", "materialUrl", "originalLink", "skuId", "id"):
-
-        value = product.get(key)
-
-        if not value:
-
-            continue
-
-        if isinstance(value, str) and value.startswith('data:'):
-
-            return hashlib.md5(value.encode('utf-8')).hexdigest()
-
-        return str(value)
-
-    return None
-
-
-
-
-
-async def ensure_image_token(
-
-    product: Dict[str, Any],
-
-    token: str,
-
-    app_token: str,
-
-    session: aiohttp.ClientSession,
-
-    cache: Dict[str, str]
-
-) -> Optional[str]:
-
-    cache_key = build_image_cache_key(product)
-
-    if cache_key and cache_key in cache:
-
-        return cache[cache_key]
-
-
-
-    png_bytes = await build_transparent_png(product, session)
-
-    if not png_bytes:
-
-        return None
-
-
-
-    title = product.get("customName") or product.get("name") or "image"
-
-    filename = f"{sanitize_filename(title)}.png"
-
-    file_token = await upload_bitable_image(token, app_token, filename, png_bytes)
-
-    if cache_key and file_token:
-
-        cache[cache_key] = file_token
-
-    return file_token
-
-
-
-
-
-def safe_float(value: Any) -> Optional[float]:
-
-    if value in (None, '', 'null'):
-
-        return None
-
-    try:
-
-        return float(value)
-
-    except (TypeError, ValueError):
-
-        try:
-
-            return float(Decimal(str(value)))
-
-        except (InvalidOperation, ValueError, TypeError):
-
-            return None
-
-
-
-
-
-def safe_int(value: Any) -> Optional[int]:
-
-    flt = safe_float(value)
-
-    if flt is None:
-
-        return None
-
-    try:
-
-        return int(round(flt))
-
-    except (ValueError, TypeError):
-
-        return None
-
-
-
-
-
-def format_percentage(value: Any) -> Optional[str]:
-
-    flt = safe_float(value)
-
-    if flt is None:
-
-        return None
-
-    return f"{flt:.2f}%"
-
-
-
-
-
-def extract_source_info(product: Dict[str, Any]) -> Tuple[str, str, str]:
-
-    source = product.get("sourceVideo") or {}
-
-    title = source.get("title") or ''
-
-    author = source.get("author") or source.get("up") or (source.get("owner") or {}).get("name") or ''
-
-    link = source.get("originalUrl") or source.get("url") or ''
-
-    return title, author, link
-
-
-
-
-
-def get_product_link(product: Dict[str, Any]) -> Optional[str]:
-
-    for key in ("standardUrl", "materialUrl", "originalLink"):
-
-        link = normalize_http_url(product.get(key))
-
-        if link:
-
-            return link
-
-    return None
-
-
-
-
-
-def resolve_product_title(product: Dict[str, Any]) -> str:
-
-    return str(product.get("customName") or product.get("name") or "未命名商品")
-
-
-
-
-
-def resolve_product_id(product: Dict[str, Any]) -> str:
-
-    return str(product.get("skuId") or product.get("id") or product.get("itemId") or '')
-
-
-
-
-
-def build_product_record(product: Dict[str, Any], attachment_token: Optional[str]) -> Dict[str, Any]:
-
-    title = resolve_product_title(product)
-
-    fields: Dict[str, Any] = {
-
-        "商品标题": title,
-
-        "商品ID": resolve_product_id(product),
-
-        "价格(元)": safe_float(product.get("price")),
-
-        "佣金(元)": safe_float(product.get("commission")),
-
-        "佣金比例": format_percentage(product.get("commissionRate")),
-
-        "30天销量": safe_int(product.get("sales30Days")),
-
-        "评价数": safe_int(product.get("comments")),
-
-        "店铺名称": product.get("shopName") or '',
-
-        "参数摘要": product.get("specSummary") or product.get("specEntrySummary") or '',
-
-        "排序": safe_int(product.get("sortOrder")),
-
-    }
-
-
-
-    link = get_product_link(product)
-
-    if link:
-
-        fields["商品链接"] = link
-
-
-
-    source_title, source_author, source_link = extract_source_info(product)
-
-    if source_title:
-
-        fields["来源视频"] = source_title
-
-    if source_author:
-
-        fields["UP主"] = source_author
-
-    if source_link:
-
-        fields["来源链接"] = source_link
-
-
-
-    if attachment_token:
-
-        fields["透明主图"] = [{
-
-            "name": f"{sanitize_filename(title)}.png",
-
-            "token": attachment_token
-
-        }]
-
-    return fields
-
-
-
-
-
-def build_spec_record(
-
-    product: Dict[str, Any],
-
-    param_keys: List[str]
-
-) -> Dict[str, Any]:
-
-    fields: Dict[str, Any] = {
-
-        "商品标题": resolve_product_title(product),
-
-        "商品ID": resolve_product_id(product),
-
-        "参数摘要": product.get("specSummary") or product.get("specEntrySummary") or '',
-
-        "排序": safe_int(product.get("sortOrder")),
-
-    }
-
-    link = get_product_link(product)
-
-    if link:
-
-        fields["商品链接"] = link
-
-    source_title, source_author, source_link = extract_source_info(product)
-
-    if source_title:
-
-        fields["来源视频"] = source_title
-
-    if source_author:
-
-        fields["UP主"] = source_author
-
-    if source_link:
-
-        fields["来源链接"] = source_link
-
-
-
-    params = product.get("specParams") or {}
-
-    for key in param_keys:
-
-        value = params.get(key)
-
-        if value not in (None, ''):
-
-            fields[key] = str(value)
-
-    return fields
-
-
-
-
-
-@app.post("/api/feishu/bitable/export")
-
-async def export_feishu_bitable(payload: FeishuExportRequest):
-
-    """将商品列表写入飞书多维表格"""
-
-    if not payload.productTable.link:
-
-        raise HTTPException(status_code=400, detail="请填写商品表链接")
-
-    try:
-
-        product_app_token, product_table_id = parse_bitable_link(payload.productTable.link)
-
-    except ValueError as exc:
-
-        raise HTTPException(status_code=400, detail=str(exc))
-
-
-
-    spec_app_token = spec_table_id = None
-
-    if payload.specTable and payload.specTable.link:
-
-        try:
-
-            spec_app_token, spec_table_id = parse_bitable_link(payload.specTable.link)
-
-        except ValueError as exc:
-
-            raise HTTPException(status_code=400, detail=f"参数表链接无效: {exc}")
-
-
-
-    token = await get_feishu_token()
-
-
-
-    product_fields = [
-
-        {"name": "商品标题", "type": 1},
-
-        {"name": "商品ID", "type": 1},
-
-        {"name": "价格(元)", "type": 2},
-
-        {"name": "佣金(元)", "type": 2},
-
-        {"name": "佣金比例", "type": 1},
-
-        {"name": "30天销量", "type": 2},
-
-        {"name": "评价数", "type": 2},
-
-        {"name": "店铺名称", "type": 1},
-
-        {"name": "商品链接", "type": 17},
-
-        {"name": "透明主图", "type": 15},
-
-        {"name": "参数摘要", "type": 1},
-
-        {"name": "来源视频", "type": 1},
-
-        {"name": "来源链接", "type": 17},
-
-        {"name": "UP主", "type": 1},
-
-        {"name": "排序", "type": 2},
-
-    ]
-
-
-
-    await ensure_bitable_fields(token, product_app_token, product_table_id, product_fields)
-
-
-
-    param_keys: List[str] = []
-
-    if spec_app_token and spec_table_id:
-
-        seen: Set[str] = set()
-
-        for product in payload.products:
-
-            params = product.get("specParams") or {}
-
-            for key in params.keys():
-
-                cleaned = str(key).strip()
-
-                if cleaned and cleaned not in seen:
-
-                    seen.add(cleaned)
-
-        param_keys = sorted(seen)
-
-        # 限制字段数量避免超出表格限制
-
-        if len(param_keys) > 80:
-
-            param_keys = param_keys[:80]
-
-
-
-        base_fields = [
-
-            {"name": "商品标题", "type": 1},
-
-            {"name": "商品ID", "type": 1},
-
-            {"name": "商品链接", "type": 17},
-
-            {"name": "参数摘要", "type": 1},
-
-            {"name": "来源视频", "type": 1},
-
-            {"name": "来源链接", "type": 17},
-
-            {"name": "UP主", "type": 1},
-
-            {"name": "排序", "type": 2},
-
-        ]
-
-        param_fields = [{"name": key, "type": 1} for key in param_keys]
-
-        await ensure_bitable_fields(
-
-            token,
-
-            spec_app_token,
-
-            spec_table_id,
-
-            base_fields + param_fields
-
-        )
-
-
-
-    if payload.productTable.mode == 'replace':
-
-        await delete_all_bitable_records(token, product_app_token, product_table_id)
-
-    if spec_app_token and spec_table_id and payload.specTable and payload.specTable.mode == 'replace':
-
-        await delete_all_bitable_records(token, spec_app_token, spec_table_id)
-
-
-
-    session = aiohttp.ClientSession()
-
-    image_token_cache: Dict[str, str] = {}
-
-    try:
-
-        product_rows: List[Dict[str, Any]] = []
-
-        spec_rows: List[Dict[str, Any]] = []
-
-
-
-        for product in payload.products:
-
-            attachment_token = await ensure_image_token(
-
-                product,
-
-                token,
-
-                product_app_token,
-
-                session,
-
-                image_token_cache
-
-            )
-
-            product_rows.append(build_product_record(product, attachment_token))
-
-            if spec_app_token and spec_table_id:
-
-                spec_rows.append(build_spec_record(product, param_keys))
-
-
-
-        created_products = await batch_create_records(
-
-            token,
-
-            product_app_token,
-
-            product_table_id,
-
-            product_rows
-
-        )
-
-        created_specs = 0
-
-        if spec_app_token and spec_table_id and spec_rows:
-
-            created_specs = await batch_create_records(
-
-                token,
-
-                spec_app_token,
-
-                spec_table_id,
-
-                spec_rows
-
-            )
-
-    finally:
-
-        await session.close()
-
-
-
-    response = {
-
-        "status": "success",
-
-        "productTable": {
-
-            "appToken": product_app_token,
-
-            "tableId": product_table_id,
-
-            "records": created_products
-
-        }
-
-    }
-
-    if spec_app_token and spec_table_id:
-
-        response["specTable"] = {
-
-            "appToken": spec_app_token,
-
-            "tableId": spec_table_id,
-
-            "records": created_specs
-
-        }
-
-    return response
-
-
-
-
-
-# ==================== 导出文件 ====================
-
-
-
-@app.post("/api/export/txt")
-
-async def export_txt(request: dict):
-
-    """导出为 TXT 文件"""
-
-    try:
-
-        temp_path = DOWNLOAD_DIR / "exports"
-
-        temp_path.mkdir(parents=True, exist_ok=True)
-
-
-
-        title = request.get('title', '口播稿')
-
-        filename = f"{sanitize_filename(title)}.txt"
-
-        output_path = temp_path / filename
-
-
-
-        with open(output_path, 'w', encoding='utf-8') as f:
-
-            f.write(f"{'='*20} {title} {'='*20}\n\n")
-
-
-
-            sections = request.get('sections', [])
-
-            for section in sections:
-
-                section_type = section.get('type', '')
-
-                if section_type:
-
-                    f.write(f"\n【{section_type}】\n")
-
-
-
-                text = section.get('text', '')
-
-                f.write(text + "\n")
-
-
-
-        return FileResponse(output_path, filename=filename, media_type='text/plain; charset=utf-8')
-
-
-
-    except Exception as e:
-
-        raise HTTPException(status_code=500, detail=f"导出失败: {str(e)}")
-
-
-
-
-
-# ==================== 方案文案与模板 ====================
-
-
-
-def build_scheme_items_text(items: List[Dict[str, Any]]) -> str:
-
-    lines = []
-
-    for index, item in enumerate(items[:50], start=1):
-
-        title = str(item.get("title") or "未命名商品").strip()
-
-        price = str(item.get("price") or "--").strip()
-
-        commission = str(item.get("commission") or "--").strip()
-
-        rate = str(item.get("commissionRate") or item.get("commission_rate") or "--").strip()
-
-        sales = str(item.get("sales30Days") or "--").strip()
-
-        comments = str(item.get("comments") or "--").strip()
-
-        shop = str(item.get("shopName") or "--").strip()
-
-        params = item.get("params") or {}
-
-        param_preview = "、".join([f"{k}:{v}" for k, v in list(params.items())[:6]]) if isinstance(params, dict) else ""
-
-        if param_preview:
-
-            param_preview = f" | 参数:{param_preview}"
-
-        lines.append(
-
-            f"{index}. {title} | 价格:{price} | 佣金:{commission} | 比例:{rate} | 销量:{sales} | 评价:{comments} | 店铺:{shop}{param_preview}"
-
-        )
-
-    return "\n".join(lines)
-
-
-
-
-
-class PromptTemplateUpdate(BaseModel):
-
-    content: str = ''
-
-
-
-
-
-class SchemeGenerateRequest(BaseModel):
-
-    type: str
-
-    prompt: Optional[str] = ''
-
-    items: List[Dict[str, Any]] = Field(default_factory=list)
-
-
-
-
-
-class SchemeCreate(BaseModel):
-
-    name: str
-
-    category_id: str
-
-    category_name: Optional[str] = None
-
-    remark: Optional[str] = None
-
-    items: List[Dict[str, Any]] = Field(default_factory=list)
-
-
-
-
-
-class SchemeUpdate(BaseModel):
-
-    name: Optional[str] = None
-
-    category_id: Optional[str] = None
-
-    category_name: Optional[str] = None
-
-    remark: Optional[str] = None
-
-    items: Optional[List[Dict[str, Any]]] = None
-
-
-
-
-
-def normalize_scheme(row: Dict[str, Any]) -> Dict[str, Any]:
-
-    items = row.get("items")
-
-    if not isinstance(items, list):
-
-        items = []
-
-    return {
-
-        "id": row.get("id"),
-
-        "name": row.get("name") or "",
-
-        "category_id": row.get("category_id") or "",
-
-        "category_name": row.get("category_name") or "",
-
-        "remark": row.get("remark") or "",
-
-        "items": items,
-
-        "created_at": row.get("created_at"),
-
-        "updated_at": row.get("updated_at")
-
-    }
-
-
-
-
-
-@app.get("/api/schemes")
-
-async def list_schemes(category_id: Optional[str] = None):
-
-    client = ensure_supabase()
-
-    params = {
-
-        "select": "id,name,category_id,category_name,remark,items,created_at,updated_at",
-
-        "order": "created_at.desc"
-
-    }
-
-    if category_id:
-
-        params["category_id"] = f"eq.{category_id}"
-
-    try:
-
-        rows = await client.select("schemes", params=params)
-
-    except SupabaseError as exc:
-
-        raise HTTPException(status_code=500, detail=str(exc.message))
-
-    return {"schemes": [normalize_scheme(row) for row in rows]}
-
-
-
-
-
-@app.get("/api/schemes/{scheme_id}")
-
-async def get_scheme(scheme_id: str):
-
-    client = ensure_supabase()
-
-    try:
-
-        rows = await client.select("schemes", {"id": f"eq.{scheme_id}"})
-
-    except SupabaseError as exc:
-
-        raise HTTPException(status_code=500, detail=str(exc.message))
-
-    if not rows:
-
-        raise HTTPException(status_code=404, detail="方案不存在")
-
-    return {"scheme": normalize_scheme(rows[0])}
-
-
-
-
-
-@app.post("/api/schemes")
-
-async def create_scheme(payload: SchemeCreate):
-
-    client = ensure_supabase()
-
-    name = payload.name.strip()
-
-    category_id = payload.category_id.strip()
-
-    if not name:
-
-        raise HTTPException(status_code=400, detail="????????")
-
-    if not category_id:
-
-        raise HTTPException(status_code=400, detail="??????")
-
-    body = {
-
-        "name": name,
-
-        "category_id": category_id,
-
-        "category_name": (payload.category_name or "").strip() or None,
-
-        "remark": (payload.remark or "").strip() or None,
-
-        "items": payload.items or [],
-
-        "created_at": utc_now_iso(),
-
-        "updated_at": utc_now_iso()
-
-    }
-
-    try:
-
-        record = await client.insert("schemes", body)
-
-    except SupabaseError as exc:
-
-        raise HTTPException(status_code=500, detail=str(exc.message))
-
-    return {"scheme": normalize_scheme(record[0])}
-
-
-
-
-
-@app.patch("/api/schemes/{scheme_id}")
-
-async def update_scheme(scheme_id: str, payload: SchemeUpdate):
-
-    client = ensure_supabase()
-
-    updates: Dict[str, Any] = {}
-
-    if payload.name is not None:
-
-        name = payload.name.strip()
-
-        if not name:
-
-            raise HTTPException(status_code=400, detail="????????")
-
-        updates["name"] = name
-
-    if payload.category_id is not None:
-
-        category_id = payload.category_id.strip()
-
-        if not category_id:
-
-            raise HTTPException(status_code=400, detail="??????")
-
-        updates["category_id"] = category_id
-
-    if payload.category_name is not None:
-
-        updates["category_name"] = payload.category_name.strip() or None
-
-    if payload.remark is not None:
-
-        updates["remark"] = payload.remark.strip() or None
-
-    if payload.items is not None:
-
-        updates["items"] = payload.items
-
-    if not updates:
-
-        raise HTTPException(status_code=400, detail="?????????")
-
-    updates["updated_at"] = utc_now_iso()
-
-    try:
-
-        record = await client.update("schemes", updates, {"id": f"eq.{scheme_id}"})
-
-    except SupabaseError as exc:
-
-        raise HTTPException(status_code=500, detail=str(exc.message))
-
-    if not record:
-
-        raise HTTPException(status_code=404, detail="?????")
-
-    return {"scheme": normalize_scheme(record[0])}
-
-
-
-
-
-@app.delete("/api/schemes/{scheme_id}")
-
-async def delete_scheme(scheme_id: str):
-
-    client = ensure_supabase()
-
-    try:
-
-        existing = await client.select("schemes", {"id": f"eq.{scheme_id}"})
-
-    except SupabaseError as exc:
-
-        raise HTTPException(status_code=500, detail=str(exc.message))
-
-    if not existing:
-
-        raise HTTPException(status_code=404, detail="?????")
-
-    try:
-
-        await client.delete("schemes", {"id": f"eq.{scheme_id}"})
-
-    except SupabaseError as exc:
-
-        raise HTTPException(status_code=500, detail=str(exc.message))
-
-    return {"status": "ok"}
-
-
-
-
-
-@app.get("/api/prompts")
-
-async def get_prompt_templates(keys: Optional[str] = None):
-
-    requested = [key.strip() for key in (keys or "").split(",") if key.strip()]
-
-    if requested:
-
-        templates: Dict[str, str] = {key: PROMPT_TEMPLATE_DEFAULTS.get(key, "") for key in requested}
-
-    else:
-
-        templates = dict(PROMPT_TEMPLATE_DEFAULTS)
-
-    try:
-
-        client = ensure_supabase()
-
-        params = {"select": "key,content"}
-
-        if requested:
-
-            quoted = ",".join([f'"{key}"' for key in requested])
-
-            params["key"] = f"in.({quoted})"
-
-        rows = await client.select("prompt_templates", params=params)
-
-        for row in rows:
-
-            key = row.get("key")
-
-            content = row.get("content")
-
-            if key:
-
-                templates[key] = content or ""
-
-    except SupabaseError:
-
-        pass
-
-    except Exception:
-
-        pass
-
-    return {"templates": templates}
-
-
-
-
-
-@app.patch("/api/prompts/{prompt_key}")
-
-async def update_prompt_template(prompt_key: str, payload: PromptTemplateUpdate):
-
-    if not prompt_key:
-
-        raise HTTPException(status_code=400, detail="缺少提示词类型")
-
-    client = ensure_supabase()
-
-    body = {
-
-        "key": prompt_key,
-
-        "content": payload.content or "",
-
-        "updated_at": utc_now_iso()
-
-    }
-
-    try:
-
-        existing = await client.select("prompt_templates", {"key": f"eq.{prompt_key}"})
-
-        if existing:
-
-            record = await client.update("prompt_templates", body, {"key": f"eq.{prompt_key}"})
-
-        else:
-
-            record = await client.insert("prompt_templates", body)
-
-    except SupabaseError as exc:
-
-        raise HTTPException(status_code=500, detail=f"提示词保存失败: {exc.message}")
-
-    except Exception as exc:
-
-        raise HTTPException(status_code=500, detail=f"提示词保存失败: {str(exc)}")
-
-    return {"template": record[0] if record else body}
-
-
-
-
-
-@app.post("/api/scheme/generate-text")
-
-async def generate_scheme_text(payload: SchemeGenerateRequest):
-
-    if not DEEPSEEK_API_KEY:
-
-        raise HTTPException(status_code=500, detail="未配置 DeepSeek API 密钥")
-
-    if not payload.items:
-
-        raise HTTPException(status_code=400, detail="没有可用的选品数据")
-
-    prompt_base = payload.prompt or PROMPT_TEMPLATE_DEFAULTS.get(payload.type, "")
-
-    items_text = build_scheme_items_text(payload.items)
-
-    if "{{items}}" in prompt_base:
-
-        prompt_text = prompt_base.replace("{{items}}", items_text)
-
-    else:
-
-        prompt_text = f"{prompt_base}\n\n选品信息：\n{items_text}"
-
-    try:
-
-        async def request_text(model_name: str):
-
-            return await asyncio.to_thread(
-
-                deepseek_client.chat.completions.create,
-
-                model=model_name,
-
-                messages=[
-
-                    {"role": "system", "content": "你是电商文案助手，输出清晰、简洁、可直接使用的结果。"},
-
-                    {"role": "user", "content": prompt_text}
-
-                ],
-
-                temperature=0.3
-
-            )
-
-
-
-        model_in_use = DEEPSEEK_MODEL or "deepseek-chat"
-
-        try:
-
-            response = await request_text(model_in_use)
-
-        except Exception as e:
-
-            err = str(e)
-
-            if "Model Not Exist" in err and model_in_use != "deepseek-chat":
-
-                response = await request_text("deepseek-chat")
-
-            else:
-
-                raise
-
-        result_text = response.choices[0].message.content.strip()
-
-        if not result_text:
-
+        choices = response.choices or []
+        if not choices:
             raise HTTPException(status_code=500, detail="AI 未返回结果")
 
-        return {"status": "success", "output": result_text}
+        def extract_choice_content(choice: Any) -> str:
+            if isinstance(choice, dict):
+                message = choice.get("message") or {}
+                if isinstance(message, dict):
+                    return message.get("content", "")
+                return getattr(message, "content", "")
+            message = getattr(choice, "message", None)
+            if isinstance(message, dict):
+                return message.get("content", "")
+            return getattr(message, "content", "")
 
+        content = extract_choice_content(choices[0])
+        return {"status": "ok", "text": content}
     except HTTPException:
-
         raise
-
-    except Exception as e:
-
-        raise HTTPException(status_code=500, detail=f"生成失败: {str(e)}")
-
-
-
-
-
-def load_local_image_templates() -> List[Dict[str, Any]]:
-
-    templates: List[Dict[str, Any]] = []
-
-    if not LOCAL_IMAGE_TEMPLATE_DIR.exists():
-
-        return templates
-
-    for file_path in sorted(LOCAL_IMAGE_TEMPLATE_DIR.glob("*.html")):
-
-        try:
-
-            html = file_path.read_text(encoding="utf-8")
-
-        except Exception:
-
-            continue
-
-        name = file_path.stem
-
-        created_at = datetime.fromtimestamp(file_path.stat().st_mtime, tz=timezone.utc).isoformat()
-
-        templates.append({
-
-            "id": f"local-{file_path.stem}",
-
-            "name": name,
-
-            "category": "本地模板",
-
-            "html": html,
-
-            "preview_url": None,
-
-            "created_at": created_at
-
-        })
-
-    return templates
-
-
-
-
-
-@app.get("/api/image/templates")
-
-async def get_image_templates():
-
-    local_templates = load_local_image_templates()
-
-    remote_templates: List[Dict[str, Any]] = []
-
-    try:
-
-        client = ensure_supabase()
-
-        remote_templates = await client.select(
-
-            "image_templates",
-
-            params={
-
-                "select": "id,name,category,html,preview_url,created_at",
-
-                "order": "created_at.desc"
-
-            }
-
-        )
-
-    except SupabaseError:
-
-        remote_templates = []
-
-    except Exception:
-
-        remote_templates = []
-
-    return {"templates": local_templates + (remote_templates or [])}
-
-
-
-
-
-# ==================== 健康检查 ====================
-
-
-
-# ---------- Supabase 持久化模块 ----------
-
-
-
-
-
-class SourcingCategoryCreate(BaseModel):
-    name: str
-    color: Optional[str] = None
-    spec_fields: Optional[List[Any]] = None
-    sort_order: Optional[int] = None
-
-
-
-
-class SourcingCategoryUpdate(BaseModel):
-    name: Optional[str] = None
-    color: Optional[str] = None
-    spec_fields: Optional[List[Any]] = None
-    sort_order: Optional[int] = None
-
-
-
-
-class SourcingItemCreate(BaseModel):
-
-    category_id: str
-
-    title: str
-
-    link: Optional[str] = None
-
-    taobao_link: Optional[str] = None
-
-    price: Optional[float] = None
-
-    commission: Optional[float] = None
-
-    commission_rate: Optional[float] = None
-
-    jd_price: Optional[float] = None
-
-    jd_commission: Optional[float] = None
-
-    jd_commission_rate: Optional[float] = None
-
-    jd_sales: Optional[float] = None
-
-    tb_price: Optional[float] = None
-
-    tb_commission: Optional[float] = None
-
-    tb_commission_rate: Optional[float] = None
-
-    tb_sales: Optional[float] = None
-
-    source_type: Optional[str] = "manual"
-
-    source_ref: Optional[str] = None
-
-    cover_url: Optional[str] = None
-
-    remark: Optional[str] = None
-
-    spec: Dict[str, Any] = Field(default_factory=dict)
-
-    tags: Optional[List[str]] = None
-
-
-
-
-
-class SourcingItemBatchItem(BaseModel):
-
-    title: str
-
-    link: Optional[str] = None
-
-    taobao_link: Optional[str] = None
-
-    price: Optional[float] = None
-
-    commission: Optional[float] = None
-
-    commission_rate: Optional[float] = None
-
-    jd_price: Optional[float] = None
-
-    jd_commission: Optional[float] = None
-
-    jd_commission_rate: Optional[float] = None
-
-    jd_sales: Optional[float] = None
-
-    tb_price: Optional[float] = None
-
-    tb_commission: Optional[float] = None
-
-    tb_commission_rate: Optional[float] = None
-
-    tb_sales: Optional[float] = None
-
-    source_type: Optional[str] = "manual"
-
-    source_ref: Optional[str] = None
-
-    cover_url: Optional[str] = None
-
-    remark: Optional[str] = None
-
-    spec: Dict[str, Any] = Field(default_factory=dict)
-
-    tags: Optional[List[str]] = None
-
-
-
-
-
-class SourcingItemBatchCreate(BaseModel):
-
-    category_id: str
-
-    items: List[SourcingItemBatchItem]
-
-
-
-
-
-class SourcingItemsByIdsRequest(BaseModel):
-
-    ids: List[str] = Field(default_factory=list)
-
-
-
-
-class SourcingItemUpdate(BaseModel):
-
-    title: Optional[str] = None
-
-    link: Optional[str] = None
-
-    taobao_link: Optional[str] = None
-
-    price: Optional[float] = None
-
-    commission: Optional[float] = None
-
-    commission_rate: Optional[float] = None
-
-    jd_price: Optional[float] = None
-
-    jd_commission: Optional[float] = None
-
-    jd_commission_rate: Optional[float] = None
-
-    jd_sales: Optional[float] = None
-
-    tb_price: Optional[float] = None
-
-    tb_commission: Optional[float] = None
-
-    tb_commission_rate: Optional[float] = None
-
-    tb_sales: Optional[float] = None
-
-    source_type: Optional[str] = None
-
-    source_ref: Optional[str] = None
-
-    cover_url: Optional[str] = None
-
-    remark: Optional[str] = None
-
-    spec: Optional[Dict[str, Any]] = None
-
-    tags: Optional[List[str]] = None
-
-
-
-class AiFillRequest(BaseModel):
-    category_id: str
-    mode: str = Field(description="single | batch | selected")
-    product_names: Optional[List[str]] = None
-    model: Optional[str] = None
-
-
-class AiConfirmRequest(BaseModel):
-    category_id: str
-    items: List[Dict[str, Any]]
-
-class AiBatchStartRequest(BaseModel):
-    category_id: Optional[str] = None
-    scheme_id: Optional[str] = None
-    keyword: Optional[str] = None
-    price_min: Optional[float] = None
-    price_max: Optional[float] = None
-    sort: Optional[str] = None
-    model: Optional[str] = None
-
-
-
-
-class CommentAccountPayload(BaseModel):
-
-    name: str
-    homepage_link: Optional[str] = None
-
-
-
-
-
-class CommentAccountUpdate(BaseModel):
-
-    name: Optional[str] = None
-    homepage_link: Optional[str] = None
-
-
-
-
-
-class MyAccountSyncPayload(BaseModel):
-    account_id: str
-
-class ZhihuKeywordPayload(BaseModel):
-    name: str
-
-class ZhihuKeywordUpdate(BaseModel):
-    name: Optional[str] = None
-
-class ZhihuScrapeRunPayload(BaseModel):
-    keyword_id: Optional[str] = None
-
-
-
-
-
-class CommentComboCreate(BaseModel):
-
-    account_id: str
-
-
-    name: str
-
-    content: str
-
-    remark: Optional[str] = None
-
-    source_link: Optional[str] = None
-
-    source_type: Optional[str] = None
-
-
-
-
-
-class CommentComboUpdate(BaseModel):
-
-    name: Optional[str] = None
-
-    content: Optional[str] = None
-
-    remark: Optional[str] = None
-
-    source_link: Optional[str] = None
-
-    source_type: Optional[str] = None
-
-
-
-
-
-
-class BlueLinkMapCategoryCreate(BaseModel):
-
-    account_id: str
-
-    name: str
-
-    color: Optional[str] = None
-
-
-
-
-
-class BlueLinkMapCategoryUpdate(BaseModel):
-
-    name: Optional[str] = None
-
-    color: Optional[str] = None
-
-
-
-
-
-class BlueLinkMapEntryCreate(BaseModel):
-
-    account_id: str
-
-    category_id: str
-
-    source_link: str
-
-    product_id: Optional[str] = None
-
-    sku_id: Optional[str] = None
-    remark: Optional[str] = None
-
-
-
-    @validator("source_link")
-
-    def normalize_source_link(cls, value: str) -> str:
-
-        cleaned = (value or "").strip()
-
-        if not cleaned:
-
-            raise ValueError("蓝链不能为空")
-
-        return cleaned
-
-
-
-
-
-class BlueLinkMapEntryUpdate(BaseModel):
-
-    category_id: Optional[str] = None
-
-    source_link: Optional[str] = None
-
-    product_id: Optional[str] = None
-
-    sku_id: Optional[str] = None
-    remark: Optional[str] = None
-
-
-
-    @validator("source_link")
-
-    def normalize_source_link(cls, value: Optional[str]) -> Optional[str]:
-
-        if value is None:
-
-            return value
-
-        cleaned = value.strip()
-
-        if not cleaned:
-
-            raise ValueError("蓝链不能为空")
-
-        return cleaned
-
-
-
-
-
-class BlueLinkMapBatchPayload(BaseModel):
-
-    entries: List[BlueLinkMapEntryCreate]
-
-
-class BlueLinkMapClearPayload(BaseModel):
-
-    account_id: str
-
-    category_id: str
-
-
-
-
-
-class BenchmarkCategoryPayload(BaseModel):
-
-    name: str
-
-    color: Optional[str] = None
-
-
-
-
-
-class BenchmarkEntryPayload(BaseModel):
-
-    category_id: str
-
-    title: str
-
-    link: Optional[str] = None
-
-    bvid: Optional[str] = None
-
-    cover: Optional[str] = None
-
-    author: Optional[str] = None
-
-    duration: Optional[int] = None
-
-    pub_time: Optional[Any] = None
-
-    note: Optional[str] = None
-
-    owner: Optional[Dict[str, Any]] = None
-
-    stats: Optional[Dict[str, Any]] = None
-
-    payload: Optional[Dict[str, Any]] = None
-
-    page: Optional[int] = 1
-
-
-
-
-
-class BenchmarkEntryUpdate(BaseModel):
-
-    title: Optional[str] = None
-
-    link: Optional[str] = None
-
-    bvid: Optional[str] = None
-
-    cover: Optional[str] = None
-
-    author: Optional[str] = None
-
-    duration: Optional[int] = None
-
-    pub_time: Optional[Any] = None
-
-    note: Optional[str] = None
-
-    owner: Optional[Dict[str, Any]] = None
-
-    stats: Optional[Dict[str, Any]] = None
-
-    payload: Optional[Dict[str, Any]] = None
-
-    page: Optional[int] = None
-
-    category_id: Optional[str] = None
-
-    source_type: Optional[str] = None
-
-
-
-
-
-def _sanitize_tags(value: Optional[List[Any]]) -> List[str]:
-
-    if not value:
-
-        return []
-
-    return [str(item).strip() for item in value if str(item).strip()]
-
-
-
-
-
-def normalize_sourcing_item(row: Dict[str, Any]) -> Dict[str, Any]:
-
-    spec = row.get("spec")
-
-    tags_raw = row.get("tags")
-
-    if not isinstance(spec, dict):
-
-        spec = {}
-
-    if isinstance(tags_raw, list):
-
-        tags = tags_raw
-
-    elif isinstance(tags_raw, str):
-
-        tags = [tags_raw]
-
-    else:
-
-        tags = []
-
-    price = decimal_to_float(row.get("price"))
-    commission = decimal_to_float(row.get("commission"))
-    commission_rate = decimal_to_float(row.get("commission_rate"))
-    jd_price = decimal_to_float(row.get("jd_price"))
-    jd_commission = decimal_to_float(row.get("jd_commission"))
-    jd_commission_rate = decimal_to_float(row.get("jd_commission_rate"))
-    jd_sales = decimal_to_float(row.get("jd_sales"))
-    tb_price = decimal_to_float(row.get("tb_price"))
-    tb_commission = decimal_to_float(row.get("tb_commission"))
-    tb_commission_rate = decimal_to_float(row.get("tb_commission_rate"))
-    tb_sales = decimal_to_float(row.get("tb_sales"))
-    if jd_price is None:
-        jd_price = price
-    if jd_commission is None:
-        jd_commission = commission
-    if jd_commission_rate is None:
-        jd_commission_rate = commission_rate
-
-    return {
-
-        "id": row.get("id"),
-
-        "category_id": row.get("category_id"),
-
-        "uid": row.get("uid"),
-
-        "title": row.get("title"),
-
-        "link": row.get("link"),
-
-        "taobao_link": row.get("taobao_link"),
-
-        "price": price,
-
-        "commission": commission,
-
-        "commission_rate": commission_rate,
-
-        "jd_price": jd_price,
-
-        "jd_commission": jd_commission,
-
-        "jd_commission_rate": jd_commission_rate,
-
-        "jd_sales": jd_sales,
-
-        "tb_price": tb_price,
-
-        "tb_commission": tb_commission,
-
-        "tb_commission_rate": tb_commission_rate,
-
-        "tb_sales": tb_sales,
-
-        "cover_url": row.get("cover_url"),
-
-        "remark": row.get("remark"),
-
-        "source_type": row.get("source_type"),
-
-        "source_ref": row.get("source_ref"),
-
-        "spec": spec,
-
-        "tags": tags,
-
-        "created_at": row.get("created_at"),
-
-        "updated_at": row.get("updated_at"),
-
-    }
-
-
-async def sync_scheme_item_cover(
-    client,
-    item_id: str,
-    cover_url: Optional[str],
-) -> int:
-
-    if not item_id:
-        return 0
-
-    try:
-        schemes = await client.select("schemes", params={"select": "id,items"})
-    except SupabaseError:
-        return 0
-
-    updated = 0
-    for scheme in schemes or []:
-        items = scheme.get("items")
-        if not isinstance(items, list):
-            continue
-        changed = False
-        for entry in items:
-            if not isinstance(entry, dict):
-                continue
-            source_id = entry.get("source_id")
-            entry_id = entry.get("id")
-            if (source_id is not None and str(source_id) == str(item_id)) or (
-                entry_id is not None and str(entry_id) == str(item_id)
-            ):
-                if entry.get("cover_url") != cover_url:
-                    entry["cover_url"] = cover_url
-                changed = True
-        if not changed:
-            continue
-        try:
-            await client.update(
-                "schemes",
-                {"items": items, "updated_at": utc_now_iso()},
-                {"id": f"eq.{scheme.get('id')}"},
-            )
-            updated += 1
-        except SupabaseError:
-            continue
-
-    return updated
-
-
-SCHEME_SYNC_FIELDS = (
-    "title",
-    "link",
-    "price",
-    "commission",
-    "commission_rate",
-    "jd_price",
-    "jd_commission",
-    "jd_commission_rate",
-    "jd_sales",
-    "tb_price",
-    "tb_commission",
-    "tb_commission_rate",
-    "tb_sales",
-    "cover_url",
-    "remark",
-    "spec",
-    "uid",
-)
-
-
-async def sync_scheme_item_fields(
-    client,
-    item_id: str,
-    updated_item: Dict[str, Any],
-    fields: Optional[List[str]] = None,
-) -> int:
-
-    if not item_id or not isinstance(updated_item, dict):
-        return 0
-
-    use_fields = fields or list(SCHEME_SYNC_FIELDS)
-    payload = {field: updated_item.get(field) for field in use_fields}
-
-    if "spec" in payload and not isinstance(payload.get("spec"), dict):
-        payload["spec"] = {}
-
-    try:
-        schemes = await client.select("schemes", params={"select": "id,items"})
-    except SupabaseError:
-        return 0
-
-    updated = 0
-    for scheme in schemes or []:
-        items = scheme.get("items")
-        if not isinstance(items, list):
-            continue
-        changed = False
-        for entry in items:
-            if not isinstance(entry, dict):
-                continue
-            source_id = entry.get("source_id")
-            entry_id = entry.get("id")
-            if (source_id is not None and str(source_id) == str(item_id)) or (
-                entry_id is not None and str(entry_id) == str(item_id)
-            ):
-                for key, value in payload.items():
-                    if entry.get(key) != value:
-                        entry[key] = value
-                        changed = True
-        if not changed:
-            continue
-        try:
-            await client.update(
-                "schemes",
-                {"items": items, "updated_at": utc_now_iso()},
-                {"id": f"eq.{scheme.get('id')}"},
-            )
-            updated += 1
-        except SupabaseError:
-            continue
-
-    return updated
-
-
-
-
-def normalize_spec_fields(spec_fields: Any) -> List[Dict[str, str]]:
-    if not isinstance(spec_fields, list):
-        return []
-    normalized: List[Dict[str, str]] = []
-    seen: Set[str] = set()
-    for field in spec_fields:
-        key = ""
-        value = ""
-        example = ""
-        if isinstance(field, dict):
-            key = str(field.get("key") or field.get("name") or "").strip()
-            value = str(field.get("value") or "").strip()
-            example = str(field.get("example") or "").strip()
-        else:
-            key = str(field or "").strip()
-        if not key or key in seen:
-            continue
-        seen.add(key)
-        result = {"key": key, "value": value}
-        if example:
-            result["example"] = example
-        normalized.append(result)
-    return normalized
-
-
-def normalize_sourcing_category(row: Dict[str, Any], spec_fields: Optional[List[Any]] = None, count: Optional[int] = 0) -> Dict[str, Any]:
-    if spec_fields is None:
-        spec_fields = row.get("spec_fields")
-    spec_fields = normalize_spec_fields(spec_fields)
-    return {
-        "id": row.get("id"),
-        "name": row.get("name"),
-        "color": row.get("color"),
-        "uid_prefix": row.get("uid_prefix"),
-        "uid_counter": row.get("uid_counter") or 0,
-        "item_count": count,
-        "sort_order": row.get("sort_order"),
-        "spec_fields": spec_fields,
-        "created_at": row.get("created_at"),
-
-        "updated_at": row.get("updated_at"),
-
-    }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 async def ai_fill_product_params(
@@ -7198,17 +4389,7 @@ async def ai_fill_product_params(
     product_names: List[str],
     model_override: Optional[str] = None
 ) -> List[Dict[str, str]]:
-    """
-    调用千问联网搜索获取商品参数
-
-    Args:
-        category_name: 品类名称
-        spec_fields: 预设参数字段列表，每项包含 key 和 example
-        product_names: 商品名称列表
-
-    Returns:
-        商品参数列表，每个元素包含 name 和各字段值
-    """
+    """根据商品名称和预设字段，调用大模型返回参数"""
     use_deepseek = bool(model_override and "deepseek" in model_override.lower())
     use_bigmodel = bool(model_override and model_override.lower().startswith("glm-4.7"))
     if use_deepseek:
@@ -7228,7 +4409,6 @@ async def ai_fill_product_params(
     if not product_names:
         raise HTTPException(status_code=400, detail="商品列表为空")
 
-    # 构建带格式示例的 prompt
     field_descriptions = []
     for field in spec_fields:
         key = field.get("key", "")
@@ -7240,27 +4420,9 @@ async def ai_fill_product_params(
 
     fields_str = "、".join(field_descriptions)
     products_str = "\n".join(f"- {p}" for p in product_names)
-
-    # 提取纯字段名用于返回格式
     field_keys = [f.get("key", "") for f in spec_fields if f.get("key")]
 
-    prompt = f"""???????????????????????????????
-
-???{category_name}
-?????{fields_str}
-
-?????
-{products_str}
-
-???
-1. ???? JSON ??????? markdown ??????
-2. ???????? name ????????
-3. ?????????????
-4. ????????????????????30 ????
-
-???
-[{{"name":"??1","??":"200??????????????????????????","{field_keys[0]}":"?1","{field_keys[1]}":"?1"}},...]
-"""
+    prompt = f"""你是资深电商数据专家，擅长通过联网搜索获取最新的商品技术规格，并转化为结构化数据。\n\n**当前品类：** `{category_name}`\n\n**必须检索并填充的\"预设字段\"（示例值）：** `{fields_str}`\n\n\n**任务指令：**\n\n1. **联网搜索**：请针对提供的商品列表，在互联网搜索其官方规格参数、电商详情页或专业测评。商品列表为：\n{products_str}\n\n2. **数据提取**：准确识别并提取与\"预设字段\"对应的真实参数值，不允许推测。\n\n3. **撰写评价**：基于搜索到的产品卖点，撰写 30 字以内的专业、中肯的总结评价。\n\n\n**约束条件（严格遵守）：**\n\n- **真实性**：所有参数必须基于搜索到的客观事实，严禁凭空虚构。若某个字段在全网均无法确认，请保持为空字符串 \"\"。\n\n- **单位统一**：参数值需保留原始单位（如：5000mAh, 65W）。\n- **输出示例格式：** [ {{ \"name\": \"商品全名\", \"评价\": \"评价文案\", \"{field_keys[0]}\": \"真实参数值\", \"{field_keys[1]}\": \"真实参数值\" }} ]\n"""
 
     if use_bigmodel:
         search_lines: List[str] = []
@@ -7347,21 +4509,26 @@ async def ai_fill_product_params(
         )
         choices = response.choices or []
     else:
-        response = Generation.call(
+        dashscope_base_url = os.getenv("DASHSCOPE_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        dashscope_client = OpenAI(
             api_key=DASHSCOPE_API_KEY,
-            model=model_override or "qwen3-max-2026-01-23",
-            enable_search=True,
-            search_options={"forced_search": True},
-            prompt=prompt,
-            result_format="message"
+            base_url=dashscope_base_url,
         )
-
-        if response.status_code != 200:
-            raise HTTPException(
-                status_code=500,
-                detail=f"AI调用失败: {response.message}"
-            )
-        choices = response.output.choices or []
+        response = await asyncio.to_thread(
+            dashscope_client.chat.completions.create,
+            model=model_override or "qwen3-max-2026-01-23",
+            messages=[{"role": "user", "content": prompt}],
+            extra_body={
+                "enable_search": True,
+                "search_options": {
+                    "search_strategy": "max",
+                    "forced_search": True,
+                },
+                "enable_source": True,
+            },
+            temperature=0.2,
+        )
+        choices = response.choices or []
 
     if not choices:
         raise HTTPException(status_code=500, detail="AI 未返回结果")
@@ -7377,11 +4544,10 @@ async def ai_fill_product_params(
             return message.get("content", "")
         return getattr(message, "content", "")
 
-    # 解析 JSON
     import json
     content = extract_choice_content(choices[0])
 
-    # 清理可能的 markdown 代码块
+    # Clean possible markdown code fences
     content = content.strip()
     if content.startswith("```"):
         parts = content.split("```")
@@ -7397,11 +4563,23 @@ async def ai_fill_product_params(
     try:
         print('[AI_PARAMS_RAW]', content[:2000])
         result = json.loads(content)
-    except json.JSONDecodeError as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"AI返回的不是有效JSON: {content[:200]}..."
-        )
+    except json.JSONDecodeError:
+        # Fallback: try the first JSON array in text
+        fallback = None
+        start_idx = content.find("[")
+        end_idx = content.rfind("]")
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            candidate = content[start_idx:end_idx + 1]
+            try:
+                fallback = json.loads(candidate)
+                result = fallback
+            except json.JSONDecodeError:
+                fallback = None
+        if fallback is None:
+            raise HTTPException(
+                status_code=500,
+                detail=f"AI返回的不是有效JSON: {content[:200]}..."
+            )
 
     if not isinstance(result, list):
         raise HTTPException(
@@ -7409,24 +4587,18 @@ async def ai_fill_product_params(
             detail=f"AI返回格式错误，应为数组"
         )
 
-    # 验证返回数据结构
     for item in result:
         if not isinstance(item, dict) or "name" not in item:
             raise HTTPException(
                 status_code=500,
                 detail=f"AI返回项缺少name字段: {item}"
             )
-        # ?????????
-        allowed_keys = set(field_keys + ["name", "\u8bc4\u4ef7"])
+        allowed_keys = set(field_keys + ["name", "评价"])
         for key in list(item.keys()):
             if key not in allowed_keys:
                 del item[key]
 
     return result
-
-
-
-
 
 
 async def fetch_sourcing_items_by_id_list(client: "SupabaseClient", ids: List[str]) -> List[Dict[str, Any]]:
@@ -7786,6 +4958,50 @@ def normalize_blue_link_map_entry(row: Dict[str, Any]) -> Dict[str, Any]:
 
 
 
+def normalize_blue_link_source_link(source_link: Optional[str]) -> str:
+
+    text = str(source_link or "")
+
+    text = re.sub(r"[\u200b-\u200d\u2060\ufeff\u00a0\u2800]", "", text)
+
+    return text.strip()
+
+
+
+
+
+
+def is_valid_blue_link_source_link(source_link: str) -> bool:
+
+    try:
+
+        parsed = urlparse(source_link)
+
+    except ValueError:
+
+        return False
+
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+
+
+
+
+def detect_blue_link_platform(source_link: Optional[str]) -> str:
+
+    link = normalize_blue_link_source_link(source_link).lower()
+
+    if any(domain in link for domain in ("taobao.com", "tmall.com", "tb.cn")):
+
+        return "tb"
+
+    return "jd"
+
+
+
+
+
 def normalize_benchmark_entry(row: Dict[str, Any]) -> Dict[str, Any]:
 
     owner = row.get("owner") if isinstance(row.get("owner"), dict) else {}
@@ -7834,6 +5050,535 @@ def normalize_benchmark_entry(row: Dict[str, Any]) -> Dict[str, Any]:
 
     }
 
+
+
+
+
+def normalize_scheme(row: Dict[str, Any]) -> Dict[str, Any]:
+
+    items = row.get("items")
+
+    if not isinstance(items, list):
+
+        items = []
+
+    return {
+
+        "id": row.get("id"),
+
+        "name": row.get("name") or "",
+
+        "category_id": row.get("category_id") or "",
+
+        "category_name": row.get("category_name") or "",
+
+        "remark": row.get("remark") or "",
+
+        "items": items,
+
+        "created_at": row.get("created_at"),
+
+        "updated_at": row.get("updated_at")
+
+    }
+
+
+
+
+@app.get("/api/schemes")
+
+async def list_schemes(category_id: Optional[str] = None):
+
+    client = ensure_supabase()
+
+    params = {
+
+        "select": "id,name,category_id,category_name,remark,items,created_at,updated_at",
+
+        "order": "created_at.desc"
+
+    }
+
+    if category_id:
+
+        params["category_id"] = f"eq.{category_id}"
+
+    try:
+
+        rows = await client.select("schemes", params=params)
+
+    except SupabaseError as exc:
+
+        raise HTTPException(status_code=500, detail=str(exc.message))
+
+    return {"schemes": [normalize_scheme(row) for row in rows]}
+
+
+
+
+@app.get("/api/schemes/{scheme_id}")
+
+async def get_scheme(scheme_id: str):
+
+    client = ensure_supabase()
+
+    try:
+
+        rows = await client.select("schemes", {"id": f"eq.{scheme_id}"})
+
+    except SupabaseError as exc:
+
+        raise HTTPException(status_code=500, detail=str(exc.message))
+
+    if not rows:
+
+        raise HTTPException(status_code=404, detail="方案不存在")
+
+    return {"scheme": normalize_scheme(rows[0])}
+
+
+
+
+@app.post("/api/schemes")
+
+async def create_scheme(payload: SchemeCreate):
+
+    client = ensure_supabase()
+
+    name = payload.name.strip()
+
+    category_id = payload.category_id.strip()
+
+    if not name:
+
+        raise HTTPException(status_code=400, detail="方案名称不能为空")
+
+    if not category_id:
+
+        raise HTTPException(status_code=400, detail="品类不能为空")
+
+    body = {
+
+        "name": name,
+
+        "category_id": category_id,
+
+        "category_name": (payload.category_name or "").strip() or None,
+
+        "remark": (payload.remark or "").strip() or None,
+
+        "items": payload.items or [],
+
+        "created_at": utc_now_iso(),
+
+        "updated_at": utc_now_iso()
+
+    }
+
+    try:
+
+        record = await client.insert("schemes", body)
+
+    except SupabaseError as exc:
+
+        raise HTTPException(status_code=500, detail=str(exc.message))
+
+    return {"scheme": normalize_scheme(record[0])}
+
+
+
+
+@app.patch("/api/schemes/{scheme_id}")
+
+async def update_scheme(scheme_id: str, payload: SchemeUpdate):
+
+    client = ensure_supabase()
+
+    updates: Dict[str, Any] = {}
+
+    if payload.name is not None:
+
+        name = payload.name.strip()
+
+        if not name:
+
+            raise HTTPException(status_code=400, detail="方案名称不能为空")
+
+        updates["name"] = name
+
+    if payload.category_id is not None:
+
+        category_id = payload.category_id.strip()
+
+        if not category_id:
+
+            raise HTTPException(status_code=400, detail="品类不能为空")
+
+        updates["category_id"] = category_id
+
+    if payload.category_name is not None:
+
+        updates["category_name"] = payload.category_name.strip() or None
+
+    if payload.remark is not None:
+
+        updates["remark"] = payload.remark.strip() or None
+
+    if payload.items is not None:
+
+        updates["items"] = payload.items
+
+    if not updates:
+
+        raise HTTPException(status_code=400, detail="没有需要更新的内容")
+
+    updates["updated_at"] = utc_now_iso()
+
+    try:
+
+        record = await client.update("schemes", updates, {"id": f"eq.{scheme_id}"})
+
+    except SupabaseError as exc:
+
+        raise HTTPException(status_code=500, detail=str(exc.message))
+
+    if not record:
+
+        raise HTTPException(status_code=404, detail="方案不存在")
+
+    return {"scheme": normalize_scheme(record[0])}
+
+
+
+
+@app.delete("/api/schemes/{scheme_id}")
+
+async def delete_scheme(scheme_id: str):
+
+    client = ensure_supabase()
+
+    try:
+
+        existing = await client.select("schemes", {"id": f"eq.{scheme_id}"})
+
+    except SupabaseError as exc:
+
+        raise HTTPException(status_code=500, detail=str(exc.message))
+
+    if not existing:
+
+        raise HTTPException(status_code=404, detail="方案不存在")
+
+    try:
+
+        await client.delete("schemes", {"id": f"eq.{scheme_id}"})
+
+    except SupabaseError as exc:
+
+        raise HTTPException(status_code=500, detail=str(exc.message))
+
+    return {"status": "ok"}
+
+
+@app.get("/api/image/templates")
+async def list_image_templates():
+    templates = load_local_image_templates()
+    return {"templates": templates}
+
+
+@app.get("/api/prompts")
+async def list_prompt_templates(keys: Optional[str] = Query(None)):
+    key_list: List[str] = []
+    if keys:
+        key_list = [key.strip() for key in keys.split(",") if key.strip()]
+    templates = get_prompt_template_overrides(key_list or None)
+    return {"templates": templates}
+
+
+@app.patch("/api/prompts/{key}")
+async def update_prompt_template(key: str, payload: PromptTemplateUpdate):
+    if key not in PROMPT_TEMPLATE_DEFAULTS:
+        raise HTTPException(status_code=404, detail="提示词不存在")
+    content = (payload.content or "").strip()
+    with PROMPT_TEMPLATE_LOCK:
+        if content:
+            PROMPT_TEMPLATE_OVERRIDES[key] = content
+        else:
+            PROMPT_TEMPLATE_OVERRIDES.pop(key, None)
+        save_prompt_template_overrides()
+    return {"status": "ok", "template": content or PROMPT_TEMPLATE_DEFAULTS[key]}
+
+
+def _sanitize_tags(value: Optional[List[Any]]) -> List[str]:
+
+    if not value:
+
+        return []
+
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+
+
+def normalize_sourcing_item(row: Dict[str, Any]) -> Dict[str, Any]:
+
+    spec = row.get("spec")
+
+    tags_raw = row.get("tags")
+
+    if not isinstance(spec, dict):
+
+        spec = {}
+
+    if isinstance(tags_raw, list):
+
+        tags = tags_raw
+
+    elif isinstance(tags_raw, str):
+
+        tags = [tags_raw]
+
+    else:
+
+        tags = []
+
+    price = decimal_to_float(row.get("price"))
+    commission = decimal_to_float(row.get("commission"))
+    commission_rate = decimal_to_float(row.get("commission_rate"))
+    jd_price = decimal_to_float(row.get("jd_price"))
+    jd_commission = decimal_to_float(row.get("jd_commission"))
+    jd_commission_rate = decimal_to_float(row.get("jd_commission_rate"))
+    jd_sales = decimal_to_float(row.get("jd_sales"))
+    tb_price = decimal_to_float(row.get("tb_price"))
+    tb_commission = decimal_to_float(row.get("tb_commission"))
+    tb_commission_rate = decimal_to_float(row.get("tb_commission_rate"))
+    tb_sales = decimal_to_float(row.get("tb_sales"))
+    if jd_price is None:
+        jd_price = price
+    if jd_commission is None:
+        jd_commission = commission
+    if jd_commission_rate is None:
+        jd_commission_rate = commission_rate
+
+    return {
+
+        "id": row.get("id"),
+
+        "category_id": row.get("category_id"),
+
+        "uid": row.get("uid"),
+
+        "title": row.get("title"),
+
+        "link": row.get("link"),
+
+        "taobao_link": row.get("taobao_link"),
+
+        "price": price,
+
+        "commission": commission,
+
+        "commission_rate": commission_rate,
+
+        "jd_price": jd_price,
+
+        "jd_commission": jd_commission,
+
+        "jd_commission_rate": jd_commission_rate,
+
+        "jd_sales": jd_sales,
+
+        "tb_price": tb_price,
+
+        "tb_commission": tb_commission,
+
+        "tb_commission_rate": tb_commission_rate,
+
+        "tb_sales": tb_sales,
+
+        "cover_url": row.get("cover_url"),
+
+        "remark": row.get("remark"),
+
+        "source_type": row.get("source_type"),
+
+        "source_ref": row.get("source_ref"),
+
+        "spec": spec,
+
+        "tags": tags,
+
+        "created_at": row.get("created_at"),
+
+        "updated_at": row.get("updated_at"),
+
+    }
+
+
+async def sync_scheme_item_cover(
+    client,
+    item_id: str,
+    cover_url: Optional[str],
+) -> int:
+
+    if not item_id:
+        return 0
+
+    try:
+        schemes = await client.select("schemes", params={"select": "id,items"})
+    except SupabaseError:
+        return 0
+
+    updated = 0
+    for scheme in schemes or []:
+        items = scheme.get("items")
+        if not isinstance(items, list):
+            continue
+        changed = False
+        for entry in items:
+            if not isinstance(entry, dict):
+                continue
+            source_id = entry.get("source_id")
+            entry_id = entry.get("id")
+            if (source_id is not None and str(source_id) == str(item_id)) or (
+                entry_id is not None and str(entry_id) == str(item_id)
+            ):
+                if entry.get("cover_url") != cover_url:
+                    entry["cover_url"] = cover_url
+                changed = True
+        if not changed:
+            continue
+        try:
+            await client.update(
+                "schemes",
+                {"items": items, "updated_at": utc_now_iso()},
+                {"id": f"eq.{scheme.get('id')}"},
+            )
+            updated += 1
+        except SupabaseError:
+            continue
+
+    return updated
+
+
+SCHEME_SYNC_FIELDS = (
+    "title",
+    "link",
+    "price",
+    "commission",
+    "commission_rate",
+    "jd_price",
+    "jd_commission",
+    "jd_commission_rate",
+    "jd_sales",
+    "tb_price",
+    "tb_commission",
+    "tb_commission_rate",
+    "tb_sales",
+    "cover_url",
+    "remark",
+    "spec",
+    "uid",
+)
+
+
+async def sync_scheme_item_fields(
+    client,
+    item_id: str,
+    updated_item: Dict[str, Any],
+    fields: Optional[List[str]] = None,
+) -> int:
+
+    if not item_id or not isinstance(updated_item, dict):
+        return 0
+
+    use_fields = fields or list(SCHEME_SYNC_FIELDS)
+    payload = {field: updated_item.get(field) for field in use_fields}
+
+    if "spec" in payload and not isinstance(payload.get("spec"), dict):
+        payload["spec"] = {}
+
+    try:
+        schemes = await client.select("schemes", params={"select": "id,items"})
+    except SupabaseError:
+        return 0
+
+    updated = 0
+    for scheme in schemes or []:
+        items = scheme.get("items")
+        if not isinstance(items, list):
+            continue
+        changed = False
+        for entry in items:
+            if not isinstance(entry, dict):
+                continue
+            source_id = entry.get("source_id")
+            entry_id = entry.get("id")
+            if (source_id is not None and str(source_id) == str(item_id)) or (
+                entry_id is not None and str(entry_id) == str(item_id)
+            ):
+                for key, value in payload.items():
+                    if entry.get(key) != value:
+                        entry[key] = value
+                        changed = True
+        if not changed:
+            continue
+        try:
+            await client.update(
+                "schemes",
+                {"items": items, "updated_at": utc_now_iso()},
+                {"id": f"eq.{scheme.get('id')}"},
+            )
+            updated += 1
+        except SupabaseError:
+            continue
+
+    return updated
+
+
+def normalize_spec_fields(spec_fields: Any) -> List[Dict[str, str]]:
+    if not isinstance(spec_fields, list):
+        return []
+    normalized: List[Dict[str, str]] = []
+    seen: Set[str] = set()
+    for field in spec_fields:
+        key = ""
+        value = ""
+        example = ""
+        if isinstance(field, dict):
+            key = str(field.get("key") or field.get("name") or "").strip()
+            value = str(field.get("value") or "").strip()
+            example = str(field.get("example") or "").strip()
+        else:
+            key = str(field or "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        result = {"key": key, "value": value}
+        if example:
+            result["example"] = example
+        normalized.append(result)
+    return normalized
+
+
+def normalize_sourcing_category(row: Dict[str, Any], spec_fields: Optional[List[Any]] = None, count: Optional[int] = 0) -> Dict[str, Any]:
+    if spec_fields is None:
+        spec_fields = row.get("spec_fields")
+    spec_fields = normalize_spec_fields(spec_fields)
+    return {
+        "id": row.get("id"),
+        "name": row.get("name"),
+        "color": row.get("color"),
+        "uid_prefix": row.get("uid_prefix"),
+        "uid_counter": row.get("uid_counter") or 0,
+        "item_count": count,
+        "sort_order": row.get("sort_order"),
+        "spec_fields": spec_fields,
+        "created_at": row.get("created_at"),
+
+        "updated_at": row.get("updated_at"),
+
+    }
 
 
 
@@ -9998,11 +7743,11 @@ async def list_zhihu_keywords():
 @app.get("/api/zhihu/keywords/counts")
 async def list_zhihu_keyword_counts():
     client = ensure_supabase()
-    keywords = await client.select("zhihu_keywords", params={"select": "id"})
-    mappings = await client.select(
-        "zhihu_question_keywords", params={"select": "keyword_id"}
+    keywords, mappings, total = await asyncio.gather(
+        client.select("zhihu_keywords", params={"select": "id"}),
+        client.select("zhihu_question_keywords", params={"select": "keyword_id"}),
+        fetch_supabase_count(client, "zhihu_questions"),
     )
-    questions = await client.select("zhihu_questions", params={"select": "id"})
     counts: Dict[str, int] = {}
     for row in mappings:
         keyword_id = row.get("keyword_id")
@@ -10015,7 +7760,7 @@ async def list_zhihu_keyword_counts():
         if not keyword_id:
             continue
         counts.setdefault(str(keyword_id), 0)
-    return {"counts": counts, "total": len(questions)}
+    return {"counts": counts, "total": total}
 
 
 @app.post("/api/zhihu/keywords")
@@ -10027,6 +7772,7 @@ async def create_zhihu_keyword(payload: ZhihuKeywordPayload):
     body = {"name": name, "created_at": utc_now_iso(), "updated_at": utc_now_iso()}
     try:
         record = await client.insert("zhihu_keywords", body)
+        invalidate_zhihu_keywords_map_cache()
     except SupabaseError as exc:
         status = 400 if exc.status_code in (400, 409) else 500
         raise HTTPException(status_code=status, detail=str(exc.message))
@@ -10047,6 +7793,7 @@ async def update_zhihu_keyword(keyword_id: str, payload: ZhihuKeywordUpdate):
     record = await client.update("zhihu_keywords", updates, {"id": f"eq.{keyword_id}"})
     if not record:
         raise HTTPException(status_code=404, detail="??????")
+    invalidate_zhihu_keywords_map_cache()
     return {"keyword": record[0]}
 
 
@@ -10059,7 +7806,145 @@ async def delete_zhihu_keyword(keyword_id: str):
     await client.delete("zhihu_question_keywords", {"keyword_id": f"eq.{keyword_id}"})
     await client.delete("zhihu_keywords", {"id": f"eq.{keyword_id}"})
     await client.update("zhihu_questions", {"first_keyword_id": None}, {"first_keyword_id": f"eq.{keyword_id}"})
+    invalidate_zhihu_keywords_map_cache()
     return {"status": "ok"}
+
+
+@app.post("/api/zhihu/questions")
+async def create_zhihu_question(payload: ZhihuQuestionCreatePayload):
+    client = ensure_supabase()
+    keyword_id = payload.keyword_id.strip()
+    question_url = payload.question_url.strip()
+
+    if not keyword_id:
+        raise HTTPException(status_code=400, detail="keyword_id is required")
+    if not question_url:
+        raise HTTPException(status_code=400, detail="question_url is required")
+
+    keyword_rows = await client.select(
+        "zhihu_keywords",
+        {"id": f"eq.{keyword_id}", "select": "id,name", "limit": 1},
+    )
+    if not keyword_rows:
+        raise HTTPException(status_code=404, detail="Keyword not found")
+
+    question_id = extract_zhihu_question_id(question_url)
+    if not question_id:
+        raise HTTPException(status_code=400, detail="Invalid Zhihu question URL")
+
+    existing_rows = await client.select(
+        "zhihu_questions",
+        {"id": f"eq.{question_id}", "limit": 1},
+    )
+    existing_row = existing_rows[0] if existing_rows else {}
+
+    detail = await fetch_question_stats(question_id)
+    if not detail:
+        raise HTTPException(status_code=502, detail="Failed to fetch question stats")
+
+    title = strip_html_tags(str(detail.get("title") or "")).strip() or str(
+        existing_row.get("title") or ""
+    ).strip()
+    if not title:
+        raise HTTPException(status_code=502, detail="Failed to fetch question title")
+
+    now_value = utc_now_iso()
+    stat_date = str(shanghai_today())
+    canonical_url = f"https://www.zhihu.com/question/{question_id}"
+    first_keyword_id = str(existing_row.get("first_keyword_id") or keyword_id)
+    is_new = not bool(existing_row)
+
+    question_payload: Dict[str, Any] = {
+        "id": question_id,
+        "title": title,
+        "url": canonical_url,
+        "first_keyword_id": first_keyword_id,
+        "updated_at": now_value,
+        "last_seen_at": now_value,
+    }
+    if is_new:
+        question_payload["created_at"] = now_value
+
+    stat_payload = {
+        "question_id": question_id,
+        "stat_date": stat_date,
+        "view_count": int(detail.get("visit_count") or 0),
+        "answer_count": int(detail.get("answer_count") or 0),
+        "fetched_at": now_value,
+    }
+
+    try:
+        await client.request(
+            "POST",
+            "zhihu_questions",
+            params={"on_conflict": "id"},
+            json_payload=question_payload,
+            prefer="resolution=merge-duplicates,return=representation",
+        )
+        await client.request(
+            "POST",
+            "zhihu_question_keywords",
+            params={"on_conflict": "question_id,keyword_id"},
+            json_payload={
+                "question_id": question_id,
+                "keyword_id": keyword_id,
+                "first_seen_at": now_value,
+                "last_seen_at": now_value,
+            },
+            prefer="resolution=merge-duplicates,return=representation",
+        )
+        await client.request(
+            "POST",
+            "zhihu_question_stats",
+            params={"on_conflict": "question_id,stat_date"},
+            json_payload=stat_payload,
+            prefer="resolution=merge-duplicates,return=representation",
+        )
+    except SupabaseError as exc:
+        status_code = exc.status_code if 400 <= int(exc.status_code or 0) < 500 else 500
+        raise HTTPException(status_code=status_code, detail=str(exc.message))
+
+    stats_rows = await client.select(
+        "zhihu_question_stats",
+        {
+            "question_id": f"eq.{question_id}",
+            "select": "question_id,view_count,answer_count,stat_date",
+            "order": "stat_date.desc",
+            "limit": 2,
+        },
+    )
+    latest_row = stats_rows[0] if stats_rows else stat_payload
+    previous_row = stats_rows[1] if len(stats_rows) > 1 else {}
+
+    view_total = int(latest_row.get("view_count") or 0)
+    answer_total = int(latest_row.get("answer_count") or 0)
+    view_delta = view_total - int(previous_row.get("view_count") or 0) if previous_row else 0
+    answer_delta = (
+        answer_total - int(previous_row.get("answer_count") or 0) if previous_row else 0
+    )
+
+    keyword_map = await fetch_zhihu_keywords_map(client)
+    first_keyword_name = keyword_map.get(first_keyword_id) or str(
+        keyword_rows[0].get("name") or "???"
+    )
+
+    return {
+        "item": {
+            "id": question_id,
+            "title": title,
+            "url": canonical_url,
+            "first_keyword_id": first_keyword_id,
+            "first_keyword": first_keyword_name,
+            "created_at": existing_row.get("created_at") or now_value,
+            "updated_at": now_value,
+            "last_seen_at": now_value,
+            "view_count_total": view_total,
+            "answer_count_total": answer_total,
+            "view_count_delta": view_delta,
+            "answer_count_delta": answer_delta,
+        },
+        "is_new": is_new,
+    }
 
 
 @app.get("/api/zhihu/questions")
@@ -10067,16 +7952,31 @@ async def list_zhihu_questions(keyword_id: Optional[str] = None, q: Optional[str
     client = ensure_supabase()
     limit = max(1, min(int(limit or 50), 200))
     offset = max(0, int(offset or 0))
-    params = {"select": "id,title,url,first_keyword_id,created_at,updated_at,last_seen_at", "order": "updated_at.desc", "limit": limit, "offset": offset}
+
+    params: Dict[str, Any] = {
+        "select": "id,title,url,first_keyword_id,created_at,updated_at,last_seen_at",
+        "order": "updated_at.desc",
+        "limit": limit,
+        "offset": offset,
+    }
+    count_params: Dict[str, Any] = {}
+
     safe_q = None
     if q:
         safe_q = q.replace("%", "").replace("*", "").strip()
         if safe_q:
-            params["title"] = f"ilike.*{safe_q}*"
+            title_filter = f"ilike.*{safe_q}*"
+            params["title"] = title_filter
+            count_params["title"] = title_filter
+
+    matched_ids: List[str] = []
     if keyword_id:
-        mapping = await client.select("zhihu_question_keywords", {"keyword_id": f"eq.{keyword_id}", "select": "question_id"})
-        ids = [row.get("question_id") for row in mapping if row.get("question_id")]
-        if not ids:
+        mapping = await client.select(
+            "zhihu_question_keywords",
+            {"keyword_id": f"eq.{keyword_id}", "select": "question_id"},
+        )
+        matched_ids = list(dict.fromkeys(str(row.get("question_id")) for row in mapping if row.get("question_id")))
+        if not matched_ids:
             return {
                 "items": [],
                 "total": 0,
@@ -10088,37 +7988,66 @@ async def list_zhihu_questions(keyword_id: Optional[str] = None, q: Optional[str
                     "total": 0,
                 },
             }
-        params["id"] = f"in.({','.join(ids)})"
-    questions = await client.select("zhihu_questions", params)
+        id_filter = f"in.({','.join(matched_ids)})"
+        params["id"] = id_filter
+        count_params["id"] = id_filter
 
-    count_params = {"select": "id"}
-    if safe_q:
-        count_params["title"] = f"ilike.*{safe_q}*"
-    if keyword_id:
-        count_params["id"] = f"in.({','.join(ids)})"
-    count_rows = await client.select("zhihu_questions", count_params)
-    total = len(count_rows)
+    questions_task = client.select("zhihu_questions", params)
+    total_task = fetch_supabase_count(client, "zhihu_questions", count_params)
+    questions, total = await asyncio.gather(questions_task, total_task)
 
-    today = shanghai_today()
-    yesterday = today - timedelta(days=1)
-    ids = [row.get("id") for row in questions]
-    stats_today = await client.select("zhihu_question_stats", {"question_id": f"in.({','.join(ids)})", "stat_date": f"eq.{today}", "select": "question_id,view_count,answer_count"}) if ids else []
-    stats_yesterday = await client.select("zhihu_question_stats", {"question_id": f"in.({','.join(ids)})", "stat_date": f"eq.{yesterday}", "select": "question_id,view_count,answer_count"}) if ids else []
+    question_ids = [str(row.get("id")) for row in questions if row.get("id")]
+    if question_ids:
+        stats_limit = min(max(len(question_ids) * 15, len(question_ids) * 2), 3000)
+        stats_params = {
+            "question_id": f"in.({','.join(question_ids)})",
+            "select": "question_id,view_count,answer_count,stat_date",
+            "order": "stat_date.desc",
+            "limit": stats_limit,
+        }
+        stats_rows, keyword_map = await asyncio.gather(
+            client.select("zhihu_question_stats", stats_params),
+            fetch_zhihu_keywords_map(client),
+        )
+    else:
+        stats_rows = []
+        keyword_map = {}
 
-    today_map = {row["question_id"]: row for row in stats_today}
-    yesterday_map = {row["question_id"]: row for row in stats_yesterday}
-    keyword_map = await fetch_zhihu_keywords_map(client)
+    stats_map: Dict[str, List[Dict[str, Any]]] = {}
+    for row in stats_rows:
+        qid = str(row.get("question_id") or "")
+        if not qid:
+            continue
+        stats_map.setdefault(qid, []).append(row)
+
+    for snapshots in stats_map.values():
+        snapshots.sort(key=lambda item: str(item.get("stat_date") or ""), reverse=True)
 
     items = []
     for row in questions:
-        qid = row.get("id")
-        today_row = today_map.get(qid, {})
-        yesterday_row = yesterday_map.get(qid, {})
-        view_total = int(today_row.get("view_count") or 0)
-        answer_total = int(today_row.get("answer_count") or 0)
-        view_delta = view_total - int(yesterday_row.get("view_count") or 0)
-        answer_delta = answer_total - int(yesterday_row.get("answer_count") or 0)
-        items.append({**row, "first_keyword": keyword_map.get(str(row.get("first_keyword_id")) or "", "???"), "view_count_total": view_total, "answer_count_total": answer_total, "view_count_delta": view_delta, "answer_count_delta": answer_delta})
+        qid = str(row.get("id") or "")
+        snapshots = stats_map.get(qid, [])
+        latest_row = snapshots[0] if snapshots else {}
+        previous_row = snapshots[1] if len(snapshots) > 1 else {}
+        view_total = int(latest_row.get("view_count") or 0)
+        answer_total = int(latest_row.get("answer_count") or 0)
+        view_delta = (
+            view_total - int(previous_row.get("view_count") or 0) if previous_row else 0
+        )
+        answer_delta = (
+            answer_total - int(previous_row.get("answer_count") or 0) if previous_row else 0
+        )
+        items.append(
+            {
+                **row,
+                "first_keyword": keyword_map.get(str(row.get("first_keyword_id")) or "", "???"),
+                "view_count_total": view_total,
+                "answer_count_total": answer_total,
+                "view_count_delta": view_delta,
+                "answer_count_delta": answer_delta,
+            }
+        )
+
     next_offset = offset + len(items)
     has_more = next_offset < total
     return {
@@ -10132,6 +8061,18 @@ async def list_zhihu_questions(keyword_id: Optional[str] = None, q: Optional[str
             "total": total,
         },
     }
+
+
+@app.delete("/api/zhihu/questions/{question_id}")
+async def delete_zhihu_question(question_id: str):
+    client = ensure_supabase()
+    try:
+        await client.delete("zhihu_question_stats", {"question_id": f"eq.{question_id}"})
+        await client.delete("zhihu_question_keywords", {"question_id": f"eq.{question_id}"})
+        await client.delete("zhihu_questions", {"id": f"eq.{question_id}"})
+    except SupabaseError as exc:
+        raise HTTPException(status_code=500, detail=str(exc.message))
+    return {"status": "ok"}
 
 
 @app.get("/api/zhihu/questions/{question_id}/stats")
@@ -10422,11 +8363,21 @@ async def batch_upsert_blue_link_map_entries(payload: BlueLinkMapBatchPayload):
 
     now = utc_now_iso()
 
-    matched: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    matched: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
 
     unmatched: List[Dict[str, Any]] = []
 
-    for entry in payload.entries:
+    for index, entry in enumerate(payload.entries):
+
+        source_link = normalize_blue_link_source_link(entry.source_link)
+
+        if not source_link:
+
+            raise HTTPException(status_code=400, detail=f"Entry {index + 1} source link is empty or invalid")
+
+        if not is_valid_blue_link_source_link(source_link):
+
+            raise HTTPException(status_code=400, detail=f"Entry {index + 1} source link format is invalid")
 
         record = {
 
@@ -10438,7 +8389,8 @@ async def batch_upsert_blue_link_map_entries(payload: BlueLinkMapBatchPayload):
 
             "sku_id": entry.sku_id,
 
-            "source_link": entry.source_link,
+            "source_link": source_link,
+            "platform": detect_blue_link_platform(source_link),
             "remark": (entry.remark or "").strip() or None,
 
             "updated_at": now,
@@ -10447,7 +8399,7 @@ async def batch_upsert_blue_link_map_entries(payload: BlueLinkMapBatchPayload):
 
         if entry.product_id:
 
-            matched[(entry.account_id, entry.product_id)] = record
+            matched[(entry.account_id, entry.product_id, record["platform"])] = record
 
         else:
 
@@ -10465,7 +8417,7 @@ async def batch_upsert_blue_link_map_entries(payload: BlueLinkMapBatchPayload):
 
                 list(matched.values()),
 
-                on_conflict="account_id,product_id"
+                on_conflict="account_id,product_id,platform"
 
             )
 
@@ -10533,7 +8485,19 @@ async def patch_blue_link_map_entry(entry_id: str, payload: BlueLinkMapEntryUpda
 
     if payload.source_link is not None:
 
-        updates["source_link"] = payload.source_link
+        normalized_source_link = normalize_blue_link_source_link(payload.source_link)
+
+        if not normalized_source_link:
+
+            raise HTTPException(status_code=400, detail="Source link cannot be empty")
+
+        if not is_valid_blue_link_source_link(normalized_source_link):
+
+            raise HTTPException(status_code=400, detail="Source link format is invalid")
+
+        updates["source_link"] = normalized_source_link
+
+        updates["platform"] = detect_blue_link_platform(normalized_source_link)
 
     if payload.product_id is not None:
 
@@ -10566,6 +8530,9 @@ async def patch_blue_link_map_entry(entry_id: str, payload: BlueLinkMapEntryUpda
             "sku_id": updates.get("sku_id", existing.get("sku_id")),
 
             "source_link": updates.get("source_link", existing.get("source_link")),
+            "platform": updates.get("platform")
+            or existing.get("platform")
+            or detect_blue_link_platform(updates.get("source_link", existing.get("source_link"))),
             "remark": updates.get("remark", existing.get("remark")),
 
             "updated_at": updates["updated_at"],
@@ -10580,7 +8547,7 @@ async def patch_blue_link_map_entry(entry_id: str, payload: BlueLinkMapEntryUpda
 
                 payload_record,
 
-                on_conflict="account_id,product_id"
+                on_conflict="account_id,product_id,platform"
 
             )
 
@@ -10944,6 +8911,7 @@ if __name__ == "__main__":
 
     print("=" * 60)
 
+    backend_host = os.getenv("BACKEND_HOST", "0.0.0.0")
     backend_port = int(os.getenv("BACKEND_PORT", os.getenv("PORT", "8000")))
 
-    uvicorn.run(app, host="127.0.0.1", port=backend_port)
+    uvicorn.run(app, host=backend_host, port=backend_port)

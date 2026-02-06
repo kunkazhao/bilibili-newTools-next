@@ -134,6 +134,11 @@ export default function BlueLinkMapPageView({
     return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value
   }
 
+  const normalizeLinkText = (value?: string) =>
+    String(value || "")
+      .replace(/[​-‍⁠﻿ ⠀]/g, "")
+      .trim()
+
   return (
     <div className="grid gap-8 lg:grid-cols-[260px_1fr]">
       <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card min-h-[calc(100vh-240px)]">
@@ -324,7 +329,7 @@ export default function BlueLinkMapPageView({
                             </span>
                           </div>
                           <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
-                            <span className="truncate">{entry.source_link || "--"}</span>
+                            <span className="truncate">{normalizeLinkText(entry.source_link) || "--"}</span>
                             <Button
                               variant="ghost"
                               size="icon"

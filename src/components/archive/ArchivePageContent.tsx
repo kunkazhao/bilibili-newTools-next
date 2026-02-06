@@ -2,6 +2,7 @@
 import ArchivePageView from "@/components/archive/ArchivePageView"
 import ArchiveDialogs from "@/components/archive/ArchiveDialogs"
 import AiParamsPreviewDialog from "@/components/archive/AiParamsPreviewDialog"
+import ReplaceCoverDialog from "@/components/archive/ReplaceCoverDialog"
 import { useToast } from "@/components/Toast"
 import { useListDataPipeline } from "@/hooks/useListDataPipeline"
 import {
@@ -53,6 +54,7 @@ import {
   aiFillPreview,
   updateCategory,
   updateItem,
+  uploadCoverByUid,
 } from "@/components/archive/archiveApi"
 import type { ItemResponse } from "@/components/archive/archiveApi"
 import type { CategoryItem, SpecField } from "@/components/archive/types"
@@ -457,6 +459,15 @@ export default function ArchivePage() {
   const [isClearing, setIsClearing] = useState(false)
   const [isFixSortSaving, setIsFixSortSaving] = useState(false)
   const [isImportOpen, setIsImportOpen] = useState(false)
+  const [isReplaceCoverOpen, setIsReplaceCoverOpen] = useState(false)
+  const [replaceCoverProgressOpen, setReplaceCoverProgressOpen] = useState(false)
+  const [replaceCoverProgress, setReplaceCoverProgress] = useState({
+    status: "done" as "running" | "done" | "error",
+    total: 0,
+    processed: 0,
+    success: 0,
+    failures: [] as { name: string; reason?: string }[],
+  })
   const [isSchemeJoinOpen, setIsSchemeJoinOpen] = useState(false)
   const [schemeJoinItemId, setSchemeJoinItemId] = useState<string | null>(null)
   const [schemeJoinId, setSchemeJoinId] = useState("")
@@ -1369,6 +1380,92 @@ export default function ArchivePage() {
     }
   }
 
+  const extractUidFromFilename = (filename: string) => {
+    const trimmed = filename.trim()
+    if (!trimmed) return ""
+    const base = trimmed.replace(/\.[^.]+$/, "")
+    const match = base.match(/^[A-Za-z]+\d+/)
+    if (match) return match[0].toUpperCase()
+    const primary = (base.split(/[-_\s]/)[0] ?? "").trim()
+    return primary.toUpperCase()
+  }
+
+  const handleReplaceCoverSubmit = async (files: File[]) => {
+    if (!files.length) return
+    setIsReplaceCoverOpen(false)
+
+    const uidMap = new Map<string, File[]>()
+    const initialFailures: { name: string; reason?: string }[] = []
+    files.forEach((file) => {
+      const uid = extractUidFromFilename(file.name)
+      if (!uid) {
+        initialFailures.push({ name: file.name, reason: "UID 无效" })
+        return
+      }
+      const list = uidMap.get(uid) ?? []
+      list.push(file)
+      uidMap.set(uid, list)
+    })
+
+    const uploadQueue: { uid: string; file: File }[] = []
+    uidMap.forEach((list, uid) => {
+      if (list.length > 1) {
+        initialFailures.push({ name: uid, reason: "UID 冲突" })
+        return
+      }
+      uploadQueue.push({ uid, file: list[0] })
+    })
+
+    const total = uploadQueue.length + initialFailures.length
+    setReplaceCoverProgressOpen(true)
+    setReplaceCoverProgress({
+      status: "running",
+      total,
+      processed: initialFailures.length,
+      success: 0,
+      failures: initialFailures,
+    })
+
+    if (!uploadQueue.length) {
+      setReplaceCoverProgress((prev) => ({ ...prev, status: "done" }))
+      return
+    }
+
+    await Promise.all(
+      uploadQueue.map(async ({ uid, file }) => {
+        try {
+          const result = await uploadCoverByUid(uid, file)
+          if (result?.success) {
+            setReplaceCoverProgress((prev) => ({
+              ...prev,
+              processed: prev.processed + 1,
+              success: prev.success + 1,
+            }))
+            return
+          }
+          setReplaceCoverProgress((prev) => ({
+            ...prev,
+            processed: prev.processed + 1,
+            failures: [
+              ...prev.failures,
+              { name: uid, reason: result?.message || "上传失败" },
+            ],
+          }))
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : "上传失败"
+          setReplaceCoverProgress((prev) => ({
+            ...prev,
+            processed: prev.processed + 1,
+            failures: [...prev.failures, { name: uid, reason }],
+          }))
+        }
+      })
+    )
+
+    setReplaceCoverProgress((prev) => ({ ...prev, status: "done" }))
+    refreshItems()
+  }
+
   const openEdit = (id: string) => {
     setAutoOpenCoverPicker(false)
     setEditingItemId(id)
@@ -1946,6 +2043,7 @@ export default function ArchivePage() {
         }
         setIsClearOpen(true)
       }}
+      onOpenReplaceCover={() => setIsReplaceCoverOpen(true)}
       onDownloadImages={() => showToast("下载图片待实现", "info")}
       onExport={handleExport}
       onSyncFeishu={() => showToast("写入飞书待实现", "info")}
@@ -1988,9 +2086,30 @@ export default function ArchivePage() {
         onClearOpenChange={setIsClearOpen}
         onConfirmClear={handleClearList}
       />
+      <ReplaceCoverDialog
+        open={isReplaceCoverOpen}
+        onOpenChange={setIsReplaceCoverOpen}
+        onSubmit={handleReplaceCoverSubmit}
+      />
+      <ProgressDialog
+        open={replaceCoverProgressOpen}
+        title="替换封面进度"
+        status={replaceCoverProgress.status}
+        total={replaceCoverProgress.total}
+        processed={replaceCoverProgress.processed}
+        success={replaceCoverProgress.success}
+        failures={replaceCoverProgress.failures}
+        showFailures={replaceCoverProgress.failures.length > 0}
+        summaryText={`${replaceCoverProgress.processed}/${replaceCoverProgress.total} · 失败${replaceCoverProgress.failures.length}`}
+        onOpenChange={(open) => {
+          if (!open && replaceCoverProgress.status !== "running") {
+            setReplaceCoverProgressOpen(false)
+          }
+        }}
+      />
       <AiParamsPreviewDialog
         open={aiPreviewOpen}
-        title="\u53c2\u6570\u53d8\u66f4\u9884\u89c8"
+        title="参数变更预览"
         fields={aiPreviewData?.fields ?? []}
         onConfirm={handleAiPreviewConfirm}
         onCancel={closeAiPreview}

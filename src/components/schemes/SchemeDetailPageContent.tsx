@@ -2,6 +2,7 @@
 import { apiRequest } from "@/lib/api"
 import { useToast } from "@/components/Toast"
 import Empty from "@/components/Empty"
+import Skeleton from "@/components/Skeleton"
 import ProgressDialog from "@/components/ProgressDialog"
 import LoadingDialog from "@/components/LoadingDialog"
 import SchemeDetailDialogs from "@/components/schemes/SchemeDetailDialogs"
@@ -29,7 +30,6 @@ const PLACEHOLDER_COVER =
 
 const PROMPT_DEFAULTS = {
   title: "你是电商标题策划，请基于选品信息生成 5 条短标题，突出卖点与价格优势，避免夸张与重复。",
-  intro: "你是电商视频文案助手，请基于选品信息生成一段视频简介，信息完整、结构清晰，控制在 120 字以内。",
   vote: "你是电商投票策划，请基于选品信息生成投票文案，包含简短背景、候选项要点与引导语。",
   image: "你是电商视觉策划，结合选品参数生成商品图的文案与标题。",
   comment_reply:
@@ -46,7 +46,7 @@ const META_SPEC_KEYS = {
   taobaoPromoLink: "_tb_promo_link",
 } as const
 
-const IMAGE_TEMPLATE_CACHE_KEY = "image_template_cache_v1"
+const IMAGE_TEMPLATE_CACHE_KEY = "image_template_cache_v2"
 const BLUE_LINK_STATE_CACHE_PREFIX = "scheme_blue_link_state_v2"
 const CACHE_TTL = 5 * 60 * 1000
 const EMPTY_TEMPLATE_VALUE = "__empty__"
@@ -110,6 +110,13 @@ interface BlueLinkGroup {
   lines: string[]
 }
 
+type ProductLinksMode = "normal" | "reverse"
+
+type ProductLinkRow = {
+  header: string
+  links: string[]
+}
+
 interface SchemeDetailPageProps {
   schemeId: string
   onBack: () => void
@@ -156,11 +163,97 @@ function formatCurrencyText(value?: number) {
   return `${formatted}元`
 }
 
+function formatPriceWithUnit(value?: number | string | null) {
+  if (value === null || value === undefined || value === "") return ""
+  const text = String(value).trim()
+  if (!text) return ""
+  const cnyUnit = "\u5143"
+  if (text.includes(cnyUnit)) return text
+  const normalized = text.replace(/[\uFF0C,]/g, "")
+  const num = Number(normalized)
+  if (Number.isNaN(num)) return text
+  const display = num % 1 === 0 ? String(num) : String(num)
+  return `${display}${cnyUnit}`
+}
+
+function SchemeDetailPageSkeleton() {
+  return (
+    <div className="space-y-6">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-2">
+            <Skeleton className="h-7 w-64" />
+            <Skeleton className="h-4 w-48" />
+          </div>
+          <div className="flex gap-2">
+            <Skeleton className="h-9 w-24" />
+            <Skeleton className="h-9 w-24" />
+          </div>
+        </div>
+      </section>
+
+      <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
+        <div className="space-y-6">
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card space-y-3">
+            <Skeleton className="h-5 w-28" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card space-y-3">
+            <Skeleton className="h-5 w-28" />
+            <Skeleton className="h-[96px] w-full" />
+            <Skeleton className="h-[96px] w-full" />
+            <Skeleton className="h-[96px] w-full" />
+          </section>
+        </div>
+
+        <div className="space-y-6">
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card space-y-2">
+            <Skeleton className="h-5 w-32" />
+            <Skeleton className="h-20 w-full" />
+          </section>
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card space-y-2">
+            <Skeleton className="h-5 w-36" />
+            <Skeleton className="h-24 w-full" />
+          </section>
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card space-y-2">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-24 w-full" />
+          </section>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function formatRate(value?: number) {
   if (value === null || value === undefined) return "--"
   const num = Number(value)
   if (Number.isNaN(num)) return "--"
   return num % 1 === 0 ? `${num}%` : `${num.toFixed(1)}%`
+}
+
+function parseNumericValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return null
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null
+  }
+  const raw = String(value).trim()
+  if (!raw) return null
+  const normalized = raw.replace(/[?,]/g, "").replace(/[^0-9.-]/g, "")
+  if (!normalized || normalized === "-" || normalized === "." || normalized === "-.") {
+    return null
+  }
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function compareNullableNumbers(a: number | null, b: number | null, direction: "asc" | "desc") {
+  if (a === null && b === null) return 0
+  if (a === null) return 1
+  if (b === null) return -1
+  return direction === "asc" ? a - b : b - a
 }
 
 function getMeta(spec?: Record<string, string>) {
@@ -340,13 +433,17 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
   const [pickerOffset, setPickerOffset] = useState(0)
 
   const [promptTemplates, setPromptTemplates] = useState<Record<string, string>>({ ...PROMPT_DEFAULTS })
+  const promptTemplatesLoadedRef = useRef(false)
+  const promptTemplatesLoadingRef = useRef<Promise<Record<string, string>> | null>(null)
   const [promptEditOpen, setPromptEditOpen] = useState(false)
   const [promptEditType, setPromptEditType] = useState<keyof typeof PROMPT_DEFAULTS | null>(null)
   const [promptEditValue, setPromptEditValue] = useState("")
 
   const [titleOutput, setTitleOutput] = useState("")
-  const [introOutput, setIntroOutput] = useState("")
   const [voteOutput, setVoteOutput] = useState("")
+  const [productLinksOutput, setProductLinksOutput] = useState("")
+  const [productLinkRows, setProductLinkRows] = useState<ProductLinkRow[]>([])
+  const [productLinksMode, setProductLinksMode] = useState<ProductLinksMode>("normal")
   const [commentReplyOutput, setCommentReplyOutput] = useState("")
   const [commentReplyPrompt, setCommentReplyPrompt] = useState("")
   const [commentReplyCount, setCommentReplyCount] = useState(5)
@@ -367,9 +464,9 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
   const [presetFields, setPresetFields] = useState<string[]>([])
   const [imageTemplates, setImageTemplates] = useState<ImageTemplate[]>([])
   const [templateCategories, setTemplateCategories] = useState<string[]>([])
+  const imageTemplatesLoadedRef = useRef(false)
   const [activeTemplateCategory, setActiveTemplateCategory] = useState("")
   const [activeTemplateId, setActiveTemplateId] = useState("")
-  const [templateMissing, setTemplateMissing] = useState("")
   const [imageStatus, setImageStatus] = useState<{ message: string; type: "info" | "error" | "success" } | null>(
     null
   )
@@ -395,29 +492,37 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
   const [feishuSubmitting, setFeishuSubmitting] = useState(false)
 
   const filteredItems = useMemo(() => {
-    const min = priceMin.trim() ? Number(priceMin) : null
-    const max = priceMax.trim() ? Number(priceMax) : null
+    const min = parseNumericValue(priceMin)
+    const max = parseNumericValue(priceMax)
     let list = mergedItems.slice()
-    if (min !== null && !Number.isNaN(min)) {
-      list = list.filter((item) => (item.price ?? 0) >= min)
+    if (min !== null) {
+      list = list.filter((item) => {
+        const price = parseNumericValue(item.price)
+        return price !== null && price >= min
+      })
     }
-    if (max !== null && !Number.isNaN(max)) {
-      list = list.filter((item) => (item.price ?? 0) <= max)
+    if (max !== null) {
+      list = list.filter((item) => {
+        const price = parseNumericValue(item.price)
+        return price !== null && price <= max
+      })
     }
     if (sortValue === "manual") {
       return list
     }
     if (sortValue === "price-asc") {
-      list.sort((a, b) => (a.price ?? 0) - (b.price ?? 0))
+      list.sort((a, b) => compareNullableNumbers(parseNumericValue(a.price), parseNumericValue(b.price), "asc"))
     } else if (sortValue === "price-desc") {
-      list.sort((a, b) => (b.price ?? 0) - (a.price ?? 0))
+      list.sort((a, b) => compareNullableNumbers(parseNumericValue(a.price), parseNumericValue(b.price), "desc"))
     } else if (sortValue === "commission-desc") {
-      list.sort((a, b) => (b.commission_rate ?? 0) - (a.commission_rate ?? 0))
+      list.sort((a, b) =>
+        compareNullableNumbers(parseNumericValue(a.commission_rate), parseNumericValue(b.commission_rate), "desc")
+      )
     } else if (sortValue === "sales-desc") {
       list.sort((a, b) => {
-        const aSales = Number(getMeta(a.spec).sales30) || 0
-        const bSales = Number(getMeta(b.spec).sales30) || 0
-        return bSales - aSales
+        const aSales = parseNumericValue(getMeta(a.spec).sales30)
+        const bSales = parseNumericValue(getMeta(b.spec).sales30)
+        return compareNullableNumbers(aSales, bSales, "desc")
       })
     }
     return list
@@ -425,20 +530,30 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
 
 
 
-  useEffect(() => {
-    const loadPromptTemplates = async () => {
-      const keys = ["title", "intro", "vote", "image", "comment_reply"]
-      try {
-        const data = await apiRequest<{ templates: Record<string, string> }>(
-          `/api/prompts?keys=${keys.join(",")}`
-        )
-        setPromptTemplates({ ...PROMPT_DEFAULTS, ...(data.templates || {}) })
-      } catch {
-        setPromptTemplates({ ...PROMPT_DEFAULTS })
-      }
+  const loadPromptTemplates = useCallback(async () => {
+    const keys = ["title", "vote", "image", "comment_reply"]
+    try {
+      const data = await apiRequest<{ templates: Record<string, string> }>(
+        `/api/prompts?keys=${keys.join(",")}`
+      )
+      return { ...PROMPT_DEFAULTS, ...(data.templates || {}) }
+    } catch {
+      return { ...PROMPT_DEFAULTS }
     }
-    loadPromptTemplates().catch(() => {})
   }, [])
+
+  const ensurePromptTemplatesLoaded = useCallback(async () => {
+    if (promptTemplatesLoadedRef.current) return promptTemplates
+    if (!promptTemplatesLoadingRef.current) {
+      promptTemplatesLoadingRef.current = loadPromptTemplates().finally(() => {
+        promptTemplatesLoadingRef.current = null
+      })
+    }
+    const loaded = await promptTemplatesLoadingRef.current
+    promptTemplatesLoadedRef.current = true
+    setPromptTemplates(loaded)
+    return loaded
+  }, [loadPromptTemplates, promptTemplates])
 
   useEffect(() => {
     const loadPreset = async () => {
@@ -489,12 +604,12 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
   }, [sourceItemKey, sourceItemIds])
 
   useEffect(() => {
-    if (!items.length) return
-    void loadBlueLinkMappingState(true)
-  }, [items])
-
-  useEffect(() => {
-    void loadImageTemplates()
+    const timer = window.setTimeout(() => {
+      if (!imageTemplatesLoadedRef.current) {
+        void loadImageTemplates()
+      }
+    }, 280)
+    return () => window.clearTimeout(timer)
   }, [])
 
   const persistItems = async (nextItems: SchemeItem[], message?: string) => {
@@ -751,9 +866,12 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     })
 
   const openPromptEditor = (type: keyof typeof PROMPT_DEFAULTS) => {
-    setPromptEditType(type)
-    setPromptEditValue(promptTemplates[type] || "")
-    setPromptEditOpen(true)
+    void (async () => {
+      const templates = await ensurePromptTemplatesLoaded()
+      setPromptEditType(type)
+      setPromptEditValue(templates[type] || "")
+      setPromptEditOpen(true)
+    })()
   }
 
   const savePromptTemplate = async () => {
@@ -777,26 +895,27 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
   }
 
   const generateText = async (
-    type: "title" | "intro" | "vote",
+    type: "title" | "vote",
     setOutput: (value: string) => void
   ) => {
     if (!mergedItems.length) {
-      showToast("暂无选品可生成", "error")
+      showToast("\u6682\u65e0\u9009\u54c1\u53ef\u751f\u6210", "error")
       return
     }
     try {
+      const templates = await ensurePromptTemplatesLoaded()
       const response = await apiRequest<{ output: string }>("/api/scheme/generate-text", {
         method: "POST",
         body: JSON.stringify({
           type,
-          prompt: promptTemplates[type] || PROMPT_DEFAULTS[type],
+          prompt: templates[type] || PROMPT_DEFAULTS[type],
           items: buildPromptItems(),
         }),
       })
       setOutput(response.output || "")
-      showToast("生成完成", "success")
+      showToast("\u751f\u6210\u5b8c\u6210", "success")
     } catch (error) {
-      const message = error instanceof Error ? error.message : "生成失败"
+      const message = error instanceof Error ? error.message : "\u751f\u6210\u5931\u8d25"
       showToast(message, "error")
     }
   }
@@ -807,33 +926,77 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     return Math.min(Math.max(Math.floor(count), 1), 20)
   }
 
-  const buildCommentReplyPrompt = () => {
+  const buildCommentReplyPrompt = (template: string) => {
     const count = getCommentReplyCount()
-    const extra = commentReplyPrompt.trim() ? `补充要求：${commentReplyPrompt.trim()}\n` : ""
-    const template = promptTemplates.comment_reply || PROMPT_DEFAULTS.comment_reply
+    const extra = commentReplyPrompt.trim() ? `\u8865\u5145\u8981\u6c42\uff1a${commentReplyPrompt.trim()}\n` : ""
     return template.replace("{{count}}", String(count)).replace("{{prompt}}", extra)
   }
 
   const generateCommentReply = async () => {
     if (!items.length) {
-      showToast("暂无选品可生成", "error")
+      showToast("\u6682\u65e0\u9009\u54c1\u53ef\u751f\u6210", "error")
       return
     }
     try {
+      const templates = await ensurePromptTemplatesLoaded()
       const response = await apiRequest<{ output: string }>("/api/scheme/generate-text", {
         method: "POST",
         body: JSON.stringify({
           type: "comment_reply",
-          prompt: buildCommentReplyPrompt(),
+          prompt: buildCommentReplyPrompt(templates.comment_reply || PROMPT_DEFAULTS.comment_reply),
           items: buildPromptItems(),
         }),
       })
       setCommentReplyOutput(response.output || "")
-      showToast("生成完成", "success")
+      showToast("\u751f\u6210\u5b8c\u6210", "success")
     } catch (error) {
-      const message = error instanceof Error ? error.message : "生成失败"
+      const message = error instanceof Error ? error.message : "\u751f\u6210\u5931\u8d25"
       showToast(message, "error")
     }
+  }
+  const formatProductLinksOutput = useCallback((rows: ProductLinkRow[], mode: ProductLinksMode) => {
+    if (!rows.length) return ""
+    if (mode === "reverse") {
+      return rows
+        .flatMap((row) => row.links)
+        .filter(Boolean)
+        .reverse()
+        .join("\n")
+    }
+
+    return rows
+      .map((row) => [row.header, ...row.links].filter(Boolean).join("\n"))
+      .join("\n\n")
+  }, [])
+
+  const generateProductLinks = () => {
+    if (!filteredItems.length) {
+      showToast("\u6682\u65e0\u9009\u54c1\u53ef\u751f\u6210", "error")
+      return
+    }
+
+    const rows = filteredItems.map((item) => {
+      const meta = getMeta(item.spec)
+      const links = resolvePlatformLinks(item, meta)
+      return {
+        header: `${item.title || "\u672a\u547d\u540d\u5546\u54c1"},${formatPriceWithUnit(item.price)}`,
+        links: [links.jdLink, links.taobaoLink]
+          .map((link) => truncateProductDisplayLink(link))
+          .filter(Boolean),
+      }
+    })
+
+    setProductLinkRows(rows)
+    setProductLinksMode("normal")
+    setProductLinksOutput(formatProductLinksOutput(rows, "normal"))
+    showToast("\u751f\u6210\u5b8c\u6210", "success")
+  }
+
+  const toggleProductLinksMode = () => {
+    if (!productLinkRows.length) return
+    const nextMode: ProductLinksMode = productLinksMode === "normal" ? "reverse" : "normal"
+    setProductLinksMode(nextMode)
+    setProductLinksOutput(formatProductLinksOutput(productLinkRows, nextMode))
   }
 
   const copyText = async (text: string, message: string) => {
@@ -893,7 +1056,17 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
   const loadBlueLinkMappingState = async (force = false) => {
     const productIds = getBlueLinkProductIds()
     const key = productIds.join(",")
-    if (!force && key && key === blueLinkKey && blueLinkAccounts.length) return
+    if (!productIds.length) {
+      setBlueLinkAccounts([])
+      setBlueLinkEntries([])
+      setSelectedAccountId("")
+      setBlueLinkKey("")
+      return { accounts: [] as BlueLinkAccount[], entries: [] as BlueLinkEntry[] }
+    }
+    if (!force && key && key === blueLinkKey && blueLinkAccounts.length) {
+      return { accounts: blueLinkAccounts, entries: blueLinkEntries }
+    }
+
     const cacheKey = `${BLUE_LINK_STATE_CACHE_PREFIX}_${schemeId}_${key}`
     if (!force) {
       try {
@@ -901,15 +1074,20 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
         if (raw) {
           const cache = JSON.parse(raw) as { timestamp: number; accounts: BlueLinkAccount[]; entries: BlueLinkEntry[] }
           if (cache?.timestamp && Date.now() - cache.timestamp < CACHE_TTL) {
-            setBlueLinkAccounts(Array.isArray(cache.accounts) ? cache.accounts : [])
-            setBlueLinkEntries(Array.isArray(cache.entries) ? cache.entries : [])
-            restoreBlueLinkAccountSelection(Array.isArray(cache.accounts) ? cache.accounts : [])
+            const cachedAccounts = Array.isArray(cache.accounts) ? cache.accounts : []
+            const cachedEntries = Array.isArray(cache.entries) ? cache.entries : []
+            setBlueLinkAccounts(cachedAccounts)
+            setBlueLinkEntries(cachedEntries)
+            restoreBlueLinkAccountSelection(cachedAccounts)
+            setBlueLinkKey(key)
+            return { accounts: cachedAccounts, entries: cachedEntries }
           }
         }
       } catch {
         // ignore
       }
     }
+
     setBlueLinkKey(key)
     try {
       const data = await fetchBlueLinkMapState(productIds)
@@ -926,10 +1104,12 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       } catch {
         // ignore
       }
+      return { accounts, entries }
     } catch {
       setBlueLinkAccounts([])
       setBlueLinkEntries([])
       setSelectedAccountId("")
+      return { accounts: [] as BlueLinkAccount[], entries: [] as BlueLinkEntry[] }
     }
   }
 
@@ -941,86 +1121,97 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
   }
 
   const generateBlueLinks = () => {
-    if (!items.length) {
-      showToast("暂无选品可生成", "error")
-      return
-    }
-    if (!blueLinkAccounts.length) {
-      showToast("暂无账号可用于蓝链生成", "error")
-      return
-    }
-    const ranges = blueRanges.filter((range) => range.min !== null || range.max !== null)
-    if (!ranges.length) {
-      showToast("请先设置价格区间", "error")
-      return
-    }
-    if (!selectedAccountId) {
-      setBlueLinkMissing("请先选择输出账号")
-      return
-    }
-
-    const activeAccount = blueLinkAccounts.find((account) => account.id === selectedAccountId)
-    if (!activeAccount) {
-      setBlueLinkMissing("请先选择输出账号")
-      return
-    }
-
-    const entryMap = new Map<string, Map<string, BlueLinkEntry>>()
-    blueLinkEntries.forEach((entry) => {
-      if (!entry.account_id || !entry.product_id) return
-      if (!entryMap.has(entry.account_id)) {
-        entryMap.set(entry.account_id, new Map())
+    void (async () => {
+      if (!items.length) {
+        showToast("\u6682\u65e0\u9009\u54c1\u53ef\u751f\u6210", "error")
+        return
       }
-      entryMap.get(entry.account_id)?.set(entry.product_id, entry)
-    })
 
-    const activeAccounts = [activeAccount]
-    const missingSummary: string[] = []
-    const groups: BlueLinkGroup[] = []
-    const multiAccount = activeAccounts.length > 1
+      const { accounts, entries } = await loadBlueLinkMappingState(false)
+      if (!accounts.length) {
+        showToast("\u6682\u65e0\u8d26\u53f7\u53ef\u7528\u4e8e\u84dd\u94fe\u751f\u6210", "error")
+        return
+      }
 
-    activeAccounts.forEach((account) => {
-      const map = entryMap.get(account.id) || new Map()
-      const grouped = ranges.map((range) => ({
-        label: formatRangeLabel(range),
-        lines: [] as string[],
-      }))
-      const missingLinks: string[] = []
+      const ranges = blueRanges.filter((range) => range.min !== null || range.max !== null)
+      if (!ranges.length) {
+        showToast("\u8bf7\u5148\u8bbe\u7f6e\u4ef7\u683c\u533a\u95f4", "error")
+        return
+      }
 
-      mergedItems.forEach((item) => {
-        const sourceId = item.source_id || item.id
-        const latestItem = findSourceItem(item) || item
-        const price = Number(latestItem.price)
-        const entry = map.get(sourceId)
-        const link = entry?.source_link || ""
-        if (!link) {
-          missingLinks.push(item.title || "未命名商品")
-          return
+      const effectiveAccountId = resolveSelectedAccountId(accounts, selectedAccountId)
+      if (effectiveAccountId !== selectedAccountId) {
+        setSelectedAccountId(effectiveAccountId)
+        persistBlueLinkAccountSelection(effectiveAccountId)
+      }
+      if (!effectiveAccountId) {
+        setBlueLinkMissing("\u8bf7\u5148\u9009\u62e9\u8f93\u51fa\u8d26\u53f7")
+        return
+      }
+
+      const activeAccount = accounts.find((account) => account.id === effectiveAccountId)
+      if (!activeAccount) {
+        setBlueLinkMissing("\u8bf7\u5148\u9009\u62e9\u8f93\u51fa\u8d26\u53f7")
+        return
+      }
+
+      const entryMap = new Map<string, Map<string, BlueLinkEntry>>()
+      entries.forEach((entry) => {
+        if (!entry.account_id || !entry.product_id) return
+        if (!entryMap.has(entry.account_id)) {
+          entryMap.set(entry.account_id, new Map())
         }
-        const rangeIndex = ranges.findIndex((range) => {
-          const minOk = range.min === null || (Number.isFinite(price) && price >= (range.min ?? 0))
-          const maxOk = range.max === null || (Number.isFinite(price) && price <= (range.max ?? 0))
-          return minOk && maxOk
-        })
-        if (rangeIndex === -1) return
-        const priceText = formatNumber(latestItem.price)
-        grouped[rangeIndex].lines.push(`${link},${priceText}`)
+        entryMap.get(entry.account_id)?.set(entry.product_id, entry)
       })
 
-      grouped
-        .filter((group) => group.lines.length)
-        .forEach((group) => {
-          const label = multiAccount ? `${account.name} · ${group.label}` : `价格区间：${group.label}`
-          groups.push({ label, lines: group.lines })
+      const activeAccounts = [activeAccount]
+      const missingSummary: string[] = []
+      const groups: BlueLinkGroup[] = []
+      const multiAccount = activeAccounts.length > 1
+
+      activeAccounts.forEach((account) => {
+        const map = entryMap.get(account.id) || new Map()
+        const grouped = ranges.map((range) => ({
+          label: formatRangeLabel(range),
+          lines: [] as string[],
+        }))
+        const missingLinks: string[] = []
+
+        mergedItems.forEach((item) => {
+          const sourceId = item.source_id || item.id
+          const latestItem = findSourceItem(item) || item
+          const price = Number(latestItem.price)
+          const entry = map.get(sourceId)
+          const link = entry?.source_link || ""
+          if (!link) {
+            missingLinks.push(item.title || "\u672a\u547d\u540d\u5546\u54c1")
+            return
+          }
+          const rangeIndex = ranges.findIndex((range) => {
+            const minOk = range.min === null || (Number.isFinite(price) && price >= (range.min ?? 0))
+            const maxOk = range.max === null || (Number.isFinite(price) && price <= (range.max ?? 0))
+            return minOk && maxOk
+          })
+          if (rangeIndex === -1) return
+          const priceText = formatNumber(latestItem.price)
+          grouped[rangeIndex].lines.push(`${link},${priceText}`)
         })
 
-      if (missingLinks.length) {
-        missingSummary.push(`${account.name}：${missingLinks.join("、")}`)
-      }
-    })
+        grouped
+          .filter((group) => group.lines.length)
+          .forEach((group) => {
+            const label = multiAccount ? `${account.name} \u00b7 ${group.label}` : `\u4ef7\u683c\u533a\u95f4\uff1a${group.label}`
+            groups.push({ label, lines: group.lines })
+          })
 
-    setBlueLinkGroups(groups)
-    setBlueLinkMissing(missingSummary.length ? `以下商品缺少蓝链：${missingSummary.join("；")}` : "")
+        if (missingLinks.length) {
+          missingSummary.push(`${account.name}\uff1a${missingLinks.join("\u3001")}`)
+        }
+      })
+
+      setBlueLinkGroups(groups)
+      setBlueLinkMissing(missingSummary.length ? `\u4ee5\u4e0b\u5546\u54c1\u7f3a\u5c11\u84dd\u94fe\uff1a${missingSummary.join("\uff1b")}` : "")
+    })()
   }
 
   const loadImageTemplates = async () => {
@@ -1031,9 +1222,9 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
         if (cache?.timestamp && Date.now() - cache.timestamp < CACHE_TTL) {
           const templates = Array.isArray(cache.templates) ? cache.templates : []
           setImageTemplates(templates)
-          const categories = Array.from(new Set(templates.map((item) => item.category || "默认模板")))
+          const categories = Array.from(new Set(templates.map((item) => item.category || "\u9ed8\u8ba4\u6a21\u677f")))
           setTemplateCategories(categories)
-          setActiveTemplateCategory(categories[0] || "默认模板")
+          setActiveTemplateCategory(categories[0] || "\u9ed8\u8ba4\u6a21\u677f")
         }
       }
     } catch {
@@ -1043,9 +1234,9 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       const data = await apiRequest<{ templates: ImageTemplate[] }>("/api/image/templates")
       const templates = Array.isArray(data.templates) ? data.templates : []
       setImageTemplates(templates)
-      const categories = Array.from(new Set(templates.map((item) => item.category || "默认模板")))
+      const categories = Array.from(new Set(templates.map((item) => item.category || "\u9ed8\u8ba4\u6a21\u677f")))
       setTemplateCategories(categories)
-      setActiveTemplateCategory(categories[0] || "默认模板")
+      setActiveTemplateCategory(categories[0] || "\u9ed8\u8ba4\u6a21\u677f")
       try {
         localStorage.setItem(
           IMAGE_TEMPLATE_CACHE_KEY,
@@ -1057,6 +1248,8 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     } catch {
       setImageTemplates([])
       setTemplateCategories([])
+    } finally {
+      imageTemplatesLoadedRef.current = true
     }
   }
 
@@ -1155,59 +1348,6 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     return presetFields.filter((field) => !String(params[field] ?? "").trim())
   }
 
-  const computeTemplateMissingText = () => {
-    const template = imageTemplates.find((item) => item.id === activeTemplateId)
-    if (!template?.html) return "缺失字段：暂无模板"
-
-    const slotCount = getTemplateParamSlotCount(template.html)
-    if (slotCount > 0 && presetFields.length) {
-      const usedFields = presetFields.slice(0, slotCount)
-      const missingCounts = new Map<string, number>()
-      items.forEach((item) => {
-        const effectiveItem = findSourceItem(item) || item
-        const params = stripMetaSpec(effectiveItem.spec || {})
-        usedFields.forEach((field) => {
-          const value = params[field]
-          if (!String(value ?? "").trim()) {
-            missingCounts.set(field, (missingCounts.get(field) || 0) + 1)
-          }
-        })
-      })
-      if (!missingCounts.size) return "缺失字段：无缺失"
-      const list = Array.from(missingCounts.entries())
-        .map(([key, count]) => `${key}(${count})`)
-        .join("、")
-      return `缺失字段：${list}`
-    }
-
-    if (slotCount > 0 && !presetFields.length) {
-      return "缺失字段：未设置预设参数"
-    }
-
-    const fieldIds = getTemplateFieldIds(template.html)
-    if (!fieldIds.length) {
-      return "缺失字段：模板未声明需要的字段"
-    }
-    const missingCounts = new Map<string, number>()
-    items.forEach((item) => {
-      const map = getItemFieldMap(item)
-      fieldIds.forEach((id) => {
-        const value = map[id]
-        if (value === undefined || value === null || value === "") {
-          missingCounts.set(id, (missingCounts.get(id) || 0) + 1)
-        }
-      })
-    })
-    if (!missingCounts.size) return "缺失字段：无缺失"
-    const list = Array.from(missingCounts.entries())
-      .map(([key, count]) => `${key}(${count})`)
-      .join("、")
-    return `缺失字段：${list}`
-  }
-
-  useEffect(() => {
-    setTemplateMissing(computeTemplateMissingText())
-  }, [activeTemplateId, imageTemplates, presetFields, items])
 
   const applyTemplateFields = (
     root: HTMLElement,
@@ -1255,10 +1395,6 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     })
   }
 
-  const refreshTemplateMissing = () => {
-    const message = computeTemplateMissingText()
-    setTemplateMissing(message)
-  }
 
   const waitForNextFrame = () =>
     new Promise<void>((resolve) => {
@@ -1278,7 +1414,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       setImageStatus({ message: "请先选择模板", type: "error" })
       return
     }
-    if (!items.length) {
+    if (!mergedItems.length) {
       setImageStatus({ message: "暂无选品可生成", type: "error" })
       return
     }
@@ -1289,12 +1425,11 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     progressCancelRef.current = false
     setProgressOpen(true)
     setProgressStatus("running")
-    setProgressTotal(items.length)
+    setProgressTotal(mergedItems.length)
     setProgressProcessed(0)
     setProgressSuccess(0)
     setProgressFailures([])
     setImageStatus({ message: "正在生成图片...", type: "info" })
-    refreshTemplateMissing()
     await waitForNextFrame()
 
     const zip = new JSZip()
@@ -1319,7 +1454,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     }
 
     try {
-      for (const item of items) {
+      for (const item of mergedItems) {
         if (progressCancelRef.current) break
         const renderRoot = imageRenderRef.current
         renderRoot.innerHTML = ""
@@ -1333,7 +1468,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
 
         const rect = wrapper.getBoundingClientRect()
         if (!rect.width || !rect.height) {
-          recordFailure(item.title || `商品_${index}`, "模板尺寸为 0")
+          recordFailure(item.title || item.uid || item.id || `商品_${index}`, "模板尺寸为 0")
           index += 1
           await waitForNextFrame()
           continue
@@ -1346,12 +1481,12 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
         })
         const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png", 1))
         if (blob) {
-          const baseName = item.title || `商品_${index}`
+          const baseName = item.title || item.uid || item.id || `商品_${index}`
           const name = sanitizeFilename(`${index}-${baseName}`)
           zip.file(`${name}.png`, blob)
           recordSuccess()
         } else {
-          recordFailure(item.title || `商品_${index}`, "生成图片失败")
+          recordFailure(item.title || item.uid || item.id || `商品_${index}`, "生成图片失败")
         }
         index += 1
         await waitForNextFrame()
@@ -1397,7 +1532,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
   }
 
   const generateSingleImage = async (itemId: string) => {
-    const target = selectSingleImageTarget(items, imageTemplates, activeTemplateId, itemId)
+    const target = selectSingleImageTarget(mergedItems, imageTemplates, activeTemplateId, itemId)
     if (!target.ok) {
       setImageStatus({ message: target.error, type: "error" })
       return
@@ -1407,7 +1542,6 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       return
     }
     setImageStatus({ message: "正在生成图片...", type: "info" })
-    refreshTemplateMissing()
     setSingleImageLoadingOpen(true)
     await waitForNextFrame()
 
@@ -1450,7 +1584,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
         return
       }
 
-      const name = sanitizeFilename(item.title || `商品_${Date.now()}`)
+      const name = sanitizeFilename(item.title || item.uid || item.id || `商品_${Date.now()}`)
       const url = URL.createObjectURL(blob)
       const anchor = document.createElement("a")
       anchor.href = url
@@ -1468,9 +1602,70 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     }
   }
 
+  const normalizeLink = (link: string) => String(link || "").trim()
+
+  const isJdLink = (link: string) =>
+    /(?:^|\/\/)(?:\w+\.)?(?:jd\.com|3\.cn|jd\.hk)/i.test(link)
+
+  const isTaobaoLink = (link: string) =>
+    /(?:^|\/\/)(?:\w+\.)?(?:taobao\.com|tmall\.com|tb\.cn|taobaocdn\.com|alibaba\.com)/i.test(link)
+
+  const truncateProductDisplayLink = (link: string) => {
+    const normalized = normalizeLink(link)
+    if (!normalized) return ""
+
+    const jdMatch = normalized.match(/^(https?:\/\/(?:item\.)?jd\.com\/\d+\.html)/i)
+    if (jdMatch) return jdMatch[1]
+
+    const tmallMatch = normalized.match(
+      /^(https?:\/\/detail\.(?:tmall|taobao)\.com\/item\.htm\?(?:[^#]*?\bid=\d+))/i
+    )
+    if (tmallMatch) return tmallMatch[1]
+
+    const taobaoIdMatch = normalized.match(/^(https?:\/\/[^?#]+\?(?:[^#]*?\bid=\d+))/i)
+    if (taobaoIdMatch && isTaobaoLink(normalized)) return taobaoIdMatch[1]
+
+    return normalized
+  }
+
+  const resolvePlatformLinks = (item: SchemeItem, meta: ReturnType<typeof getMeta>) => {
+    const candidates = [
+      item.link,
+      item.taobao_link,
+      meta.promoLink,
+      meta.taobaoPromoLink,
+      meta.sourceLink,
+      meta.blueLink,
+    ]
+    let jdLink = ""
+    let taobaoLink = ""
+    for (const rawCandidate of candidates) {
+      const candidate = normalizeLink(rawCandidate || "")
+      if (!candidate) continue
+      if (!jdLink && isJdLink(candidate)) {
+        jdLink = candidate
+      }
+      if (!taobaoLink && isTaobaoLink(candidate)) {
+        taobaoLink = candidate
+      }
+      if (jdLink && taobaoLink) break
+    }
+    const primaryLink =
+      jdLink ||
+      taobaoLink ||
+      candidates.map((value) => normalizeLink(value || "")).find(Boolean) ||
+      ""
+    return {
+      jdLink,
+      taobaoLink,
+      primaryLink,
+    }
+  }
+
   const buildExportProduct = (item: SchemeItem) => {
     const meta = getMeta(item.spec)
     const specParams = stripMetaSpec(item.spec || {})
+    const links = resolvePlatformLinks(item, meta)
     return {
       id: item.uid || item.id,
       skuId: item.uid || "",
@@ -1481,9 +1676,11 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       sales30Days: meta.sales30 ?? "",
       comments: meta.comments ?? "",
       shopName: meta.shopName || "",
-      standardUrl: item.link || meta.promoLink || "",
-      materialUrl: meta.promoLink || "",
-      originalLink: meta.sourceLink || "",
+      standardUrl: links.primaryLink,
+      materialUrl: normalizeLink(meta.promoLink || ""),
+      originalLink: normalizeLink(meta.sourceLink || ""),
+      jdLink: links.jdLink,
+      taobaoLink: links.taobaoLink,
       image: getDisplayCover(item),
       specSummary: buildSpecDetailText(specParams, " / ", 3),
       specParams,
@@ -1491,6 +1688,8 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     }
   }
 
+  const resolveJdLink = (item: SchemeItem, meta: ReturnType<typeof getMeta>) =>
+    resolvePlatformLinks(item, meta).jdLink
   const exportJsonTxt = () => {
     if (!mergedItems.length) {
       showToast("没有可导出的商品", "info")
@@ -1501,10 +1700,11 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       const meta = getMeta(spec)
       return {
         商品名称: item.title || "",
+        价格: formatPriceWithUnit(item.price ?? ""),
         所有参数: stripMetaSpec(spec),
-        remark: item.remark || "",
+        评价总结: item.remark || "",
         重点标记: Boolean(spec._featured),
-        京东链接: (meta.sourceLink || "").trim(),
+        京东链接: resolveJdLink(item, meta),
       }
     })
     const jsonText = JSON.stringify(payload, null, 2)
@@ -1554,9 +1754,11 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
         }
         return ""
       }
-      const getProductId = (product: ReturnType<typeof buildExportProduct>) => {
-        const link = product.standardUrl || product.materialUrl || product.originalLink || ""
-        const linkId = extractDigitsFromLink(link)
+      const getProductId = (product: ReturnType<typeof buildExportProduct>, link?: string) => {
+        const targetLink = String(
+          link || product.jdLink || product.standardUrl || product.materialUrl || product.originalLink || ""
+        )
+        const linkId = extractDigitsFromLink(targetLink)
         if (linkId) return linkId
         return product.skuId || product.id || ""
       }
@@ -1590,17 +1792,17 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
         ...paramKeys,
       ]
 
-      const rows = products.map((product) => [
+      const buildJdRow = (product: ReturnType<typeof buildExportProduct>) => [
         "",
         product.skuId || product.id || "",
-        getProductId(product),
+        getProductId(product, product.jdLink),
         product.name || "",
         formatPrice(product.price),
         formatPrice(product.commission),
         formatPercent(product.commissionRate),
         product.sales30Days || "",
         product.shopName || "",
-        product.standardUrl || product.materialUrl || product.originalLink || "",
+        product.jdLink || product.standardUrl || product.materialUrl || product.originalLink || "",
         product.comments || "",
         product.remark || "",
         ...paramKeys.map((key) => {
@@ -1608,7 +1810,37 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
           if (value === null || value === undefined) return ""
           return String(value)
         }),
-      ])
+      ]
+
+      const buildTaobaoRow = (product: ReturnType<typeof buildExportProduct>) => [
+        "",
+        "",
+        "",
+        product.name || "",
+        formatPrice(product.price),
+        formatPrice(product.commission),
+        formatPercent(product.commissionRate),
+        "",
+        "",
+        product.taobaoLink || "",
+        "",
+        "",
+        ...paramKeys.map(() => ""),
+      ]
+
+      const rows = products.flatMap((product) => {
+        const result: Array<Array<string>> = []
+        if (product.jdLink) {
+          result.push(buildJdRow(product))
+        }
+        if (product.taobaoLink) {
+          result.push(buildTaobaoRow(product))
+        }
+        if (!product.jdLink && !product.taobaoLink) {
+          result.push(buildJdRow(product))
+        }
+        return result
+      })
 
       const workbook = XLSX.utils.book_new()
       const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows])
@@ -1722,11 +1954,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
         : []
 
   if (isLoading && !scheme) {
-    return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
-        <p className="text-sm text-slate-500">加载中...</p>
-      </div>
-    )
+    return <SchemeDetailPageSkeleton />
   }
 
   if (!scheme) {
@@ -1746,7 +1974,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
     const isMissing = missingFields.length > 0 || hasMissingRemark
     return {
       id: item.id,
-      title: item.title || "?????",
+      title: item.title || "\u672a\u547d\u540d\u5546\u54c1",
       cover: getDisplayCover(item),
       shopName: meta.shopName || "--",
       sales30: meta.sales30 || "--",
@@ -1802,7 +2030,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
         toolbar={{
           sortValue,
           onSortChange: setSortValue,
-          onClearItems: () => persistItems([], "?????"),
+          onClearItems: () => persistItems([], "\u5df2\u6e05\u7a7a\u9009\u54c1"),
           onOpenPicker: openPicker,
         }}
         productList={{
@@ -1822,18 +2050,24 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
         sidebar={{
           copywriting: {
             title: titleOutput,
-            intro: introOutput,
             vote: voteOutput,
             onTitleChange: setTitleOutput,
-            onIntroChange: setIntroOutput,
             onVoteChange: setVoteOutput,
             onOpenPrompt: (type) => openPromptEditor(type),
             onCopy: copyText,
             onGenerate: (type) => {
               if (type === "title") generateText("title", setTitleOutput)
-              if (type === "intro") generateText("intro", setIntroOutput)
               if (type === "vote") generateText("vote", setVoteOutput)
             },
+          },
+          productLinks: {
+            output: productLinksOutput,
+            onOutputChange: setProductLinksOutput,
+            onCopy: copyText,
+            onGenerate: generateProductLinks,
+            canToggleMode: productLinkRows.length > 0,
+            toggleModeLabel: productLinksMode === "normal" ? "\u5012\u5e8f\u6392\u5217" : "\u6b63\u5e8f\u6392\u5217",
+            onToggleMode: toggleProductLinksMode,
           },
           commentReply: {
             count: commentReplyCount,
@@ -1870,11 +2104,9 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
             activeCategory: activeTemplateCategory,
             activeTemplateId: activeTemplateId,
             emptyValue: EMPTY_TEMPLATE_VALUE,
-            missingMessage: templateMissing,
             status: imageStatus,
             onCategoryChange: (value) => setActiveTemplateCategory(value),
             onTemplateChange: (value) => setActiveTemplateId(value),
-            onRefreshMissing: refreshTemplateMissing,
             onGenerate: generateImages,
           },
         }}

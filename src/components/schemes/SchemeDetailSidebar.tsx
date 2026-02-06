@@ -1,4 +1,4 @@
-﻿import { useId } from "react"
+import { useId } from "react"
 import { Copy, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,14 +14,12 @@ import { Field, FieldContent, FieldLabel } from "@/components/ui/field"
 
 type CopywritingProps = {
   title: string
-  intro: string
   vote: string
   onTitleChange: (value: string) => void
-  onIntroChange: (value: string) => void
   onVoteChange: (value: string) => void
-  onOpenPrompt: (type: "title" | "intro" | "vote") => void
+  onOpenPrompt: (type: "title" | "vote") => void
   onCopy: (text: string, message: string) => void
-  onGenerate: (type: "title" | "intro" | "vote") => void
+  onGenerate: (type: "title" | "vote") => void
 }
 
 type CommentReplyProps = {
@@ -34,6 +32,16 @@ type CommentReplyProps = {
   onOpenPrompt: () => void
   onCopy: (text: string, message: string) => void
   onGenerate: () => void
+}
+
+type ProductLinksProps = {
+  output: string
+  onOutputChange: (value: string) => void
+  onCopy: (text: string, message: string) => void
+  onGenerate: () => void
+  canToggleMode: boolean
+  toggleModeLabel: string
+  onToggleMode: () => void
 }
 
 type BlueLinkAccount = { id: string; name: string }
@@ -67,16 +75,15 @@ type ImagePanelProps = {
   activeCategory: string
   activeTemplateId: string
   emptyValue: string
-  missingMessage: string
   status: ImageStatus | null
   onCategoryChange: (value: string) => void
   onTemplateChange: (value: string) => void
-  onRefreshMissing: () => void
   onGenerate: () => void
 }
 
 type SchemeDetailSidebarProps = {
   copywriting: CopywritingProps
+  productLinks: ProductLinksProps
   commentReply: CommentReplyProps
   blueLink: BlueLinkProps
   image: ImagePanelProps
@@ -84,6 +91,7 @@ type SchemeDetailSidebarProps = {
 
 export default function SchemeDetailSidebar({
   copywriting,
+  productLinks,
   commentReply,
   blueLink,
   image,
@@ -94,8 +102,8 @@ export default function SchemeDetailSidebar({
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="text-base font-semibold text-slate-900">生成商品图片</h3>
-            <p className="mt-1 text-xs text-slate-500">选择模板后自动替换参数并生成图片包</p>
+            <h3 className="text-base font-semibold text-slate-900">{"生成商品图片"}</h3>
+            <p className="mt-1 text-xs text-slate-500">{"选择模板后自动替换参数并生成图片包"}</p>
           </div>
         </div>
         <div className="mt-3 space-y-2">
@@ -110,7 +118,7 @@ export default function SchemeDetailSidebar({
             </SelectTrigger>
             <SelectContent>
               {image.categories.length === 0 ? (
-                <SelectItem value={image.emptyValue}>暂无模板</SelectItem>
+                <SelectItem value={image.emptyValue}>{"暂无模板"}</SelectItem>
               ) : (
                 image.categories.map((cat) => (
                   <SelectItem key={cat} value={cat}>
@@ -135,26 +143,21 @@ export default function SchemeDetailSidebar({
                 ))}
             </SelectContent>
           </Select>
-
-          <div className="text-xs text-slate-500">{image.missingMessage || "缺失字段：无"}</div>
-
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={image.onRefreshMissing}>
-              检查缺失字段
-            </Button>
             <Button size="sm" onClick={image.onGenerate}>
-              生成图片
+              {"生成图片"}
             </Button>
           </div>
+
           {image.status ? (
             <p
-              className={`text-xs ${
+              className={
                 image.status.type === "error"
-                  ? "text-rose-500"
+                  ? "text-xs text-rose-500"
                   : image.status.type === "success"
-                    ? "text-emerald-600"
-                    : "text-slate-500"
-              }`}
+                    ? "text-xs text-emerald-600"
+                    : "text-xs text-slate-500"
+              }
             >
               {image.status.message}
             </p>
@@ -165,19 +168,17 @@ export default function SchemeDetailSidebar({
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="text-base font-semibold text-slate-900">生成蓝链</h3>
-            <p className="mt-1 text-xs text-slate-500">从蓝链商品映射中获取蓝链链接</p>
+            <h3 className="text-base font-semibold text-slate-900">{"生成蓝链"}</h3>
+            <p className="mt-1 text-xs text-slate-500">{"从蓝链商品映射中获取蓝链链接"}</p>
           </div>
         </div>
-        <div className="mt-3 space-y-2">
-          <div className="space-y-2">
-            <p className="text-xs text-slate-500">选择账号</p>
-            {blueLink.accounts.length === 0 ? (
-              <p className="text-xs text-slate-400">暂无账号</p>
-            ) : (
+        <div className="mt-3 space-y-3">
+          <Field orientation="vertical" className="gap-1.5">
+            <FieldLabel htmlFor="scheme-blue-link-account">{"选择账号"}</FieldLabel>
+            <FieldContent>
               <Select value={blueLink.selectedAccountId} onValueChange={blueLink.onAccountChange}>
-                <SelectTrigger aria-label="Blue link account">
-                  <SelectValue placeholder="选择账号" />
+                <SelectTrigger id="scheme-blue-link-account" aria-label="Blue link account">
+                  <SelectValue placeholder="选择蓝链账号" />
                 </SelectTrigger>
                 <SelectContent>
                   {blueLink.accounts.map((account) => (
@@ -187,14 +188,14 @@ export default function SchemeDetailSidebar({
                   ))}
                 </SelectContent>
               </Select>
-            )}
-          </div>
+            </FieldContent>
+          </Field>
 
           <div className="space-y-2">
-            <p className="text-xs text-slate-500">价格区间</p>
+            <div className="text-xs font-medium text-slate-600">{"价格区间"}</div>
             <div className="space-y-2">
               {blueLink.ranges.map((range, index) => (
-                <div key={index} className="flex items-center gap-2">
+                <div key={`${range.min ?? ""}-${range.max ?? ""}-${index}`} className="flex items-center gap-2">
                   <Input
                     aria-label="Min price"
                     type="number"
@@ -221,7 +222,7 @@ export default function SchemeDetailSidebar({
                   <Button
                     variant="ghost"
                     size="icon"
-                    aria-label={"\u5220\u9664"}
+                    aria-label={"删除"}
                     onClick={() => blueLink.onRemoveRange(index)}
                   >
                     <Trash2 className="h-4 w-4" aria-hidden="true" />
@@ -233,12 +234,12 @@ export default function SchemeDetailSidebar({
 
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={blueLink.onAddRange}>
-              新增区间
+              {"新增区间"}
             </Button>
             <Button size="sm" onClick={blueLink.onGenerate}>
-              生成蓝链
+              {"生成蓝链"}
             </Button>
-            <Button variant="ghost" size="icon" aria-label={"\u590d\u5236"} onClick={blueLink.onCopyAll}>
+            <Button variant="ghost" size="icon" aria-label={"复制"} onClick={blueLink.onCopyAll}>
               <Copy className="h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
@@ -247,7 +248,7 @@ export default function SchemeDetailSidebar({
           ) : null}
           <div className="space-y-2">
             {blueLink.groups.length === 0 ? (
-              <p className="text-xs text-slate-400">暂无蓝链可生成</p>
+              <p className="text-xs text-slate-400">{"暂无蓝链可生成"}</p>
             ) : (
               blueLink.groups.map((group, index) => (
                 <div
@@ -257,7 +258,7 @@ export default function SchemeDetailSidebar({
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-slate-800">{group.label}</span>
                     <Button variant="ghost" size="sm" onClick={() => blueLink.onCopyGroup(group.lines)}>
-                      复制
+                      {"复制"}
                     </Button>
                   </div>
                   <div className="mt-2 whitespace-pre-line">{group.lines.join("\n")}</div>
@@ -271,17 +272,98 @@ export default function SchemeDetailSidebar({
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="text-base font-semibold text-slate-900">生成评论回复</h3>
-            <p className="mt-1 text-xs text-slate-500">根据提示词生成多组评论与回复</p>
+            <h3 className="text-base font-semibold text-slate-900">{"生成商品链接"}</h3>
+            <p className="mt-1 text-xs text-slate-500">{"按当前排序汇总京东和淘宝链接"}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {productLinks.canToggleMode ? (
+              <Button variant="outline" size="sm" onClick={productLinks.onToggleMode}>
+                {productLinks.toggleModeLabel}
+              </Button>
+            ) : null}
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={"复制"}
+              onClick={() =>
+                productLinks.onCopy(
+                  productLinks.output,
+                  "商品链接已复制"
+                )
+              }
+            >
+              <Copy className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          </div>
+        </div>
+        <div className="mt-3 space-y-2">
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => productLinks.onCopy(productLinks.output, "商品链接已复制")}
+            >
+              {"复制"}
+            </Button>
+            <Button size="sm" onClick={productLinks.onGenerate}>
+              {"生成商品链接"}
+            </Button>
+          </div>
+          <Textarea
+            aria-label="Product links output"
+            rows={6}
+            value={productLinks.output}
+            onChange={(event) => productLinks.onOutputChange(event.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold text-slate-900">{"生成标题"}</h3>
+            <p className="mt-1 text-xs text-slate-500">{"基于方案选品自动生成标题"}</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => copywriting.onOpenPrompt("title")}>
+            {"修改提示词"}
+          </Button>
+        </div>
+        <div className="mt-3 space-y-2">
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => copywriting.onCopy(copywriting.title, "标题已复制")}
+            >
+              {"复制"}
+            </Button>
+            <Button size="sm" onClick={() => copywriting.onGenerate("title")}>
+              {"生成标题"}
+            </Button>
+          </div>
+          <Textarea
+            aria-label="Copywriting title"
+            rows={3}
+            value={copywriting.title}
+            onChange={(event) => copywriting.onTitleChange(event.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold text-slate-900">{"生成评论回复"}</h3>
+            <p className="mt-1 text-xs text-slate-500">{"根据提示词生成多组评论与回复"}</p>
           </div>
           <Button variant="outline" size="sm" onClick={commentReply.onOpenPrompt}>
-            修改提示词
+            {"修改提示词"}
           </Button>
         </div>
         <div className="mt-3 space-y-2">
           <Field orientation="horizontal" className="items-center gap-2">
             <FieldLabel className="w-16" htmlFor={countId}>
-              生成组数
+              {"生成组数"}
             </FieldLabel>
             <FieldContent className="flex items-center gap-2">
               <Input
@@ -309,10 +391,10 @@ export default function SchemeDetailSidebar({
               size="sm"
               onClick={() => commentReply.onCopy(commentReply.output, "评论回复已复制")}
             >
-              复制
+              {"复制"}
             </Button>
             <Button size="sm" onClick={commentReply.onGenerate}>
-              生成评论回复
+              {"生成评论回复"}
             </Button>
           </div>
           <Textarea
@@ -327,75 +409,11 @@ export default function SchemeDetailSidebar({
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="text-base font-semibold text-slate-900">生成标题</h3>
-            <p className="mt-1 text-xs text-slate-500">基于方案选品自动生成标题</p>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => copywriting.onOpenPrompt("title")}>
-            修改提示词
-          </Button>
-        </div>
-        <div className="mt-3 space-y-2">
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => copywriting.onCopy(copywriting.title, "标题已复制")}
-            >
-              复制
-            </Button>
-            <Button size="sm" onClick={() => copywriting.onGenerate("title")}>
-              生成标题
-            </Button>
-          </div>
-          <Textarea
-            aria-label="Copywriting title"
-            rows={3}
-            value={copywriting.title}
-            onChange={(event) => copywriting.onTitleChange(event.target.value)}
-          />
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h3 className="text-base font-semibold text-slate-900">生成简介</h3>
-            <p className="mt-1 text-xs text-slate-500">基于方案选品自动生成视频简介</p>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => copywriting.onOpenPrompt("intro")}>
-            修改提示词
-          </Button>
-        </div>
-        <div className="mt-3 space-y-2">
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => copywriting.onCopy(copywriting.intro, "简介已复制")}
-            >
-              复制
-            </Button>
-            <Button size="sm" onClick={() => copywriting.onGenerate("intro")}>
-              生成简介
-            </Button>
-          </div>
-          <Textarea
-            aria-label="Copywriting intro"
-            rows={3}
-            value={copywriting.intro}
-            onChange={(event) => copywriting.onIntroChange(event.target.value)}
-          />
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h3 className="text-base font-semibold text-slate-900">生成投票文案</h3>
-            <p className="mt-1 text-xs text-slate-500">根据选品生成投票所需文案</p>
+            <h3 className="text-base font-semibold text-slate-900">{"生成投票文案"}</h3>
+            <p className="mt-1 text-xs text-slate-500">{"根据选品生成投票所需文案"}</p>
           </div>
           <Button variant="outline" size="sm" onClick={() => copywriting.onOpenPrompt("vote")}>
-            修改提示词
+            {"修改提示词"}
           </Button>
         </div>
         <div className="mt-3 space-y-2">
@@ -405,10 +423,10 @@ export default function SchemeDetailSidebar({
               size="sm"
               onClick={() => copywriting.onCopy(copywriting.vote, "投票文案已复制")}
             >
-              复制
+              {"复制"}
             </Button>
             <Button size="sm" onClick={() => copywriting.onGenerate("vote")}>
-              生成投票文案
+              {"生成投票文案"}
             </Button>
           </div>
           <Textarea

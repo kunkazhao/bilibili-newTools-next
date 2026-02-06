@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { TrendingUp } from "lucide-react"
+import { Trash2, TrendingUp } from "lucide-react"
 import type { ZhihuQuestionItem, ZhihuQuestionStat } from "./zhihuApi"
 
 interface TrendDialogState {
@@ -35,6 +35,18 @@ interface UpdateDialogState {
   options: Array<{ id: string; name: string }>
   submitting: boolean
   onOpenChange: (open: boolean) => void
+  onKeywordChange: (value: string) => void
+  onConfirm: () => void
+}
+
+interface AddQuestionDialogState {
+  open: boolean
+  questionUrl: string
+  keywordId: string
+  options: Array<{ id: string; name: string }>
+  submitting: boolean
+  onOpenChange: (open: boolean) => void
+  onQuestionUrlChange: (value: string) => void
   onKeywordChange: (value: string) => void
   onConfirm: () => void
 }
@@ -66,12 +78,16 @@ interface ZhihuRadarPageViewProps {
   onSearchChange: (value: string) => void
   onSelectKeyword: (id: string) => void
   onOpenKeywordManager: () => void
+  onOpenAddQuestion: () => void
   isKeywordManagerOpen: boolean
   onCloseKeywordManager: () => void
   onSaveKeywords: (next: CategoryItem[]) => void
   onOpenTrend: (item: ZhihuQuestionItem) => void
+  onDeleteQuestion: (item: ZhihuQuestionItem) => void
+  deletingId: string | null
   trendDialog: TrendDialogState
   updateDialog: UpdateDialogState
+  addQuestionDialog: AddQuestionDialogState
   progressDialog: ProgressDialogState
 }
 
@@ -97,6 +113,7 @@ const ListSkeleton = () => (
         <Skeleton className="h-4 w-20" />
         <Skeleton className="h-4 w-20" />
         <Skeleton className="h-4 w-20" />
+        <Skeleton className="h-4 w-20" />
         <Skeleton className="h-4 w-16" />
       </div>
     ))}
@@ -111,6 +128,18 @@ const formatNumber = (value?: number) => {
 const formatGrowth = (value?: number) => {
   if (value === 0 || typeof value === "number") return value.toLocaleString()
   return "--"
+}
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) return "--"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "--"
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  const hours = String(date.getHours()).padStart(2, "0")
+  const minutes = String(date.getMinutes()).padStart(2, "0")
+  return `${year}-${month}-${day} ${hours}:${minutes}`
 }
 
 const getGrowthClass = (value?: number) => {
@@ -138,12 +167,16 @@ export default function ZhihuRadarPageView({
   onSearchChange,
   onSelectKeyword,
   onOpenKeywordManager,
+  onOpenAddQuestion,
   isKeywordManagerOpen,
   onCloseKeywordManager,
   onSaveKeywords,
   onOpenTrend,
+  onDeleteQuestion,
+  deletingId,
   trendDialog,
   updateDialog,
+  addQuestionDialog,
   progressDialog,
 }: ZhihuRadarPageViewProps) {
   const showCategorySkeleton = isKeywordLoading && keywords.length === 0
@@ -241,6 +274,9 @@ export default function ZhihuRadarPageView({
                 <Button variant="outline" onClick={() => updateDialog.onOpenChange(true)}>
                   更新数据
                 </Button>
+                <Button variant="outline" onClick={onOpenAddQuestion}>
+                  Add Question
+                </Button>
                 <Button onClick={onOpenKeywordManager}>添加监控关键词</Button>
               </div>
             </div>
@@ -256,6 +292,7 @@ export default function ZhihuRadarPageView({
                     <tr>
                       <th className="px-4 py-3 font-semibold">问题标题</th>
                       <th className="px-4 py-3 font-semibold">所属分类</th>
+                      <th className="px-4 py-3 font-semibold">更新时间</th>
                       <th className="px-4 py-3 font-semibold">总阅读量</th>
                       <th className="px-4 py-3 font-semibold">总回答数</th>
                       <th className="px-4 py-3 font-semibold">新增阅读数</th>
@@ -267,7 +304,7 @@ export default function ZhihuRadarPageView({
                     {items.length === 0 ? (
                       <tr>
                         <td
-                          colSpan={7}
+                          colSpan={8}
                           className="px-4 py-8 text-center text-slate-400"
                         >
                           暂无数据
@@ -294,6 +331,9 @@ export default function ZhihuRadarPageView({
                           <td className="px-4 py-3 text-slate-600">
                             {row.first_keyword || "未分类"}
                           </td>
+                          <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
+                            {formatDateTime(row.last_seen_at)}
+                          </td>
                           <td className="px-4 py-3 text-slate-700">
                             {formatNumber(row.view_count_total)}
                           </td>
@@ -307,15 +347,26 @@ export default function ZhihuRadarPageView({
                             {formatGrowth(row.answer_count_delta)}
                           </td>
                           <td className="px-4 py-3">
-                            <button
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-brand/40 hover:text-brand"
-                              type="button"
-                              onClick={() => onOpenTrend(row)}
-                              aria-label="趋势分析"
-                            >
-                              <TrendingUp className="h-4 w-4" />
-                            </button>
-                          </td>
+  <div className="flex items-center gap-2">
+    <button
+      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-brand/40 hover:text-brand"
+      type="button"
+      onClick={() => onOpenTrend(row)}
+      aria-label="????"
+    >
+      <TrendingUp className="h-4 w-4" />
+    </button>
+    <button
+      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-rose-200 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+      type="button"
+      onClick={() => onDeleteQuestion(row)}
+      aria-label="????"
+      disabled={deletingId === row.id}
+    >
+      <Trash2 className="h-4 w-4" />
+    </button>
+  </div>
+</td>
                         </tr>
                       ))
                     )}
@@ -369,6 +420,64 @@ export default function ZhihuRadarPageView({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={addQuestionDialog.open} onOpenChange={addQuestionDialog.onOpenChange}>
+        <DialogContent className="sm:max-w-[460px]">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold text-slate-900">
+              Add Question
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <div className="text-sm text-slate-600">Question URL</div>
+              <Input
+                placeholder="https://www.zhihu.com/question/xxxx"
+                value={addQuestionDialog.questionUrl}
+                onChange={(event) => addQuestionDialog.onQuestionUrlChange(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm text-slate-600">Keyword Category</div>
+              <Select
+                value={addQuestionDialog.keywordId}
+                onValueChange={addQuestionDialog.onKeywordChange}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {addQuestionDialog.options.map((option) => (
+                    <SelectItem key={option.id} value={option.id}>
+                      {option.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => addQuestionDialog.onOpenChange(false)}
+              disabled={addQuestionDialog.submitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={addQuestionDialog.onConfirm}
+              disabled={
+                addQuestionDialog.submitting ||
+                !addQuestionDialog.keywordId ||
+                !addQuestionDialog.questionUrl.trim()
+              }
+            >
+              {addQuestionDialog.submitting ? "Adding..." : "Confirm"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
 
       <ProgressDialog
         open={progressDialog.open}

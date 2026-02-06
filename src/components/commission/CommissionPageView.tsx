@@ -147,7 +147,7 @@ export default function CommissionPageView({
         <Textarea aria-label="Link list"
           value={inputValue}
           onChange={(e) => onInputChange(e.target.value)}
-          placeholder="粘贴 B 站链接/推广链接/对标视频链接，一行一个"
+          placeholder="粘贴 B 站链接/京东联盟推广链接（union-click/jdc/jingfen）/淘宝推广链接，一行一个"
         />
         <div className="mt-4 flex flex-wrap gap-3">
           <Button onClick={onParseBili}>B站链接提取</Button>

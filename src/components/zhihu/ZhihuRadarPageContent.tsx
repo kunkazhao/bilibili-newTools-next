@@ -5,6 +5,8 @@ import { useListDataPipeline } from "@/hooks/useListDataPipeline"
 import ZhihuRadarPageView from "./ZhihuRadarPageView"
 import {
   createZhihuKeyword,
+  createZhihuQuestion,
+  deleteZhihuQuestion,
   deleteZhihuKeyword,
   fetchZhihuKeywordCounts,
   fetchZhihuKeywords,
@@ -86,6 +88,10 @@ export default function ZhihuRadarPageContent() {
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
   const [updateKeywordId, setUpdateKeywordId] = useState("all")
   const [updateSubmitting, setUpdateSubmitting] = useState(false)
+  const [addDialogOpen, setAddDialogOpen] = useState(false)
+  const [addQuestionUrl, setAddQuestionUrl] = useState("")
+  const [addKeywordId, setAddKeywordId] = useState("")
+  const [addSubmitting, setAddSubmitting] = useState(false)
   const [progressState, setProgressState] = useState({
     open: false,
     status: "running" as "running" | "done" | "error",
@@ -95,8 +101,10 @@ export default function ZhihuRadarPageContent() {
     failed: 0,
   })
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const lastFetchOffsetRef = useRef(0)
   const pollingRef = useRef<number | null>(null)
+  const hasDeferredCountLoadedRef = useRef(false)
 
   const loadKeywords = useCallback(async () => {
     setIsKeywordLoading(true)
@@ -135,6 +143,7 @@ export default function ZhihuRadarPageContent() {
     status: listStatus,
     error: listError,
     setFilters,
+    setItems,
     refresh: refreshQuestions,
     loadMore,
     hasMore,
@@ -158,6 +167,12 @@ export default function ZhihuRadarPageContent() {
     ttlMs: 3 * 60 * 1000,
     pageSize: 50,
     initialFilters: { keywordId: "all", keyword: "" },
+    skipRefreshIfCached: true,
+    onCacheHit: (cached) => {
+      const total =
+        typeof cached.total === "number" ? cached.total : cached.items.length
+      setListTotal(total)
+    },
     fetcher: async ({ filters, offset, limit }) => {
       lastFetchOffsetRef.current = offset
       return fetchZhihuQuestions({
@@ -178,6 +193,7 @@ export default function ZhihuRadarPageContent() {
       return {
         items: list,
         pagination: { hasMore, nextOffset },
+        total,
       }
     },
   })
@@ -198,8 +214,18 @@ export default function ZhihuRadarPageContent() {
       setKeywordCounts(cached.data.counts)
       setKeywordTotal(cached.data.total)
     }
+  }, [])
+
+  useEffect(() => {
+    if (hasDeferredCountLoadedRef.current) return
+    const shouldLoadCounts =
+      listStatus === "ready" ||
+      listStatus === "error" ||
+      (listStatus === "refreshing" && items.length > 0)
+    if (!shouldLoadCounts) return
+    hasDeferredCountLoadedRef.current = true
     loadCounts()
-  }, [loadCounts])
+  }, [items.length, listStatus, loadCounts])
 
   useEffect(() => {
     setFilters({ keywordId: activeKeywordId, keyword: searchValue.trim() })
@@ -278,6 +304,28 @@ export default function ZhihuRadarPageContent() {
     [showToast]
   )
 
+  const handleDeleteQuestion = useCallback(
+    async (item: ZhihuQuestionItem) => {
+      if (!item?.id || deletingId) return
+      setDeletingId(item.id)
+      try {
+        await deleteZhihuQuestion(item.id)
+        const nextItems = items.filter((row) => row.id !== item.id)
+        setItems(nextItems)
+        setListTotal((prev) => Math.max(0, prev - 1))
+        await loadCounts()
+        await refreshQuestions()
+        showToast("已删除问题", "success")
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "删除失败"
+        showToast(message, "error")
+      } finally {
+        setDeletingId(null)
+      }
+    },
+    [deletingId, items, loadCounts, refreshQuestions, setItems, showToast]
+  )
+
   const stopPolling = useCallback(() => {
     if (pollingRef.current) {
       window.clearInterval(pollingRef.current)
@@ -286,7 +334,12 @@ export default function ZhihuRadarPageContent() {
   }, [])
 
   const updateOptions = useMemo(
-    () => [{ id: "all", name: "全部" }, ...keywords.map((item) => ({ id: item.id, name: item.name }))],
+    () => [{ id: "all", name: "??" }, ...keywords.map((item) => ({ id: item.id, name: item.name }))],
+    [keywords]
+  )
+
+  const addOptions = useMemo(
+    () => keywords.map((item) => ({ id: item.id, name: item.name })),
     [keywords]
   )
 
@@ -297,6 +350,24 @@ export default function ZhihuRadarPageContent() {
     }
   }, [updateKeywordId, updateOptions])
 
+  useEffect(() => {
+    if (!addKeywordId) return
+    if (!addOptions.some((item) => item.id === addKeywordId)) {
+      setAddKeywordId("")
+    }
+  }, [addKeywordId, addOptions])
+
+  const handleOpenAddDialog = useCallback(() => {
+    const fallbackKeywordId =
+      activeKeywordId !== "all" && addOptions.some((item) => item.id === activeKeywordId)
+        ? activeKeywordId
+        : addOptions[0]?.id ?? ""
+    setAddKeywordId((prev) =>
+      prev && addOptions.some((item) => item.id === prev) ? prev : fallbackKeywordId
+    )
+    setAddDialogOpen(true)
+  }, [activeKeywordId, addOptions])
+
   const handleRunUpdate = useCallback(async () => {
     if (updateSubmitting) return
     setUpdateSubmitting(true)
@@ -305,7 +376,7 @@ export default function ZhihuRadarPageContent() {
       const data = await runZhihuScrape({ keywordId })
       const jobId = data?.job_id
       if (!jobId) {
-        throw new Error("未获取到任务 ID")
+        throw new Error("No job ID returned")
       }
       setActiveJobId(jobId)
       setProgressState({
@@ -318,12 +389,88 @@ export default function ZhihuRadarPageContent() {
       })
       setUpdateDialogOpen(false)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "更新数据失败"
+      const message = error instanceof Error ? error.message : "Update failed"
       showToast(message, "error")
     } finally {
       setUpdateSubmitting(false)
     }
   }, [showToast, updateKeywordId, updateSubmitting])
+
+  const handleAddQuestion = useCallback(async () => {
+    if (addSubmitting) return
+
+    const questionUrl = addQuestionUrl.trim()
+    if (!questionUrl) {
+      showToast("Please enter question URL", "error")
+      return
+    }
+
+    if (!addKeywordId) {
+      showToast("Please select a keyword category", "error")
+      return
+    }
+
+    setAddSubmitting(true)
+    try {
+      const data = await createZhihuQuestion({
+        questionUrl,
+        keywordId: addKeywordId,
+      })
+      const nextItem = data?.item
+      if (!nextItem?.id) {
+        throw new Error("No question data returned")
+      }
+
+      const keywordName =
+        nextItem.first_keyword ||
+        addOptions.find((item) => item.id === addKeywordId)?.name ||
+        ""
+      const normalizedItem: ZhihuQuestionItem = {
+        ...nextItem,
+        first_keyword: keywordName,
+      }
+
+      const allowsCurrentFilter =
+        activeKeywordId === "all" || activeKeywordId === addKeywordId
+      const searchText = searchValue.trim().toLowerCase()
+      const matchesSearch =
+        !searchText || String(normalizedItem.title || "").toLowerCase().includes(searchText)
+
+      const existsInCurrentList = items.some((item) => item.id === normalizedItem.id)
+      if (allowsCurrentFilter && matchesSearch) {
+        const nextItems = [
+          normalizedItem,
+          ...items.filter((item) => item.id !== normalizedItem.id),
+        ]
+        setItems(nextItems)
+      }
+
+      if (data?.is_new && !existsInCurrentList) {
+        setListTotal((prev) => prev + 1)
+      }
+
+      setAddDialogOpen(false)
+      setAddQuestionUrl("")
+      await loadCounts()
+      showToast("Question added and stats fetched", "success")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Add question failed"
+      showToast(message, "error")
+    } finally {
+      setAddSubmitting(false)
+    }
+  }, [
+    activeKeywordId,
+    addKeywordId,
+    addOptions,
+    addQuestionUrl,
+    addSubmitting,
+    items,
+    loadCounts,
+    searchValue,
+    setItems,
+    showToast,
+  ])
 
   useEffect(() => {
     if (!activeJobId) return
@@ -391,10 +538,13 @@ export default function ZhihuRadarPageContent() {
       onSearchChange={setSearchValue}
       onSelectKeyword={setActiveKeywordId}
       onOpenKeywordManager={() => setKeywordManagerOpen(true)}
+      onOpenAddQuestion={handleOpenAddDialog}
       isKeywordManagerOpen={keywordManagerOpen}
       onCloseKeywordManager={() => setKeywordManagerOpen(false)}
       onSaveKeywords={handleSaveKeywords}
       onOpenTrend={handleOpenTrend}
+      onDeleteQuestion={handleDeleteQuestion}
+      deletingId={deletingId}
       trendDialog={{
         ...trendState,
         onOpenChange: (open) =>
@@ -414,6 +564,17 @@ export default function ZhihuRadarPageContent() {
         onOpenChange: setUpdateDialogOpen,
         onKeywordChange: setUpdateKeywordId,
         onConfirm: handleRunUpdate,
+      }}
+      addQuestionDialog={{
+        open: addDialogOpen,
+        questionUrl: addQuestionUrl,
+        keywordId: addKeywordId,
+        options: addOptions,
+        submitting: addSubmitting,
+        onOpenChange: setAddDialogOpen,
+        onQuestionUrlChange: setAddQuestionUrl,
+        onKeywordChange: setAddKeywordId,
+        onConfirm: handleAddQuestion,
       }}
       progressDialog={{
         open: progressState.open,
