@@ -80,6 +80,68 @@ function pickSkuFromUrl(url: string) {
   return { sku: "", multiple: false }
 }
 
+const TAOBAO_LINK_PATTERN =
+  /(?:taobao\.com|tmall\.com|tb\.cn|click\.taobao|s\.click\.taobao|uland\.taobao)/i
+
+type MatchPlatform = "jd" | "tb"
+
+type ResolveSkuResult = {
+  sku: string
+  reason: string
+  resolvedUrl: string
+  platform: MatchPlatform
+}
+
+function makeMatchKey(platform: MatchPlatform, id: string) {
+  return `${platform}:${String(id || "").trim()}`
+}
+
+function isTaobaoLink(url: string) {
+  return TAOBAO_LINK_PATTERN.test(String(url || ""))
+}
+
+function pickTaobaoItemIdFromUrl(url: string) {
+  if (!url) return { itemId: "", multiple: false }
+
+  const candidates: string[] = []
+
+  const collectFrom = (source: string) => {
+    if (!source) return
+    const pushAll = (regex: RegExp) => {
+      let match = regex.exec(source)
+      while (match) {
+        candidates.push(match[1])
+        match = regex.exec(source)
+      }
+    }
+
+    pushAll(/[?&](?:id|itemId|item_id|num_iid)=(\d{5,})/gi)
+    pushAll(/\/i(\d{5,})\.htm/gi)
+    pushAll(/item\.(?:htm|html)\/(\d{5,})/gi)
+  }
+
+  collectFrom(url)
+  try {
+    const decoded = decodeURIComponent(url)
+    if (decoded !== url) collectFrom(decoded)
+  } catch {
+    // ignore decode failures for malformed links
+  }
+
+  const unique = Array.from(new Set(candidates)).filter(Boolean)
+  if (unique.length > 1) return { itemId: unique[0], multiple: true }
+  if (unique.length === 1) return { itemId: unique[0], multiple: false }
+  return { itemId: "", multiple: false }
+}
+
+function pickNumericId(...values: Array<string | undefined>) {
+  for (const value of values) {
+    const text = String(value || "").trim()
+    if (/^\d{5,}$/.test(text)) return text
+  }
+  return ""
+}
+
 async function resolveJdUrl(url: string) {
   if (!url || url.includes("item.jd.com")) return url
   try {
@@ -93,22 +155,75 @@ async function resolveJdUrl(url: string) {
   }
 }
 
-async function resolveSkuFromLink(link: string) {
-  if (!link) return { sku: "", reason: "蓝链为空", resolvedUrl: "" }
-  let resolvedUrl = link
-  resolvedUrl = await resolveJdUrl(link)
+async function resolveTaobaoItemId(link: string): Promise<ResolveSkuResult> {
+  const direct = pickTaobaoItemIdFromUrl(link)
+  if (direct.multiple) {
+    return { sku: "", reason: "\u89e3\u6790\u5230\u591a\u4e2a\u6dd8\u5b9d\u5546\u54c1ID", resolvedUrl: link, platform: "tb" }
+  }
+  if (direct.itemId) {
+    return { sku: direct.itemId, reason: "", resolvedUrl: link, platform: "tb" }
+  }
+
+  try {
+    const data = await apiRequest<{
+      itemId?: string
+      openIid?: string
+      sourceLink?: string
+      resolvedUrl?: string
+    }>("/api/taobao/resolve", {
+      method: "POST",
+      body: JSON.stringify({ url: link }),
+    })
+
+    const resolvedUrl = data.resolvedUrl || data.sourceLink || link
+    const fromResolved = pickTaobaoItemIdFromUrl(resolvedUrl)
+    if (fromResolved.multiple) {
+      return { sku: "", reason: "\u89e3\u6790\u5230\u591a\u4e2a\u6dd8\u5b9d\u5546\u54c1ID", resolvedUrl, platform: "tb" }
+    }
+
+    const itemId = pickNumericId(data.itemId, data.openIid, fromResolved.itemId)
+    if (itemId) {
+      return { sku: itemId, reason: "", resolvedUrl, platform: "tb" }
+    }
+
+    return { sku: "", reason: "\u672a\u89e3\u6790\u5230\u6dd8\u5b9d\u5546\u54c1ID", resolvedUrl, platform: "tb" }
+  } catch {
+    return { sku: "", reason: "\u672a\u89e3\u6790\u5230\u6dd8\u5b9d\u5546\u54c1ID", resolvedUrl: link, platform: "tb" }
+  }
+}
+
+async function resolveSkuFromLink(link: string): Promise<ResolveSkuResult> {
+  const normalizedLink = normalizeBlueLinkText(link)
+  if (!normalizedLink) return { sku: "", reason: "\u84dd\u94fe\u4e3a\u7a7a", resolvedUrl: "", platform: "jd" }
+
+  if (isTaobaoLink(normalizedLink)) {
+    return resolveTaobaoItemId(normalizedLink)
+  }
+
+  const resolvedUrl = await resolveJdUrl(normalizedLink)
+
+  if (isTaobaoLink(resolvedUrl)) {
+    return resolveTaobaoItemId(resolvedUrl)
+  }
+
   const resolved = pickSkuFromUrl(resolvedUrl)
   if (resolved.multiple) {
-    return { sku: "", reason: "解析到多个SKU", resolvedUrl }
+    return { sku: "", reason: "\u89e3\u6790\u5230\u591a\u4e2aSKU", resolvedUrl, platform: "jd" }
   }
   if (resolved.sku) {
-    return { sku: resolved.sku, reason: "", resolvedUrl }
+    return { sku: resolved.sku, reason: "", resolvedUrl, platform: "jd" }
   }
-  const fallback = pickSkuFromUrl(link)
+
+  const fallback = pickSkuFromUrl(normalizedLink)
   if (fallback.multiple) {
-    return { sku: "", reason: "解析到多个SKU", resolvedUrl }
+    return { sku: "", reason: "\u89e3\u6790\u5230\u591a\u4e2aSKU", resolvedUrl, platform: "jd" }
   }
-  return { sku: fallback.sku || "", reason: fallback.sku ? "" : "未解析到SKU", resolvedUrl }
+  return {
+    sku: fallback.sku || "",
+    reason: fallback.sku ? "" : "\u672a\u89e3\u6790\u5230SKU",
+    resolvedUrl,
+    platform: "jd",
+  }
 }
 
 function getItemTimestamp(item: SourcingItem) {
@@ -119,6 +234,21 @@ function getItemTimestamp(item: SourcingItem) {
 
 function normalizeName(value?: string) {
   return String(value || "").trim()
+}
+
+function normalizeBlueLinkText(value?: string) {
+  return String(value || "")
+    .replace(/[​-‍⁠﻿ ⠀]/g, "")
+    .trim()
+}
+
+function isLikelyBlueLinkUrl(value: string) {
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === "http:" || parsed.protocol === "https:"
+  } catch {
+    return false
+  }
 }
 
 export default function BlueLinkMapPage() {
@@ -165,7 +295,7 @@ export default function BlueLinkMapPage() {
   const [importOpen, setImportOpen] = useState(false)
   const [importText, setImportText] = useState("")
   const [importing, setImporting] = useState(false)
-  const [importCancel, setImportCancel] = useState(false)
+  const importCancelRef = useRef(false)
 
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickerKeyword, setPickerKeyword] = useState("")
@@ -461,7 +591,7 @@ export default function BlueLinkMapPage() {
   }
 
   const handleCopy = async (entry: BlueLinkEntry) => {
-    const link = entry.source_link || ""
+    const link = normalizeBlueLinkText(entry.source_link)
     if (!link) {
       showToast("蓝链为空", "error")
       return
@@ -545,7 +675,7 @@ export default function BlueLinkMapPage() {
 
   const handleEditSubmit = async () => {
     if (!editingEntry) return
-    const link = editLink.trim()
+    const link = normalizeBlueLinkText(editLink)
     const remark = editRemark.trim()
     if (!link) {
       showToast("蓝链链接不能为空", "error")
@@ -938,7 +1068,10 @@ export default function BlueLinkMapPage() {
 
   const updateEntryProduct = async (entryId: string, productId: string) => {
     const item = itemsByIdRef.current.get(productId)
-    const sku = item ? extractSkuFromUrl(item.link || "") : ""
+    const taobao = pickTaobaoItemIdFromUrl(item?.taobao_link || "")
+    const sku = item
+      ? extractSkuFromUrl(item.link || "") || (taobao.multiple ? "" : taobao.itemId)
+      : ""
     try {
       await patchEntryMapping(entryId, productId, sku || null)
       showToast("已更新映射", "success")
@@ -974,24 +1107,40 @@ export default function BlueLinkMapPage() {
   const buildSkuIndexAll = (items: SourcingItem[]) => {
     itemsByIdRef.current = new Map()
     skuIndexAllRef.current = new Map()
+
+    const setIndexItem = (key: string, item: SourcingItem) => {
+      if (!key) return
+      const existing = skuIndexAllRef.current.get(key)
+      if (!existing || getItemTimestamp(item) >= getItemTimestamp(existing)) {
+        skuIndexAllRef.current.set(key, item)
+      }
+    }
+
     items.forEach((item) => {
       if (!item?.id) return
       itemsByIdRef.current.set(item.id, item)
       const meta = extractMetaSpec(item.spec || {})
-      const candidates = [item.link, meta.sourceLink, meta.promoLink].filter(Boolean) as string[]
+      const candidates = [item.link, item.taobao_link, meta.sourceLink, meta.promoLink].filter(Boolean) as string[]
+
       candidates.forEach((link) => {
-        const sku = extractSkuFromUrl(link)
-        if (!sku) return
-        const existing = skuIndexAllRef.current.get(sku)
-        if (!existing || getItemTimestamp(item) >= getItemTimestamp(existing)) {
-          skuIndexAllRef.current.set(sku, item)
+        const jdSku = extractSkuFromUrl(link)
+        if (jdSku) {
+          setIndexItem(makeMatchKey("jd", jdSku), item)
+        }
+
+        const taobao = pickTaobaoItemIdFromUrl(link)
+        if (!taobao.multiple && taobao.itemId) {
+          setIndexItem(makeMatchKey("tb", taobao.itemId), item)
         }
       })
     })
     setItemsVersion((version) => version + 1)
   }
 
-  const loadAllItemsForMapping = async () => {
+  const loadAllItemsForMapping = async (force = false) => {
+    if (force) {
+      itemsAllLoadedRef.current = false
+    }
     if (itemsAllLoadedRef.current) return
     const allItems: SourcingItem[] = []
     let offset = 0
@@ -1041,19 +1190,19 @@ export default function BlueLinkMapPage() {
       return
     }
     showProgressModal(targetEntries.length, "映射")
-    setImportCancel(false)
+    importCancelRef.current = false
     let processed = 0
     let success = 0
     const failures: ProgressFailure[] = []
 
     try {
-      await loadAllItemsForMapping()
+      await loadAllItemsForMapping(true)
       if (!itemsAllRef.current.length) {
         failures.push({ link: "--", name: "未知商品", reason: "选品库为空" })
       }
 
       for (const entry of targetEntries) {
-        if (importCancel) break
+        if (importCancelRef.current) break
         processed += 1
         const link = entry.source_link || ""
         if (!link) {
@@ -1061,13 +1210,13 @@ export default function BlueLinkMapPage() {
           updateProgress(processed, success, failures)
           continue
         }
-        const { sku, reason } = await resolveSkuFromLink(link)
+        const { sku, reason, platform } = await resolveSkuFromLink(link)
         if (!sku) {
-          failures.push({ link, name: "未知商品", reason: reason || "无法解析SKU" })
+          failures.push({ link, name: "\u672a\u77e5\u5546\u54c1", reason: reason || "\u65e0\u6cd5\u89e3\u6790\u5546\u54c1ID" })
           updateProgress(processed, success, failures)
           continue
         }
-        const matchedItem = skuIndexAllRef.current.get(sku)
+        const matchedItem = skuIndexAllRef.current.get(makeMatchKey(platform, sku))
         if (!matchedItem) {
           failures.push({ link, name: "未知商品", reason: "选品库无匹配商品" })
           updateProgress(processed, success, failures)
@@ -1086,7 +1235,7 @@ export default function BlueLinkMapPage() {
       const message = error instanceof Error ? error.message : "映射失败"
       failures.push({ link: "--", name: "未知商品", reason: message })
     } finally {
-      finishProgress(importCancel)
+      finishProgress(importCancelRef.current)
     }
   }
 
@@ -1099,18 +1248,22 @@ export default function BlueLinkMapPage() {
       showToast("请先选择分类", "error")
       return
     }
-    const lines = importText
+    const normalizedLines = importText
       .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
+      .map((line) => normalizeBlueLinkText(line))
+    const lines = normalizedLines.filter((line) => isLikelyBlueLinkUrl(line))
     if (!lines.length) {
       showToast("请粘贴蓝链链接", "error")
       return
     }
+    const ignoredCount = normalizedLines.length - lines.length
+    if (ignoredCount > 0) {
+      showToast(`已忽略 ${ignoredCount} 条非链接文本或无效蓝链`, "info")
+    }
     if (importing) return
     setImporting(true)
-    setImportCancel(false)
-    showProgressModal(lines.length, "瀵煎叆")
+    importCancelRef.current = false
+    showProgressModal(lines.length, "\u5bfc\u5165")
 
     const payloadEntries: Array<{ account_id: string; category_id: string; source_link: string; sku_id?: string | null; product_id?: string | null }> = []
     const failures: ProgressFailure[] = []
@@ -1118,12 +1271,12 @@ export default function BlueLinkMapPage() {
     let processed = 0
 
     try {
-      await loadAllItemsForMapping()
+      await loadAllItemsForMapping(true)
       for (const link of lines) {
-        if (importCancel) break
+        if (importCancelRef.current) break
         processed += 1
-        const { sku, reason } = await resolveSkuFromLink(link)
-        const item = sku ? skuIndexAllRef.current.get(sku) : null
+        const { sku, reason, platform } = await resolveSkuFromLink(link)
+        const item = sku ? skuIndexAllRef.current.get(makeMatchKey(platform, sku)) : null
         if (item) {
           matchedCount += 1
         } else if (reason) {
@@ -1154,7 +1307,7 @@ export default function BlueLinkMapPage() {
       showToast(message, "error")
     } finally {
       setImporting(false)
-      finishProgress(importCancel)
+      finishProgress(importCancelRef.current)
     }
   }
 
@@ -1257,7 +1410,9 @@ export default function BlueLinkMapPage() {
         progressCancelled={progressCancelled}
         progressRunning={progressRunning}
         onProgressOpenChange={setProgressOpen}
-        onProgressCancel={() => setImportCancel(true)}
+        onProgressCancel={() => {
+          importCancelRef.current = true
+        }}
         onProgressClose={() => setProgressOpen(false)}
         confirmOpen={confirmOpen}
         confirmTitle={confirmTitle}
