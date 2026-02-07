@@ -5,6 +5,7 @@ import BenchmarkPage from "@/pages/BenchmarkPage"
 import BlueLinkMapPage from "@/pages/BlueLinkMapPage"
 import CommentBlueLinkPage from "@/pages/CommentBlueLinkPage"
 import CommissionPage from "@/pages/CommissionPage"
+import DirectPlansPage from "@/pages/DirectPlansPage"
 import MyAccountPage from "@/pages/MyAccountPage"
 import RecognizePage from "@/pages/RecognizePage"
 import SchemesPage from "@/pages/SchemesPage"
@@ -57,6 +58,12 @@ export const PAGES: PageConfig[] = [
     label: "获取商品佣金",
     group: "utility",
     render: () => createElement(CommissionPage),
+  },
+  {
+    id: "direct-plans",
+    label: "定向计划",
+    group: "utility",
+    render: () => createElement(DirectPlansPage),
   },
   {
     id: "recognize",
