@@ -476,21 +476,55 @@ export default function ProductFormModal({
       showToast("封面上传中，请稍候", "info")
       return
     }
+    const trimmedPromoLink = values.promoLink.trim()
     const taobaoPromoLink = values.taobaoPromoLink.trim()
     const resolvedTaobaoLink =
       values.taobaoLink.trim() || taobaoPromoLink
+    const resolvedBlueLink = values.blueLink.trim() || trimmedPromoLink
     const nextErrors: Record<string, string> = {}
     if (!values.title.trim()) nextErrors.title = "必填"
     if (!values.price.trim()) nextErrors.price = "必填"
     if (!values.categoryId) nextErrors.categoryId = "必填"
-    if (!values.blueLink.trim() && !resolvedTaobaoLink) {
+    if (!resolvedBlueLink && !resolvedTaobaoLink) {
       nextErrors.blueLink = "必填"
       nextErrors.taobaoLink = "必填"
     }
     setErrors(nextErrors)
-    if (Object.keys(nextErrors).length > 0) return
+    if (Object.keys(nextErrors).length > 0) {
+      showToast("请完善必填项后再保存", "error")
+      const focusOrder: Array<keyof typeof nextErrors> = [
+        "promoLink",
+        "taobaoPromoLink",
+        "categoryId",
+        "title",
+        "blueLink",
+        "taobaoLink",
+        "price",
+      ]
+      const firstKey = focusOrder.find((key) => nextErrors[key])
+      const focusMap: Record<string, string> = {
+        promoLink: "promo-link",
+        taobaoPromoLink: "taobao-promo-link",
+        categoryId: categorySelectId,
+        title: "product-title",
+        blueLink: "product-link",
+        taobaoLink: "taobao-link",
+        price: "product-price",
+      }
+      const focusId = firstKey ? focusMap[firstKey] : undefined
+      if (focusId) {
+        const target = document.getElementById(focusId)
+        target?.scrollIntoView({ block: "center", behavior: "smooth" })
+        if (target && "focus" in target) {
+          ;(target as HTMLElement).focus()
+        }
+      }
+      return
+    }
     const result = onSubmit({
       ...values,
+      promoLink: trimmedPromoLink,
+      blueLink: resolvedBlueLink,
       taobaoLink: resolvedTaobaoLink,
       commission: computedCommission,
     })
