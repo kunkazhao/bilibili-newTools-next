@@ -54,6 +54,20 @@ class DirectPlansTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(ctx.exception.status_code, 400)
 
+    async def test_create_requires_plan_link(self):
+        with self.assertRaises(HTTPException) as ctx:
+            await direct_plans.create_direct_plan(
+                {"platform": "JD", "category": "A", "brand": "B", "plan_link": ""}
+            )
+        self.assertEqual(ctx.exception.status_code, 400)
+
+    async def test_update_rejects_empty_plan_link(self):
+        with self.assertRaises(HTTPException) as ctx:
+            await direct_plans.update_direct_plan(
+                "p1", direct_plans.DirectPlanUpdate(plan_link="")
+            )
+        self.assertEqual(ctx.exception.status_code, 400)
+
     async def test_create_sets_sort_order_to_top(self):
         self.client.rows = [{"sort_order": 20, "created_at": "2026-02-01"}]
         payload = {
