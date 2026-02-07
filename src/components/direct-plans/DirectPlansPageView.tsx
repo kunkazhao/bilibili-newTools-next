@@ -87,7 +87,18 @@ export default function DirectPlansPageView({
                 </span>
                 <span>{plan.platform}</span>
                 <span className="truncate">{plan.category}</span>
-                <span className="truncate">{plan.brand}</span>
+                {plan.plan_link && plan.plan_link.trim() ? (
+                  <a
+                    className="truncate text-sky-600 hover:underline"
+                    href={plan.plan_link}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                  >
+                    {plan.brand}
+                  </a>
+                ) : (
+                  <span className="truncate">{plan.brand}</span>
+                )}
                 <span>{plan.commission_rate || "-"}</span>
                 <div className="flex justify-end gap-2">
                   <Button

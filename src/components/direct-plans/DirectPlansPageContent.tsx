@@ -37,6 +37,7 @@ export default function DirectPlansPageContent() {
   const [platform, setPlatform] = useState<DirectPlanPlatform>("京东")
   const [category, setCategory] = useState("")
   const [brand, setBrand] = useState("")
+  const [planLink, setPlanLink] = useState("")
   const [commissionRate, setCommissionRate] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
@@ -67,6 +68,7 @@ export default function DirectPlansPageContent() {
     setPlatform("京东")
     setCategory("")
     setBrand("")
+    setPlanLink("")
     setCommissionRate("")
   }, [])
 
@@ -81,6 +83,7 @@ export default function DirectPlansPageContent() {
     setPlatform(plan.platform)
     setCategory(plan.category || "")
     setBrand(plan.brand || "")
+    setPlanLink(plan.plan_link || "")
     setCommissionRate(plan.commission_rate || "")
     setFormOpen(true)
   }
@@ -103,6 +106,10 @@ export default function DirectPlansPageContent() {
       showToast("品牌不能为空", "error")
       return false
     }
+    if (!planLink.trim()) {
+      showToast("定向计划链接不能为空", "error")
+      return false
+    }
     return true
   }
 
@@ -115,6 +122,7 @@ export default function DirectPlansPageContent() {
         platform,
         category: category.trim(),
         brand: brand.trim(),
+        plan_link: planLink.trim(),
         commission_rate: commissionRate.trim(),
       }
       if (editing) {
@@ -263,6 +271,16 @@ export default function DirectPlansPageContent() {
                 value={brand}
                 onChange={(event) => setBrand(event.target.value)}
                 placeholder="输入品牌"
+              />
+            </FieldContent>
+          </Field>
+          <Field>
+            <FieldLabel>定向计划链接</FieldLabel>
+            <FieldContent>
+              <Input
+                value={planLink}
+                onChange={(event) => setPlanLink(event.target.value)}
+                placeholder="输入定向计划链接"
               />
             </FieldContent>
           </Field>

@@ -5,6 +5,7 @@ export interface DirectPlan {
   platform: DirectPlanPlatform
   category: string
   brand: string
+  plan_link?: string | null
   commission_rate?: string | null
   sort_order?: number | null
   created_at?: string | null
