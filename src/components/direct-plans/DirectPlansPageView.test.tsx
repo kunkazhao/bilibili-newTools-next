@@ -35,4 +35,28 @@ describe("DirectPlansPageView", () => {
     expect(screen.getByText("耳机")).toBeTruthy()
     expect(screen.getByText("X")).toBeTruthy()
   })
+
+  it("renders brand as link when plan_link exists", () => {
+    const plans = [
+      {
+        id: "p1",
+        platform: "京东",
+        category: "A",
+        brand: "Brand",
+        plan_link: "https://example.com",
+      },
+    ] as DirectPlan[]
+    render(<DirectPlansPageView {...baseProps} plans={plans} />)
+    const brandLink = screen.getByRole("link", { name: "Brand" })
+    expect(brandLink).toBeTruthy()
+  })
+
+  it("renders brand as text when plan_link missing", () => {
+    const plans = [
+      { id: "p1", platform: "京东", category: "A", brand: "Brand" },
+    ] as DirectPlan[]
+    render(<DirectPlansPageView {...baseProps} plans={plans} />)
+    expect(screen.queryByRole("link", { name: "Brand" })).toBeNull()
+    expect(screen.getByText("Brand")).toBeTruthy()
+  })
 })
