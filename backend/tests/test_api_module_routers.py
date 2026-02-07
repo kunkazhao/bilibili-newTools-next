@@ -11,6 +11,7 @@ MODULES = [
     "backend.api.video",
     "backend.api.benchmark",
     "backend.api.blue_link_map",
+    "backend.api.direct_plans",
 ]
 
 

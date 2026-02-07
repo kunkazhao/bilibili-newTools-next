@@ -5076,6 +5076,7 @@ from backend.api import (
     video,
     benchmark,
     blue_link_map,
+    direct_plans,
 )
 
 app.include_router(sourcing.router)
@@ -5087,6 +5088,7 @@ app.include_router(bilibili.router)
 app.include_router(video.router)
 app.include_router(benchmark.router)
 app.include_router(blue_link_map.router)
+app.include_router(direct_plans.router)
 
 from backend.api.blue_link_map import (
     batch_upsert_blue_link_map_entries,
