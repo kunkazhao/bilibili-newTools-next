@@ -1,54 +1,16 @@
-const API_BASE = import.meta.env.VITE_API_BASE?.replace(/\/$/, "") ?? ""
+import { apiRequest } from "@/lib/api"
+import type {
+  AiBatchStatusResponse,
+  CategoryResponse,
+  ItemResponse,
+  SourcingItemsResponse,
+  SourcingOverviewResponse,
+} from "@/types/api/sourcing"
 
-async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-    },
-    ...options,
-  })
-  if (!response.ok) {
-    const message = await response.text()
-    throw new Error(message || `HTTP ${response.status}`)
-  }
-  if (response.status === 204) {
-    return {} as T
-  }
-  return response.json() as Promise<T>
-}
-
-export type CategoryResponse = {
-  id: string
-  name: string
-  sort_order: number | null
-  spec_fields: { key: string; value?: string; example?: string }[]
-  item_count?: number
-}
-
-export type ItemResponse = {
-  id: string
-  category_id: string
-  title: string
-  link?: string
-  taobao_link?: string
-  price?: number
-  commission?: number
-  commission_rate?: number
-  jd_price?: number
-  jd_commission?: number
-  jd_commission_rate?: number
-  jd_sales?: number
-  tb_price?: number
-  tb_commission?: number
-  tb_commission_rate?: number
-  tb_sales?: number
-  source_type?: string
-  source_ref?: string
-  cover_url?: string
-  remark?: string
-  spec?: Record<string, string>
-  uid?: string
-}
+export type {
+  CategoryResponse,
+  ItemResponse,
+} from "@/types/api/sourcing"
 
 export async function fetchCategories(params?: { includeCounts?: boolean }) {
   const query = new URLSearchParams()
@@ -83,11 +45,7 @@ export async function fetchItems(params: {
   if (params.keyword) query.set("q", params.keyword)
   if (params.sort) query.set("sort", params.sort)
   query.set("fields", "list")
-  return apiRequest<{
-    items: ItemResponse[]
-    has_more: boolean
-    next_offset: number
-  }>(`/api/sourcing/items?${query.toString()}`)
+  return apiRequest<SourcingItemsResponse>(`/api/sourcing/items?${query.toString()}`)
 }
 
 export async function fetchOverview(params: {
@@ -105,16 +63,7 @@ export async function fetchOverview(params: {
   if (params.sort) query.set("sort", params.sort)
   query.set("fields", "list")
   query.set("include_counts", "true")
-  return apiRequest<{
-    categories: CategoryResponse[]
-    items: ItemResponse[]
-    pagination: {
-      offset: number
-      limit: number
-      has_more: boolean
-      next_offset: number
-    }
-  }>(`/api/sourcing/overview?${query.toString()}`)
+  return apiRequest<SourcingOverviewResponse>(`/api/sourcing/overview?${query.toString()}`)
 }
 
 export async function createCategory(payload: {
@@ -260,34 +209,21 @@ export async function aiBatchStart(payload: {
 }
 
 export async function aiBatchStatus(jobId: string) {
-  return apiRequest<{
-    id: string
-    status: "queued" | "running" | "done" | "error"
-    total: number
-    processed: number
-    success: number
-    failed: number
-    failures?: { name: string; reason?: string }[]
-    error?: string | null
-  }>(`/api/sourcing/items/ai-batch/status/${jobId}`)
+  return apiRequest<AiBatchStatusResponse>(`/api/sourcing/items/ai-batch/status/${jobId}`)
 }
 
 export async function uploadCoverByUid(uid: string, file: File) {
   const formData = new FormData()
   formData.append("uid", uid)
   formData.append("file", file)
-  const response = await fetch(`${API_BASE}/api/sourcing/batch-cover`, {
-    method: "POST",
-    body: formData,
-  })
-  if (!response.ok) {
-    const message = await response.text()
-    throw new Error(message || `HTTP ${response.status}`)
-  }
-  return response.json() as Promise<{
+
+  return apiRequest<{
     success: boolean
     uid?: string
     url?: string
     message?: string
-  }>
+  }>(`/api/sourcing/batch-cover`, {
+    method: "POST",
+    body: formData,
+  })
 }

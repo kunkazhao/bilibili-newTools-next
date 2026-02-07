@@ -1,31 +1,15 @@
 ﻿import type { ReactNode } from "react"
-
-const primaryItems = [
-  "选品库",
-  "方案库",
-  "蓝链-置顶评论",
-  "蓝链-商品映射",
-  "我的账号",
-]
-
-const utilityItems = [
-  "获取商品佣金",
-  "获取商品参数",
-  "对标视频收集",
-  "提取视频文案",
-  "一键抠图",
-  "知乎流量雷达",
-]
+import { PRIMARY_PAGES, UTILITY_PAGES } from "@/config/pages"
 
 interface AppLayoutProps {
   children?: ReactNode
-  activeIndex?: number
-  onSelect?: (index: number) => void
+  activePageId?: string
+  onSelect?: (pageId: string) => void
 }
 
 export default function AppLayout({
   children,
-  activeIndex = 0,
+  activePageId = PRIMARY_PAGES[0]?.id,
   onSelect,
 }: AppLayoutProps) {
   return (
@@ -45,18 +29,18 @@ export default function AppLayout({
             <div className="space-y-3">
               <p className="text-xs font-semibold text-slate-500">主功能</p>
               <div className="space-y-2">
-                {primaryItems.map((item, index) => (
+                {PRIMARY_PAGES.map((page) => (
                   <button
-                    key={item}
+                    key={page.id}
                     className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
-                      index === activeIndex
+                      page.id === activePageId
                         ? "bg-brand/10 text-brand"
                         : "text-slate-700 hover:bg-slate-900/5 hover:text-slate-900"
                     }`}
                     type="button"
-                    onClick={() => onSelect?.(index)}
+                    onClick={() => onSelect?.(page.id)}
                   >
-                    <span>{item}</span>
+                    <span>{page.label}</span>
                   </button>
                 ))}
               </div>
@@ -65,24 +49,20 @@ export default function AppLayout({
             <div className="space-y-3">
               <p className="text-xs font-semibold text-slate-500">小工具</p>
               <div className="space-y-2">
-                {utilityItems.map((item, index) => {
-                  const targetIndex = primaryItems.length + index
-                  const active = targetIndex === activeIndex
-                  return (
-                    <button
-                      key={item}
-                      className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
-                        active
-                          ? "bg-brand/10 text-brand"
-                          : "text-slate-700 hover:bg-slate-900/5 hover:text-slate-900"
-                      }`}
-                      type="button"
-                      onClick={() => onSelect?.(targetIndex)}
-                    >
-                      <span>{item}</span>
-                    </button>
-                  )
-                })}
+                {UTILITY_PAGES.map((page) => (
+                  <button
+                    key={page.id}
+                    className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
+                      page.id === activePageId
+                        ? "bg-brand/10 text-brand"
+                        : "text-slate-700 hover:bg-slate-900/5 hover:text-slate-900"
+                    }`}
+                    type="button"
+                    onClick={() => onSelect?.(page.id)}
+                  >
+                    <span>{page.label}</span>
+                  </button>
+                ))}
               </div>
             </div>
           </div>

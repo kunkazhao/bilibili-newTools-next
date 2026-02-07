@@ -82,6 +82,7 @@ except Exception:
 from pypinyin import lazy_pinyin, Style
 
 from pydantic import BaseModel, Field, validator
+from backend.services.cache import cache
 
 
 
@@ -359,11 +360,10 @@ SOURCING_CATEGORY_COUNT_TTL_SECONDS = 60.0
 BLUE_LINK_MAP_CACHE_TTL_SECONDS = 10.0
 ZHIHU_KEYWORDS_MAP_CACHE_TTL_SECONDS = 300.0
 
-BLUE_LINK_MAP_CACHE: Dict[str, Any] = {"timestamp": 0.0, "data": None}
-SOURCING_CATEGORY_COUNT_CACHE: Dict[str, Any] = {"timestamp": 0.0, "data": None}
-ZHIHU_KEYWORDS_MAP_CACHE: Dict[str, Any] = {"timestamp": 0.0, "data": None}
-
-SOURCING_ITEMS_CACHE: Dict[Tuple[str, str, int, int, str], Dict[str, Any]] = {}
+CACHE_NS_BLUE_LINK_MAP = "blue_link_map"
+CACHE_NS_SOURCING_CATEGORY_COUNT = "sourcing_category_count"
+CACHE_NS_ZHIHU_KEYWORDS = "zhihu_keywords"
+CACHE_NS_SOURCING_ITEMS = "sourcing_items"
 
 SOURCING_ITEMS_CACHE_LIMIT = 32
 
@@ -979,19 +979,16 @@ def shanghai_today() -> date:
 
 
 def invalidate_zhihu_keywords_map_cache() -> None:
-    ZHIHU_KEYWORDS_MAP_CACHE["timestamp"] = 0.0
-    ZHIHU_KEYWORDS_MAP_CACHE["data"] = None
+    cache.invalidate(CACHE_NS_ZHIHU_KEYWORDS)
 
 
 async def fetch_zhihu_keywords_map(client: SupabaseClient, force: bool = False) -> Dict[str, str]:
-    now = time.time()
-    cached = ZHIHU_KEYWORDS_MAP_CACHE.get("data")
-    if not force and cached and now - ZHIHU_KEYWORDS_MAP_CACHE.get("timestamp", 0.0) < ZHIHU_KEYWORDS_MAP_CACHE_TTL_SECONDS:
+    cached = cache.get(CACHE_NS_ZHIHU_KEYWORDS, ttl=ZHIHU_KEYWORDS_MAP_CACHE_TTL_SECONDS)
+    if not force and cached is not None:
         return cached
     rows = await client.select("zhihu_keywords", params={"select": "id,name"})
     payload = {str(row.get("id")): row.get("name") or "" for row in rows}
-    ZHIHU_KEYWORDS_MAP_CACHE["timestamp"] = now
-    ZHIHU_KEYWORDS_MAP_CACHE["data"] = payload
+    cache.set(CACHE_NS_ZHIHU_KEYWORDS, data=payload)
     return payload
 
 
@@ -5690,9 +5687,8 @@ async def fetch_sourcing_categories(include_counts: bool = True) -> List[Dict[st
 
 
 async def fetch_sourcing_category_counts(force: bool = False) -> Dict[str, Any]:
-    now = time.time()
-    cached = SOURCING_CATEGORY_COUNT_CACHE.get("data")
-    if not force and cached and now - SOURCING_CATEGORY_COUNT_CACHE.get("timestamp", 0.0) < SOURCING_CATEGORY_COUNT_TTL_SECONDS:
+    cached = cache.get(CACHE_NS_SOURCING_CATEGORY_COUNT, ttl=SOURCING_CATEGORY_COUNT_TTL_SECONDS)
+    if not force and cached is not None:
         return cached
     client = ensure_supabase()
     counts: Dict[str, int] = {}
@@ -5709,8 +5705,7 @@ async def fetch_sourcing_category_counts(force: bool = False) -> Dict[str, Any]:
             continue
         counts.setdefault(category_id, 0)
     payload = {"counts": counts}
-    SOURCING_CATEGORY_COUNT_CACHE["timestamp"] = now
-    SOURCING_CATEGORY_COUNT_CACHE["data"] = payload
+    cache.set(CACHE_NS_SOURCING_CATEGORY_COUNT, data=payload)
     return payload
 
 
@@ -5741,13 +5736,11 @@ async def fetch_sourcing_items_page(
     sort_key = (sort or "").strip()
     cache_key = (category_id or "", keyword or "", limit, offset, fields, sort_key)
 
-    now = time.time()
+    cached = cache.get(CACHE_NS_SOURCING_ITEMS, key=cache_key, ttl=CACHE_TTL_SECONDS)
 
-    cached = SOURCING_ITEMS_CACHE.get(cache_key)
+    if cached is not None:
 
-    if cached and now - cached["timestamp"] < CACHE_TTL_SECONDS:
-
-        return cached["data"]
+        return cached
 
     client = ensure_supabase()
 
@@ -5806,13 +5799,12 @@ async def fetch_sourcing_items_page(
 
     }
 
-    SOURCING_ITEMS_CACHE[cache_key] = {"timestamp": now, "data": payload}
-
-    if len(SOURCING_ITEMS_CACHE) > SOURCING_ITEMS_CACHE_LIMIT:
-
-        oldest_key = min(SOURCING_ITEMS_CACHE.items(), key=lambda item: item[1]["timestamp"])[0]
-
-        SOURCING_ITEMS_CACHE.pop(oldest_key, None)
+    cache.set(
+        CACHE_NS_SOURCING_ITEMS,
+        key=cache_key,
+        data=payload,
+        max_entries=SOURCING_ITEMS_CACHE_LIMIT,
+    )
 
     return payload
 
@@ -5858,12 +5850,10 @@ async def fetch_comment_snapshot() -> Dict[str, Any]:
 
 async def fetch_blue_link_map_snapshot(product_ids: Optional[List[str]] = None) -> Dict[str, Any]:
 
-    now = time.time()
-
     use_cache = not product_ids
-    cached = BLUE_LINK_MAP_CACHE.get("data")
+    cached = cache.get(CACHE_NS_BLUE_LINK_MAP, ttl=BLUE_LINK_MAP_CACHE_TTL_SECONDS)
 
-    if use_cache and cached and now - BLUE_LINK_MAP_CACHE.get("timestamp", 0.0) < BLUE_LINK_MAP_CACHE_TTL_SECONDS:
+    if use_cache and cached is not None:
 
         return cached
 
@@ -5908,8 +5898,7 @@ async def fetch_blue_link_map_snapshot(product_ids: Optional[List[str]] = None) 
     }
 
     if use_cache:
-        BLUE_LINK_MAP_CACHE["timestamp"] = now
-        BLUE_LINK_MAP_CACHE["data"] = payload
+        cache.set(CACHE_NS_BLUE_LINK_MAP, data=payload)
 
     return payload
 
@@ -8439,8 +8428,8 @@ async def batch_upsert_blue_link_map_entries(payload: BlueLinkMapBatchPayload):
 
             raise HTTPException(status_code=500, detail=str(exc.message))
 
-    BLUE_LINK_MAP_CACHE["timestamp"] = 0.0
-    BLUE_LINK_MAP_CACHE["data"] = None
+    cache.invalidate(CACHE_NS_BLUE_LINK_MAP)
+
     return {"entries": [normalize_blue_link_map_entry(item) for item in results]}
 
 
@@ -8458,8 +8447,8 @@ async def clear_blue_link_map_entries(payload: BlueLinkMapClearPayload):
         "blue_link_map_entries",
         {"account_id": f"eq.{account_id}", "category_id": f"eq.{category_id}"},
     )
-    BLUE_LINK_MAP_CACHE["timestamp"] = 0.0
-    BLUE_LINK_MAP_CACHE["data"] = None
+    cache.invalidate(CACHE_NS_BLUE_LINK_MAP)
+
     return {"status": "ok"}
 
 
@@ -8565,8 +8554,8 @@ async def patch_blue_link_map_entry(entry_id: str, payload: BlueLinkMapEntryUpda
 
             await client.delete("blue_link_map_entries", {"id": f"eq.{entry_id}"})
 
-        BLUE_LINK_MAP_CACHE["timestamp"] = 0.0
-        BLUE_LINK_MAP_CACHE["data"] = None
+        cache.invalidate(CACHE_NS_BLUE_LINK_MAP)
+
         return {"entry": normalize_blue_link_map_entry(merged_entry)}
 
 
@@ -8583,8 +8572,8 @@ async def patch_blue_link_map_entry(entry_id: str, payload: BlueLinkMapEntryUpda
 
         raise HTTPException(status_code=404, detail="映射不存在")
 
-    BLUE_LINK_MAP_CACHE["timestamp"] = 0.0
-    BLUE_LINK_MAP_CACHE["data"] = None
+    cache.invalidate(CACHE_NS_BLUE_LINK_MAP)
+
     return {"entry": normalize_blue_link_map_entry(record[0])}
 
 
@@ -8605,8 +8594,8 @@ async def delete_blue_link_map_entry(entry_id: str):
 
     await client.delete("blue_link_map_entries", {"id": f"eq.{entry_id}"})
 
-    BLUE_LINK_MAP_CACHE["timestamp"] = 0.0
-    BLUE_LINK_MAP_CACHE["data"] = None
+    cache.invalidate(CACHE_NS_BLUE_LINK_MAP)
+
     return {"status": "ok"}
 
 
