@@ -50,7 +50,12 @@ class DirectPlansTests(unittest.IsolatedAsyncioTestCase):
     async def test_create_requires_platform_category_brand(self):
         with self.assertRaises(HTTPException) as ctx:
             await direct_plans.create_direct_plan(
-                {"platform": "", "category": "A", "brand": "B"}
+                {
+                    "platform": "",
+                    "category": "A",
+                    "brand": "B",
+                    "plan_link": "https://example.com",
+                }
             )
         self.assertEqual(ctx.exception.status_code, 400)
 
@@ -74,6 +79,7 @@ class DirectPlansTests(unittest.IsolatedAsyncioTestCase):
             "platform": "京东",
             "category": "耳机",
             "brand": "X",
+            "plan_link": "https://example.com",
             "commission_rate": "20%",
         }
         result = await direct_plans.create_direct_plan(payload)

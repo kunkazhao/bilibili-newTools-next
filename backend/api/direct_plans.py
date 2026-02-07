@@ -24,6 +24,7 @@ class DirectPlanCreate(BaseModel):
     platform: str
     category: str
     brand: str
+    plan_link: str
     commission_rate: Optional[str] = None
 
 
@@ -31,6 +32,7 @@ class DirectPlanUpdate(BaseModel):
     platform: Optional[str] = None
     category: Optional[str] = None
     brand: Optional[str] = None
+    plan_link: Optional[str] = None
     commission_rate: Optional[str] = None
 
 
@@ -44,6 +46,7 @@ def normalize_direct_plan(row: Dict[str, Any]) -> Dict[str, Any]:
         "platform": row.get("platform"),
         "category": row.get("category"),
         "brand": row.get("brand"),
+        "plan_link": row.get("plan_link"),
         "commission_rate": row.get("commission_rate"),
         "sort_order": row.get("sort_order"),
         "created_at": row.get("created_at"),
@@ -75,8 +78,11 @@ async def create_direct_plan(payload: DirectPlanCreate | Dict[str, Any]):
     platform = (payload.platform or "").strip()
     category = (payload.category or "").strip()
     brand = (payload.brand or "").strip()
+    plan_link = (payload.plan_link or "").strip()
     if not platform or not category or not brand:
         raise HTTPException(status_code=400, detail="平台/分类/品牌不能为空")
+    if not plan_link:
+        raise HTTPException(status_code=400, detail="定向计划链接不能为空")
 
     sort_order: Optional[int] = None
     try:
@@ -104,6 +110,7 @@ async def create_direct_plan(payload: DirectPlanCreate | Dict[str, Any]):
         "platform": platform,
         "category": category,
         "brand": brand,
+        "plan_link": plan_link,
         "commission_rate": (payload.commission_rate or "").strip() or None,
         "sort_order": sort_order,
         "created_at": now,
@@ -132,6 +139,11 @@ async def update_direct_plan(plan_id: str, payload: DirectPlanUpdate):
         if not value:
             raise HTTPException(status_code=400, detail="品牌不能为空")
         updates["brand"] = value
+    if payload.plan_link is not None:
+        value = payload.plan_link.strip()
+        if not value:
+            raise HTTPException(status_code=400, detail="定向计划链接不能为空")
+        updates["plan_link"] = value
     if payload.commission_rate is not None:
         updates["commission_rate"] = payload.commission_rate.strip() or None
     if not updates:
