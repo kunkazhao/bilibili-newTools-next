@@ -1,6 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react"
 import ModalForm from "@/components/ModalForm"
 import { Button } from "@/components/ui/button"
+import EditableListRow from "@/components/ui/editable-list-row"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
@@ -10,7 +11,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { GripVertical, Trash2 } from "lucide-react"
 import type { CategoryItem, SpecField } from "@/components/archive/types"
 
 interface PresetFieldsModalProps {
@@ -34,19 +34,26 @@ export default function PresetFieldsModal({
   onClose,
   onSave,
 }: PresetFieldsModalProps) {
+  const childCategories = useMemo(
+    () => categories.filter((item) => item.parentId),
+    [categories]
+  )
   const defaultCategoryId = useMemo(() => {
-    if (selectedCategoryId && selectedCategoryId !== "all") {
-      const exists = categories.some((item) => item.id === selectedCategoryId)
+    if (selectedCategoryId) {
+      const exists = childCategories.some((item) => item.id === selectedCategoryId)
       if (exists) return selectedCategoryId
     }
-    return categories[0]?.id ?? ""
-  }, [categories, selectedCategoryId])
+    return childCategories[0]?.id ?? ""
+  }, [childCategories, selectedCategoryId])
 
   const [activeCategoryId, setActiveCategoryId] = useState(defaultCategoryId)
   const [drafts, setDrafts] = useState<DraftField[]>([])
   const [newField, setNewField] = useState("")
   const [errorMessage, setErrorMessage] = useState("")
   const [dragId, setDragId] = useState<string | null>(null)
+  const [editingFieldId, setEditingFieldId] = useState<string | null>(null)
+  const [editingFieldKey, setEditingFieldKey] = useState("")
+  const [editingFieldExample, setEditingFieldExample] = useState("")
   const draftIdRef = useRef(0)
 
   const createDraft = (key: string, example: string = "") => {
@@ -60,10 +67,13 @@ export default function PresetFieldsModal({
 
   useEffect(() => {
     if (!isOpen) return
-    const target = categories.find((item) => item.id === activeCategoryId)
+    const target = childCategories.find((item) => item.id === activeCategoryId)
     setDrafts(target?.specFields?.map((field) => createDraft(field.key, field.example ?? "")) ?? [])
     setErrorMessage("")
-  }, [activeCategoryId, isOpen])
+    setEditingFieldId(null)
+    setEditingFieldKey("")
+    setEditingFieldExample("")
+  }, [activeCategoryId, isOpen, childCategories])
 
   const trimmedSet = useMemo(
     () => new Set(drafts.map((item) => item.key.trim()).filter(Boolean)),
@@ -85,16 +95,30 @@ export default function PresetFieldsModal({
     setErrorMessage("")
   }
 
-  const handleUpdate = (id: string, value: string) => {
-    setDrafts((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, key: value } : item))
-    )
+  const handleStartEdit = (field: DraftField) => {
+    setEditingFieldId(field.id)
+    setEditingFieldKey(field.key)
+    setEditingFieldExample(field.example)
+    setErrorMessage("")
   }
 
-  const handleUpdateExample = (id: string, value: string) => {
+  const handleConfirmEdit = (id: string) => {
     setDrafts((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, example: value } : item))
+      prev.map((item) =>
+        item.id === id
+          ? { ...item, key: editingFieldKey, example: editingFieldExample }
+          : item
+      )
     )
+    setEditingFieldId(null)
+    setEditingFieldKey("")
+    setEditingFieldExample("")
+  }
+
+  const handleCancelEdit = () => {
+    setEditingFieldId(null)
+    setEditingFieldKey("")
+    setEditingFieldExample("")
   }
 
   const handleRemove = (id: string) => {
@@ -150,7 +174,7 @@ export default function PresetFieldsModal({
                 <SelectValue placeholder="选择分类" />
               </SelectTrigger>
               <SelectContent>
-                {categories.map((item) => (
+                {childCategories.map((item) => (
                   <SelectItem key={item.id} value={item.id}>
                     {item.name}
                   </SelectItem>
@@ -176,42 +200,45 @@ export default function PresetFieldsModal({
         <ScrollArea className="dialog-list" data-dialog-scroll="true">
           <div className="space-y-2 pr-2">
             {drafts.map((item) => (
-              <div
+              <EditableListRow
                 key={item.id}
-                className="modal-list-row"
                 draggable
+                dragHandleAriaLabel="Drag handle"
                 onDragStart={() => setDragId(item.id)}
-                onDragOver={(event) => event.preventDefault()}
+                onDragEnd={() => setDragId(null)}
                 onDrop={() => handleReorder(item.id)}
-              >
-                <span className="drag-handle" role="img" aria-label="Drag handle">
-                  <GripVertical className="h-4 w-4" aria-hidden="true" />
-                </span>
-                <Input
-                  aria-label="Preset field"
-                  className="modal-list-field bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
-                  placeholder="参数名称"
-                  value={item.key}
-                  onChange={(event) => handleUpdate(item.id, event.target.value)}
-                />
-                <Input
-                  aria-label="Format example"
-                  className="modal-list-field bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
-                  placeholder="格式示例"
-                  value={item.example}
-                  onChange={(event) => handleUpdateExample(item.id, event.target.value)}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="dialog-action-delete"
-                  aria-label="Delete field"
-                  onClick={() => handleRemove(item.id)}
-                >
-                  <Trash2 className="h-4 w-4" aria-hidden="true" />
-                </Button>
-              </div>
+                editing={editingFieldId === item.id}
+                editAriaLabel="Edit preset field"
+                deleteAriaLabel="Delete field"
+                onEdit={() => handleStartEdit(item)}
+                onDelete={() => handleRemove(item.id)}
+                onConfirm={() => handleConfirmEdit(item.id)}
+                onCancel={handleCancelEdit}
+                viewContent={(
+                  <div className="flex items-center gap-2">
+                    <div className="modal-list-field">{item.key}</div>
+                    <div className="modal-list-field">{item.example || "--"}</div>
+                  </div>
+                )}
+                editContent={(
+                  <div className="flex items-center gap-2">
+                    <Input
+                      aria-label="Preset field"
+                      className="modal-list-field bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
+                      placeholder="参数名称"
+                      value={editingFieldId === item.id ? editingFieldKey : item.key}
+                      onChange={(event) => setEditingFieldKey(event.target.value)}
+                    />
+                    <Input
+                      aria-label="Format example"
+                      className="modal-list-field bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
+                      placeholder="格式示例"
+                      value={editingFieldId === item.id ? editingFieldExample : item.example}
+                      onChange={(event) => setEditingFieldExample(event.target.value)}
+                    />
+                  </div>
+                )}
+              />
             ))}
           </div>
         </ScrollArea>
@@ -219,4 +246,3 @@ export default function PresetFieldsModal({
     </ModalForm>
   )
 }
-

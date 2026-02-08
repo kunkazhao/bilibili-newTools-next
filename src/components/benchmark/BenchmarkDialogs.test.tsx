@@ -1,84 +1,86 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from "vitest"
-import { render } from "@testing-library/react"
+import { beforeAll, describe, expect, it } from "vitest"
+import { render, screen, within } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import BenchmarkDialogs from "./BenchmarkDialogs"
-import type { BenchmarkCategory, BenchmarkEntry } from "@/components/benchmark/types"
 
-const baseProps = {
-  subtitleDialog: {
-    open: false,
-    loading: false,
-    text: "",
-    onOpenChange: vi.fn(),
-    onCopy: vi.fn(),
-  },
-  addDialog: {
-    open: false,
-    links: "",
-    categoryId: "",
-    note: "",
-    submitting: false,
-    categories: [] as BenchmarkCategory[],
-    onOpenChange: vi.fn(),
-    onLinksChange: vi.fn(),
-    onCategoryChange: vi.fn(),
-    onNoteChange: vi.fn(),
-    onSubmit: vi.fn(),
-  },
-  editDialog: {
-    entry: null as BenchmarkEntry | null,
-    title: "",
-    categoryId: "",
-    note: "",
-    submitting: false,
-    categories: [] as BenchmarkCategory[],
-    onClose: vi.fn(),
-    onTitleChange: vi.fn(),
-    onCategoryChange: vi.fn(),
-    onNoteChange: vi.fn(),
-    onSubmit: vi.fn(),
-  },
-  categoryDialog: {
-    open: false,
-    input: "",
-    submitting: false,
-    updatingId: null as string | null,
-    categories: [] as BenchmarkCategory[],
-    onOpenChange: vi.fn(),
-    onInputChange: vi.fn(),
-    onSubmit: vi.fn(),
-    onUpdateName: vi.fn(),
-    onRequestDelete: vi.fn(),
-  },
-  confirmDialogs: {
-    entry: null as BenchmarkEntry | null,
-    category: null as BenchmarkCategory | null,
-    onEntryCancel: vi.fn(),
-    onCategoryCancel: vi.fn(),
-    onEntryConfirm: vi.fn(),
-    onCategoryConfirm: vi.fn(),
-  },
-}
+const noop = () => {}
 
 describe("BenchmarkDialogs", () => {
-  it("uses scroll area for category list", () => {
-    const categories: BenchmarkCategory[] = [
-      { id: "c1", name: "Category-A" },
-      { id: "c2", name: "Category-B" },
-    ]
+  beforeAll(() => {
+    class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
 
+    globalThis.ResizeObserver = ResizeObserver
+  })
+
+  it("enters edit mode for category rows", async () => {
+    const user = userEvent.setup()
     render(
       <BenchmarkDialogs
-        {...baseProps}
+        subtitleDialog={{
+          open: false,
+          loading: false,
+          text: "",
+          onOpenChange: noop,
+          onCopy: noop,
+        }}
+        addDialog={{
+          open: false,
+          links: "",
+          categoryId: "",
+          note: "",
+          submitting: false,
+          categories: [],
+          onOpenChange: noop,
+          onLinksChange: noop,
+          onCategoryChange: noop,
+          onNoteChange: noop,
+          onSubmit: noop,
+        }}
+        editDialog={{
+          entry: null,
+          title: "",
+          categoryId: "",
+          note: "",
+          submitting: false,
+          categories: [],
+          onClose: noop,
+          onTitleChange: noop,
+          onCategoryChange: noop,
+          onNoteChange: noop,
+          onSubmit: noop,
+        }}
         categoryDialog={{
-          ...baseProps.categoryDialog,
           open: true,
-          categories,
+          input: "",
+          submitting: false,
+          updatingId: "",
+          categories: [{ id: "cat-1", name: "分类A" }],
+          onOpenChange: noop,
+          onInputChange: noop,
+          onSubmit: noop,
+          onUpdateName: noop,
+          onRequestDelete: noop,
+        }}
+        confirmDialogs={{
+          entry: null,
+          category: null,
+          onEntryCancel: noop,
+          onCategoryCancel: noop,
+          onEntryConfirm: noop,
+          onCategoryConfirm: noop,
         }}
       />
     )
 
-    const list = document.querySelector(".dialog-list")
-    expect(list?.getAttribute("data-dialog-scroll")).toBe("true")
+    const dialog = screen.getAllByRole("dialog").slice(-1)[0]
+    const scope = within(dialog)
+    await user.click(scope.getByLabelText("Edit benchmark category"))
+    expect(scope.getByLabelText("Confirm edit")).toBeTruthy()
+    expect(scope.getByLabelText("Cancel edit")).toBeTruthy()
   })
 })

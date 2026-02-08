@@ -1,5 +1,4 @@
-import { useState } from "react"
-import { Trash2 } from "lucide-react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import EditableListRow from "@/components/ui/editable-list-row"
 import {
@@ -172,6 +171,40 @@ export default function BlueLinkMapDialogs({
   const normalizeName = (value?: string) => String(value || "").trim()
   const [accountDragId, setAccountDragId] = useState<string | null>(null)
   const [categoryDragId, setCategoryDragId] = useState<string | null>(null)
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null)
+  const [editingAccountName, setEditingAccountName] = useState("")
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
+  const [editingCategoryName, setEditingCategoryName] = useState("")
+
+  useEffect(() => {
+    if (!accountModalOpen) {
+      setEditingAccountId(null)
+      setEditingAccountName("")
+    }
+  }, [accountModalOpen])
+
+  useEffect(() => {
+    if (!categoryModalOpen) {
+      setEditingCategoryId(null)
+      setEditingCategoryName("")
+    }
+  }, [categoryModalOpen])
+
+  useEffect(() => {
+    if (!editingAccountId) return
+    if (!accounts.some((account) => account.id === editingAccountId)) {
+      setEditingAccountId(null)
+      setEditingAccountName("")
+    }
+  }, [accounts, editingAccountId])
+
+  useEffect(() => {
+    if (!editingCategoryId) return
+    if (!categories.some((category) => category.id === editingCategoryId)) {
+      setEditingCategoryId(null)
+      setEditingCategoryName("")
+    }
+  }, [categories, editingCategoryId])
 
   const handleAccountDrop = (targetId: string) => {
     if (!accountDragId || accountDragId === targetId) return
@@ -183,6 +216,38 @@ export default function BlueLinkMapDialogs({
     if (!categoryDragId || categoryDragId === targetId) return
     onCategoryReorder(categoryDragId, targetId)
     setCategoryDragId(null)
+  }
+
+  const handleStartEditAccount = (account: BlueLinkAccount) => {
+    setEditingAccountId(account.id)
+    setEditingAccountName(account.name)
+  }
+
+  const handleConfirmEditAccount = (account: BlueLinkAccount) => {
+    onAccountNameBlur(account.id, editingAccountName)
+    setEditingAccountId(null)
+    setEditingAccountName("")
+  }
+
+  const handleCancelEditAccount = () => {
+    setEditingAccountId(null)
+    setEditingAccountName("")
+  }
+
+  const handleStartEditCategory = (category: BlueLinkCategory) => {
+    setEditingCategoryId(category.id)
+    setEditingCategoryName(category.name)
+  }
+
+  const handleConfirmEditCategory = (category: BlueLinkCategory) => {
+    onCategoryNameBlur(category.id, editingCategoryName)
+    setEditingCategoryId(null)
+    setEditingCategoryName("")
+  }
+
+  const handleCancelEditCategory = () => {
+    setEditingCategoryId(null)
+    setEditingCategoryName("")
   }
   const currentCategories = activeAccountId
     ? categories.filter((category) => category.account_id === activeAccountId)
@@ -272,19 +337,27 @@ export default function BlueLinkMapDialogs({
                 {accounts.map((account) => (
                   <EditableListRow
                     key={account.id}
-                    value={account.name}
-                    inputKey={`${account.id}-${account.name}`}
                     draggable
                     dragHandleAriaLabel="Drag handle"
                     onDragStart={() => setAccountDragId(account.id)}
                     onDragEnd={() => setAccountDragId(null)}
                     onDrop={() => handleAccountDrop(account.id)}
-                    onBlur={(value) => onAccountNameBlur(account.id, value)}
-                    actionContent={<Trash2 className="h-4 w-4" aria-hidden="true" />}
-                    actionAriaLabel="Delete account"
-                    actionSize="icon"
-                    actionClassName="dialog-action-delete"
-                    onAction={() => onAccountDelete(account.id)}
+                    editing={editingAccountId === account.id}
+                    editAriaLabel="Edit account"
+                    deleteAriaLabel="Delete account"
+                    onEdit={() => handleStartEditAccount(account)}
+                    onDelete={() => onAccountDelete(account.id)}
+                    onConfirm={() => handleConfirmEditAccount(account)}
+                    onCancel={handleCancelEditAccount}
+                    viewContent={<div className="modal-list-field">{account.name}</div>}
+                    editContent={(
+                      <Input
+                        aria-label="Account name"
+                        className="modal-list-field"
+                        value={editingAccountId === account.id ? editingAccountName : account.name}
+                        onChange={(event) => setEditingAccountName(event.target.value)}
+                      />
+                    )}
                   />
                 ))}
               </div>
@@ -328,30 +401,42 @@ export default function BlueLinkMapDialogs({
                   {currentCategories.map((category) => (
                     <EditableListRow
                       key={category.id}
-                      value={category.name}
-                      inputKey={`${category.id}-${category.name}`}
                       draggable
                       dragHandleAriaLabel="Drag handle"
                       onDragStart={() => setCategoryDragId(category.id)}
                       onDragEnd={() => setCategoryDragId(null)}
                       onDrop={() => handleCategoryDrop(category.id)}
-                      onBlur={(value) => onCategoryNameBlur(category.id, value)}
-                      actionContent={<Trash2 className="h-4 w-4" aria-hidden="true" />}
-                      actionAriaLabel="Delete category"
-                      actionSize="icon"
-                      actionClassName="dialog-action-delete"
-                      onAction={() => onCategoryDelete(category.id)}
+                      editing={editingCategoryId === category.id}
+                      editAriaLabel="Edit category"
+                      deleteAriaLabel="Delete category"
+                      onEdit={() => handleStartEditCategory(category)}
+                      onDelete={() => onCategoryDelete(category.id)}
+                      onConfirm={() => handleConfirmEditCategory(category)}
+                      onCancel={handleCancelEditCategory}
+                      viewContent={<div className="modal-list-field">{category.name}</div>}
+                      editContent={(
+                        <Input
+                          aria-label="Category name"
+                          className="modal-list-field"
+                          value={editingCategoryId === category.id ? editingCategoryName : category.name}
+                          onChange={(event) => setEditingCategoryName(event.target.value)}
+                        />
+                      )}
                     />
                   ))}
                   {otherCategories.map((category) => (
-                    <EditableListRow
-                      key={`other-${category.id}`}
-                      value={category.name}
-                      readOnly
-                      actionLabel="添加"
-                      actionAriaLabel="Add category"
-                      onAction={() => onCategoryAddFromOther(category.name)}
-                    />
+                    <div key={`other-${category.id}`} className="modal-list-row">
+                      <div className="modal-list-field flex-1">{category.name}</div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        aria-label="Add category"
+                        onClick={() => onCategoryAddFromOther(category.name)}
+                      >
+                        ??
+                      </Button>
+                    </div>
                   ))}
                 </div>
               </ScrollArea>

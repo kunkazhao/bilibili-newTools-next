@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
+import EditableListRow from "@/components/ui/editable-list-row"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
@@ -9,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Trash2 } from "lucide-react"
 import type { Account } from "@/types/account"
 
 interface MyAccountDialogsProps {
@@ -39,6 +40,38 @@ export default function MyAccountDialogs({
   onAccountLinkBlur,
   onAccountDelete,
 }: MyAccountDialogsProps) {
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null)
+  const [editingAccountName, setEditingAccountName] = useState("")
+  const [editingAccountLink, setEditingAccountLink] = useState("")
+
+  useEffect(() => {
+    if (!accountModalOpen) {
+      setEditingAccountId(null)
+      setEditingAccountName("")
+      setEditingAccountLink("")
+    }
+  }, [accountModalOpen])
+
+  const handleStartEdit = (account: Account) => {
+    setEditingAccountId(account.id)
+    setEditingAccountName(account.name)
+    setEditingAccountLink(account.homepage_link ?? "")
+  }
+
+  const handleConfirmEdit = (account: Account) => {
+    onAccountNameBlur(account.id, editingAccountName)
+    onAccountLinkBlur(account.id, editingAccountLink)
+    setEditingAccountId(null)
+    setEditingAccountName("")
+    setEditingAccountLink("")
+  }
+
+  const handleCancelEdit = () => {
+    setEditingAccountId(null)
+    setEditingAccountName("")
+    setEditingAccountLink("")
+  }
+
   return (
     <Dialog open={accountModalOpen} onOpenChange={onAccountOpenChange}>
       <DialogContent className="sm:max-w-[640px]">
@@ -69,37 +102,41 @@ export default function MyAccountDialogs({
           <ScrollArea className="dialog-list" data-dialog-scroll="true">
             <div className="space-y-2 pr-2">
               {accounts.map((account) => (
-                <div key={account.id} className="modal-list-row">
-                  <Input
-                    key={`${account.id}-name-${account.name}`}
-                    aria-label="Account name"
-                    className="modal-list-field"
-                    defaultValue={account.name}
-                    onBlur={(event) =>
-                      onAccountNameBlur(account.id, event.target.value)
-                    }
-                  />
-                  <Input
-                    key={`${account.id}-link-${account.homepage_link ?? ""}`}
-                    aria-label="Homepage link"
-                    className="modal-list-field"
-                    placeholder="个人主页链接"
-                    defaultValue={account.homepage_link ?? ""}
-                    onBlur={(event) =>
-                      onAccountLinkBlur(account.id, event.target.value)
-                    }
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="dialog-action-delete"
-                    aria-label="Delete account"
-                    onClick={() => onAccountDelete(account.id)}
-                  >
-                    <Trash2 className="h-4 w-4" aria-hidden="true" />
-                  </Button>
-                </div>
+                <EditableListRow
+                  key={account.id}
+                  editing={editingAccountId === account.id}
+                  editAriaLabel="Edit account"
+                  deleteAriaLabel="Delete account"
+                  onEdit={() => handleStartEdit(account)}
+                  onDelete={() => onAccountDelete(account.id)}
+                  onConfirm={() => handleConfirmEdit(account)}
+                  onCancel={handleCancelEdit}
+                  viewContent={(
+                    <div className="flex items-center gap-2">
+                      <div className="modal-list-field flex-1">{account.name}</div>
+                      <div className="modal-list-field flex-1">
+                        {account.homepage_link ?? ""}
+                      </div>
+                    </div>
+                  )}
+                  editContent={(
+                    <div className="flex items-center gap-2">
+                      <Input
+                        aria-label="Account name"
+                        className="modal-list-field flex-1"
+                        value={editingAccountId === account.id ? editingAccountName : account.name}
+                        onChange={(event) => setEditingAccountName(event.target.value)}
+                      />
+                      <Input
+                        aria-label="Homepage link"
+                        className="modal-list-field flex-1"
+                        placeholder="个人主页链接"
+                        value={editingAccountId === account.id ? editingAccountLink : account.homepage_link ?? ""}
+                        onChange={(event) => setEditingAccountLink(event.target.value)}
+                      />
+                    </div>
+                  )}
+                />
               ))}
             </div>
           </ScrollArea>

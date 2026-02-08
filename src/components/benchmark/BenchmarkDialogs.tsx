@@ -1,6 +1,7 @@
-import { useId } from "react"
+import { useEffect, useId, useState } from "react"
 import Empty from "@/components/Empty"
 import { Button } from "@/components/ui/button"
+import EditableListRow from "@/components/ui/editable-list-row"
 import {
   Dialog,
   DialogContent,
@@ -20,7 +21,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Trash2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -114,6 +114,39 @@ export default function BenchmarkDialogs({
   const editCategoryId = `${baseId}-edit-category`
   const editNoteId = `${baseId}-edit-note`
   const hasSubtitle = subtitleDialog.text.trim().length > 0
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
+  const [editingCategoryName, setEditingCategoryName] = useState("")
+
+  useEffect(() => {
+    if (!categoryDialog.open) {
+      setEditingCategoryId(null)
+      setEditingCategoryName("")
+    }
+  }, [categoryDialog.open])
+
+  useEffect(() => {
+    if (!editingCategoryId) return
+    if (!categoryDialog.categories.some((item) => item.id === editingCategoryId)) {
+      setEditingCategoryId(null)
+      setEditingCategoryName("")
+    }
+  }, [categoryDialog.categories, editingCategoryId])
+
+  const handleStartEditCategory = (category: BenchmarkCategory) => {
+    setEditingCategoryId(category.id)
+    setEditingCategoryName(category.name)
+  }
+
+  const handleConfirmEditCategory = (category: BenchmarkCategory) => {
+    categoryDialog.onUpdateName(category, editingCategoryName)
+    setEditingCategoryId(null)
+    setEditingCategoryName("")
+  }
+
+  const handleCancelEditCategory = () => {
+    setEditingCategoryId(null)
+    setEditingCategoryName("")
+  }
   return (
     <>
       <Dialog open={subtitleDialog.open} onOpenChange={subtitleDialog.onOpenChange}>
@@ -288,24 +321,26 @@ export default function BenchmarkDialogs({
                 <div className="space-y-2 pr-2">
                   {categoryDialog.categories.map((category) => {
                     return (
-                      <div key={category.id} className="modal-list-row">
-                        <Input
-                          aria-label="Category name" className="flex-1"
-                          key={`${category.id}-${category.name}`}
-                          defaultValue={category.name}
-                          disabled={categoryDialog.updatingId === String(category.id)}
-                          onBlur={(event) => categoryDialog.onUpdateName(category, event.target.value)}
-                        />
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="dialog-action-delete"
-                          aria-label="Delete category"
-                          onClick={() => categoryDialog.onRequestDelete(category)}
-                        >
-                          <Trash2 className="h-4 w-4" aria-hidden="true" />
-                        </Button>
-                      </div>
+                      <EditableListRow
+                        key={category.id}
+                        editing={editingCategoryId === category.id}
+                        editAriaLabel="Edit benchmark category"
+                        deleteAriaLabel="Delete category"
+                        onEdit={() => handleStartEditCategory(category)}
+                        onDelete={() => categoryDialog.onRequestDelete(category)}
+                        onConfirm={() => handleConfirmEditCategory(category)}
+                        onCancel={handleCancelEditCategory}
+                        viewContent={<div className="modal-list-field">{category.name}</div>}
+                        editContent={(
+                          <Input
+                            aria-label="Category name"
+                            className="modal-list-field"
+                            value={editingCategoryId === category.id ? editingCategoryName : category.name}
+                            onChange={(event) => setEditingCategoryName(event.target.value)}
+                            disabled={categoryDialog.updatingId === String(category.id)}
+                          />
+                        )}
+                      />
                     )
                   })}
                 </div>
