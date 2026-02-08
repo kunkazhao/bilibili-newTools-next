@@ -1,8 +1,9 @@
-﻿import { useEffect, useState } from "react"
+﻿import { useEffect, useMemo, useState } from "react"
 import { Settings } from "lucide-react"
 import Empty from "@/components/Empty"
 import PrimaryButton from "@/components/PrimaryButton"
 import ArchiveListCard from "@/components/archive/ArchiveListCard"
+import CategoryHierarchy from "@/components/archive/CategoryHierarchy"
 import CategoryManagerModal from "@/components/archive/CategoryManagerModal"
 import ImportProgressModal from "@/components/archive/ImportProgressModal"
 import PresetFieldsModal from "@/components/archive/PresetFieldsModal"
@@ -45,6 +46,7 @@ interface ArchiveItemView {
   shopName: string
   uid: string
   source: string
+  sourceLink?: string
   params: ParamEntry[]
   remark: string
   missingTips: string[]
@@ -65,6 +67,11 @@ interface ImportProgressState {
 interface ArchivePageViewProps {
   items: ArchiveItemView[]
   categories: CategoryItem[]
+  parentCategories?: CategoryItem[]
+  childCategories?: CategoryItem[]
+  activeParentId?: string
+  activeCategoryId?: string
+  selectedCategory?: string
   isCategoryLoading: boolean
   isListLoading: boolean
   isRefreshing: boolean
@@ -74,7 +81,6 @@ interface ArchivePageViewProps {
   isSchemeLoading: boolean
   onSchemeChange: (value: string) => void
   errorMessage?: string
-  selectedCategory: string
   searchValue: string
   onSearchChange: (value: string) => void
   priceRange: [number, number]
@@ -96,6 +102,7 @@ interface ArchivePageViewProps {
   onOpenLink?: (link: string) => void
   onCoverClick?: (id: string) => void
   onFetchParams: (id: string) => void
+  onSelectParent?: (id: string) => void
   onSelectCategory: (id: string) => void
   onClearList: () => void
   onOpenReplaceCover?: () => void
@@ -154,27 +161,10 @@ interface ArchivePageViewProps {
   onFixSort: () => void
   isFixSortDisabled: boolean
   isFixSortSaving: boolean
-  aiModel: string
-  onAiModelChange: (value: string) => void
   onBatchFetchParams: () => void
   isAiBatchRunning?: boolean
 }
 
-const AI_MODEL_OPTIONS = [
-  { value: "qwen3-max-2026-01-23", label: "Qwen3-Max" },
-  { value: "deepseek-chat", label: "DeepSeek" },
-  { value: "glm-4.7-FlashX", label: "GLM-4.7" },
-]
-const CategorySkeleton = () => (
-  <div className="space-y-3">
-    {Array.from({ length: 6 }).map((_, index) => (
-      <div key={index} className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-2">
-        <Skeleton className="h-4 w-20" />
-        <Skeleton className="h-3 w-10" />
-      </div>
-    ))}
-  </div>
-)
 const ListSkeleton = () => (
   <div className="space-y-4" data-testid="archive-list-skeleton">
     {Array.from({ length: 6 }).map((_, index) => (
@@ -208,6 +198,11 @@ const ListSkeleton = () => (
 export default function ArchivePageView({
   items,
   categories,
+  parentCategories,
+  childCategories,
+  activeParentId,
+  activeCategoryId,
+  selectedCategory,
   isCategoryLoading,
   isListLoading,
   isRefreshing,
@@ -217,7 +212,6 @@ export default function ArchivePageView({
   isSchemeLoading,
   onSchemeChange,
   errorMessage,
-  selectedCategory,
   searchValue,
   onSearchChange,
   priceRange,
@@ -239,6 +233,7 @@ export default function ArchivePageView({
   onOpenLink,
   onCoverClick,
   onFetchParams,
+  onSelectParent,
   onSelectCategory,
   onClearList,
   onOpenReplaceCover,
@@ -266,8 +261,6 @@ export default function ArchivePageView({
   onFixSort,
   isFixSortDisabled,
   isFixSortSaving,
-  aiModel,
-  onAiModelChange,
   onBatchFetchParams,
   isAiBatchRunning,
 }: ArchivePageViewProps) {
@@ -277,6 +270,44 @@ export default function ArchivePageView({
   const disableLoadMoreResolved = Boolean(disableLoadMore)
   const canLoadMore = hasMore && !disableLoadMoreResolved
   const listGap = 12
+  const resolvedParentCategories = useMemo(() => {
+    if (parentCategories && parentCategories.length > 0) return parentCategories
+    return categories
+      .filter((item) => !item.parentId)
+      .slice()
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+  }, [categories, parentCategories])
+
+  const childCategoryOptions = useMemo(
+    () =>
+      resolvedParentCategories.flatMap((parent) =>
+        categories
+          .filter((item) => item.parentId === parent.id)
+          .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+          .map((item) => ({
+            label: item.name,
+            value: item.id,
+          }))
+      ),
+    [categories, resolvedParentCategories]
+  )
+
+  const resolvedActiveParentId =
+    activeParentId || resolvedParentCategories[0]?.id || ""
+
+  const resolvedChildCategories = useMemo(() => {
+    if (childCategories && childCategories.length > 0) return childCategories
+    if (!resolvedActiveParentId) return []
+    return categories
+      .filter((item) => item.parentId === resolvedActiveParentId)
+      .slice()
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+  }, [categories, childCategories, resolvedActiveParentId])
+
+  const resolvedActiveCategoryId =
+    activeCategoryId || selectedCategory || resolvedChildCategories[0]?.id || ""
+
+  const handleParentSelect = onSelectParent ?? (() => {})
   useEffect(() => {
     if (priceRange[0] === 0 && priceRange[1] === 0) {
       setMinInput("")
@@ -346,32 +377,16 @@ export default function ArchivePageView({
             </Button>
           </div>
           <div className="mt-4 space-y-2">
-            {showCategorySkeleton ? (
-              <CategorySkeleton />
-            ) : (
-              <>
-                {categories
-                  .slice()
-                  .sort((a, b) => a.sortOrder - b.sortOrder)
-                  .map((category) => (
-                    <button
-                      key={category.id}
-                      className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm ${
-                        selectedCategory === category.id
-                          ? "bg-slate-100 text-slate-900"
-                          : "text-slate-600 hover:bg-slate-50"
-                      }`}
-                      type="button"
-                      onClick={() => onSelectCategory(category.id)}
-                    >
-                      <span>{category.name}</span>
-                      <span className="text-xs text-slate-400">
-                        {category.count ?? 0} 个选品
-                      </span>
-                    </button>
-                  ))}
-              </>
-            )}
+            <CategoryHierarchy
+              title="一级分类"
+              categories={categories}
+              activeParentId={resolvedActiveParentId}
+              activeCategoryId={resolvedActiveCategoryId}
+              onParentSelect={handleParentSelect}
+              onCategorySelect={onSelectCategory}
+              showChildCount
+              isLoading={showCategorySkeleton}
+            />
           </div>
         </section>
         <div className="space-y-6">
@@ -398,18 +413,6 @@ export default function ArchivePageView({
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Select value={aiModel} onValueChange={onAiModelChange}>
-                  <SelectTrigger className="w-[180px]" aria-label="AI model">
-                    <SelectValue placeholder="选择模型" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {AI_MODEL_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
                 <PrimaryButton onClick={onBatchFetchParams} disabled={isAiBatchRunning}>
                   {isAiBatchRunning ? "获取参数中..." : "获取参数"}
                 </PrimaryButton>
@@ -537,6 +540,7 @@ export default function ArchivePageView({
                     shopName={item.shopName}
                     uid={item.uid}
                     source={item.source}
+                    sourceLink={item.sourceLink}
                     blueLink={item.blueLink}
                     params={item.params}
                     remark={item.remark}
@@ -571,7 +575,7 @@ export default function ArchivePageView({
         <PresetFieldsModal
           isOpen={isPresetFieldsOpen}
           categories={categories}
-          selectedCategoryId={selectedCategory}
+          selectedCategoryId={resolvedActiveCategoryId}
           onClose={onClosePresetFields}
           onSave={onSavePresetFields}
         />
@@ -579,13 +583,10 @@ export default function ArchivePageView({
       {isProductFormOpen ? (
         <ProductFormModal
           isOpen={isProductFormOpen}
-          categories={categories.map((item) => ({
-            label: item.name,
-            value: item.id,
-          }))}
+          categories={childCategoryOptions}
           presetFields={presetFields}
           initialValues={productFormInitialValues}
-          defaultCategoryId={selectedCategory !== "all" ? selectedCategory : ""}
+          defaultCategoryId={resolvedActiveCategoryId || ""}
           autoOpenCoverPicker={autoOpenCoverPicker}
           onClose={onCloseProductForm}
           onSubmit={onSubmitProductForm}

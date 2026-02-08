@@ -1,5 +1,6 @@
 import Empty from "@/components/Empty"
 import Skeleton from "@/components/Skeleton"
+import CategoryHierarchy from "@/components/archive/CategoryHierarchy"
 import { Button } from "@/components/ui/button"
 import { InteractiveCard } from "@/components/ui/interactive-card"
 import type { CategoryItem } from "@/components/archive/types"
@@ -8,33 +9,23 @@ import { Pencil, Settings, Trash2 } from "lucide-react"
 
 type SchemesPageViewProps = {
   categories: CategoryItem[]
+  parentCategories?: CategoryItem[]
+  childCategories?: CategoryItem[]
+  activeParentId?: string
+  activeCategoryId: string
   schemes: Scheme[]
   filteredSchemes: Scheme[]
-  activeCategoryId: string | null
   isCategoryLoading: boolean
   isSchemeLoading: boolean
   statusMessage: string
   onCreate: () => void
   onManageCategories: () => void
+  onParentSelect?: (categoryId: string) => void
   onCategorySelect: (categoryId: string) => void
   onEditScheme: (scheme: Scheme) => void
   onDeleteScheme: (schemeId: string) => void
   onEnterScheme: (schemeId: string) => void
 }
-
-const CategorySkeleton = () => (
-  <div className="space-y-3">
-    {Array.from({ length: 6 }).map((_, index) => (
-      <div
-        key={index}
-        className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-2"
-      >
-        <Skeleton className="h-4 w-20" />
-        <Skeleton className="h-3 w-10" />
-      </div>
-    ))}
-  </div>
-)
 
 const SchemeSkeleton = () => (
   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -68,6 +59,9 @@ const formatDate = (value?: string) => {
 
 export default function SchemesPageView({
   categories,
+  parentCategories,
+  childCategories,
+  activeParentId,
   schemes,
   filteredSchemes,
   activeCategoryId,
@@ -76,6 +70,7 @@ export default function SchemesPageView({
   statusMessage,
   onCreate,
   onManageCategories,
+  onParentSelect,
   onCategorySelect,
   onEditScheme,
   onDeleteScheme,
@@ -83,6 +78,16 @@ export default function SchemesPageView({
 }: SchemesPageViewProps) {
   const showCategorySkeleton = isCategoryLoading && categories.length === 0
   const showSchemeSkeleton = isSchemeLoading && schemes.length === 0
+  const resolvedParentCategories =
+    parentCategories && parentCategories.length > 0
+      ? parentCategories
+      : categories
+          .filter((item) => !item.parentId)
+          .slice()
+          .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+  const resolvedActiveParentId =
+    activeParentId || resolvedParentCategories[0]?.id || ""
+  const handleParentSelect = onParentSelect ?? (() => {})
 
   return (
     <div className="space-y-6">
@@ -101,31 +106,19 @@ export default function SchemesPageView({
             </Button>
           </div>
           <div className="mt-4 space-y-2">
-            {showCategorySkeleton ? (
-              <CategorySkeleton />
-            ) : categories.length === 0 ? (
-              <Empty title="暂无分类" description="请先在选品库中新建分类" />
+            {resolvedParentCategories.length === 0 && !showCategorySkeleton ? (
+              <Empty title="\u6682\u65e0\u5206\u7c7b" description="\u8bf7\u5148\u5728\u9009\u54c1\u5e93\u4e2d\u65b0\u5efa\u5206\u7c7b" />
             ) : (
-              categories
-                .slice()
-                .sort((a, b) => a.sortOrder - b.sortOrder)
-                .map((category) => {
-                  const active = category.id === activeCategoryId
-                  return (
-                    <button
-                      key={category.id}
-                      className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition ${
-                        active
-                          ? "bg-slate-100 text-slate-900"
-                          : "text-slate-600 hover:bg-slate-50"
-                      }`}
-                      type="button"
-                      onClick={() => onCategorySelect(category.id)}
-                    >
-                      <span>{category.name}</span>
-                    </button>
-                  )
-                })
+              <CategoryHierarchy
+                title="\u4e00\u7ea7\u5206\u7c7b"
+                categories={categories}
+                activeParentId={resolvedActiveParentId}
+                activeCategoryId={activeCategoryId}
+                onParentSelect={handleParentSelect}
+                onCategorySelect={onCategorySelect}
+                showChildCount={false}
+                isLoading={showCategorySkeleton}
+              />
             )}
           </div>
         </section>

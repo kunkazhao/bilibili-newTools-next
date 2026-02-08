@@ -1508,5 +1508,85 @@ describe("ArchivePageView", () => {
     expect(onAddToScheme).toHaveBeenCalledWith("item-1")
   })
 
+  it("allows collapsing parent categories to hide children", async () => {
+    const user = userEvent.setup()
+    const onSelectParent = vi.fn()
+
+    render(
+      <ArchivePageView
+        items={[]}
+        categories={[
+          { id: "p1", name: "Parent 1", sortOrder: 0 },
+          { id: "p2", name: "Parent 2", sortOrder: 1 },
+          { id: "c1", name: "Child 1", sortOrder: 0, parentId: "p1", count: 2 },
+          { id: "c2", name: "Child 2", sortOrder: 0, parentId: "p2", count: 0 },
+        ]}
+        activeParentId="p1"
+        activeCategoryId="c1"
+        isCategoryLoading={false}
+        isListLoading={false}
+        isRefreshing={false}
+        isUsingCache={false}
+        schemes={[]}
+        schemeValue=""
+        isSchemeLoading={false}
+        onSchemeChange={() => {}}
+        searchValue=""
+        onSearchChange={() => {}}
+        priceRange={[0, 0]}
+        priceBounds={[0, 0]}
+        onPriceRangeChange={() => {}}
+        hasMore={false}
+        isLoadingMore={false}
+        onLoadMore={() => {}}
+        sortValue="manual"
+        onSortChange={() => {}}
+        onCreate={() => {}}
+        onEdit={() => {}}
+        onDelete={() => {}}
+        onToggleFocus={() => {}}
+        onDragStart={() => {}}
+        onDrop={() => {}}
+        onSelectParent={onSelectParent}
+        onSelectCategory={() => {}}
+        onClearList={() => {}}
+        onDownloadImages={() => {}}
+        onExport={() => {}}
+        onSyncFeishu={() => {}}
+        onOpenCategoryManager={() => {}}
+        onCloseCategoryManager={() => {}}
+        onSaveCategories={() => {}}
+        isCategoryManagerOpen={false}
+        isPresetFieldsOpen={false}
+        onOpenPresetFields={() => {}}
+        onClosePresetFields={() => {}}
+        onSavePresetFields={() => {}}
+        isProductFormOpen={false}
+        onCloseProductForm={() => {}}
+        onSubmitProductForm={() => {}}
+        presetFields={[]}
+        importProgressState={{
+          status: "idle",
+          total: 0,
+          processed: 0,
+          success: 0,
+          failed: 0,
+          failures: [],
+        }}
+        isImportOpen={false}
+        onCloseImport={() => {}}
+        onCancelImport={() => {}}
+        onFixSort={() => {}}
+        isFixSortDisabled={false}
+        isFixSortSaving={false}
+        onBatchFetchParams={() => {}}
+      />
+    )
+
+    expect(screen.getByRole("button", { name: /Child 1/ })).toBeTruthy()
+    await user.click(screen.getByRole("button", { name: "Parent 1" }))
+    expect(screen.queryByRole("button", { name: /Child 1/ })).toBeNull()
+  })
+
 })
 
