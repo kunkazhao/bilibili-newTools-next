@@ -1,20 +1,35 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest"
 import { render, screen } from "@testing-library/react"
-import { Trash2 } from "lucide-react"
 import EditableListRow from "./editable-list-row"
 
 describe("EditableListRow", () => {
-  it("renders icon action content when provided", () => {
+  it("renders edit and delete actions in view mode", () => {
     render(
       <EditableListRow
-        value="Item"
-        actionAriaLabel="Delete item"
-        actionContent={<Trash2 className="h-4 w-4" />}
+        viewContent={<div>Item</div>}
+        editContent={<div>Edit</div>}
+        onEdit={() => {}}
+        onDelete={() => {}}
       />
     )
 
-    const actionButton = screen.getByLabelText("Delete item")
-    expect(actionButton.querySelector("svg")).not.toBeNull()
+    expect(screen.getByLabelText("Edit item")).toBeTruthy()
+    expect(screen.getByLabelText("Delete item")).toBeTruthy()
+  })
+
+  it("renders confirm and cancel actions in edit mode", () => {
+    render(
+      <EditableListRow
+        editing
+        viewContent={<div>Item</div>}
+        editContent={<div>Edit</div>}
+        onConfirm={() => {}}
+        onCancel={() => {}}
+      />
+    )
+
+    expect(screen.getByLabelText("Confirm edit")).toBeTruthy()
+    expect(screen.getByLabelText("Cancel edit")).toBeTruthy()
   })
 })

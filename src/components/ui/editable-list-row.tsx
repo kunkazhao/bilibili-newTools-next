@@ -1,23 +1,22 @@
 import type { DragEvent, ReactNode } from "react"
-import { GripVertical } from "lucide-react"
+import { Check, GripVertical, Pencil, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 
 interface EditableListRowProps {
-  value: string
-  inputKey?: string
-  placeholder?: string
-  disabled?: boolean
-  readOnly?: boolean
-  onBlur?: (value: string) => void
-  actionLabel?: string
-  actionContent?: ReactNode
-  actionAriaLabel?: string
-  actionVariant?: "default" | "outline" | "ghost"
-  actionSize?: "default" | "sm" | "lg" | "icon"
-  actionClassName?: string
-  onAction?: () => void
+  viewContent: ReactNode
+  editContent?: ReactNode
+  editing?: boolean
+  onEdit?: () => void
+  onDelete?: () => void
+  onConfirm?: () => void
+  onCancel?: () => void
+  editAriaLabel?: string
+  deleteAriaLabel?: string
+  confirmAriaLabel?: string
+  cancelAriaLabel?: string
+  className?: string
+  onRowClick?: () => void
   draggable?: boolean
   dragHandleAriaLabel?: string
   onDragStart?: () => void
@@ -26,19 +25,19 @@ interface EditableListRowProps {
 }
 
 export default function EditableListRow({
-  value,
-  inputKey,
-  placeholder,
-  disabled,
-  readOnly,
-  onBlur,
-  actionLabel,
-  actionContent,
-  actionAriaLabel,
-  actionVariant = "outline",
-  actionSize = "sm",
-  actionClassName,
-  onAction,
+  viewContent,
+  editContent,
+  editing,
+  onEdit,
+  onDelete,
+  onConfirm,
+  onCancel,
+  editAriaLabel = "Edit item",
+  deleteAriaLabel = "Delete item",
+  confirmAriaLabel = "Confirm edit",
+  cancelAriaLabel = "Cancel edit",
+  className,
+  onRowClick,
   draggable,
   dragHandleAriaLabel = "Drag handle",
   onDragStart,
@@ -51,9 +50,10 @@ export default function EditableListRow({
 
   return (
     <div
-      className="modal-list-row"
+      className={cn("modal-list-row", className)}
       onDragOver={draggable ? handleDragOver : undefined}
       onDrop={draggable ? onDrop : undefined}
+      onClick={onRowClick}
     >
       {draggable ? (
         <span
@@ -67,31 +67,71 @@ export default function EditableListRow({
           <GripVertical className="h-4 w-4" aria-hidden="true" />
         </span>
       ) : null}
-      {readOnly ? (
-        <div className="modal-list-field">{value}</div>
+      <div className="flex-1">{editing ? editContent : viewContent}</div>
+      {editing ? (
+        <>
+          {onConfirm ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label={confirmAriaLabel}
+              onClick={(event) => {
+                event.stopPropagation()
+                onConfirm()
+              }}
+            >
+              <Check className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          ) : null}
+          {onCancel ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label={cancelAriaLabel}
+              onClick={(event) => {
+                event.stopPropagation()
+                onCancel()
+              }}
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          ) : null}
+        </>
       ) : (
-        <Input
-          key={inputKey}
-          aria-label="Editable list item"
-          defaultValue={value}
-          placeholder={placeholder}
-          disabled={disabled}
-          onBlur={(event) => onBlur?.(event.target.value)}
-          className="flex-1"
-        />
+        <>
+          {onEdit ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label={editAriaLabel}
+              onClick={(event) => {
+                event.stopPropagation()
+                onEdit()
+              }}
+            >
+              <Pencil className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          ) : null}
+          {onDelete ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="dialog-action-delete"
+              aria-label={deleteAriaLabel}
+              onClick={(event) => {
+                event.stopPropagation()
+                onDelete()
+              }}
+            >
+              <Trash2 className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          ) : null}
+        </>
       )}
-      {actionLabel || actionContent ? (
-        <Button
-          type="button"
-          variant={actionVariant}
-          size={actionSize}
-          className={cn(actionClassName)}
-          onClick={onAction}
-          aria-label={actionAriaLabel}
-        >
-          {actionContent ?? actionLabel}
-        </Button>
-      ) : null}
     </div>
   )
 }
