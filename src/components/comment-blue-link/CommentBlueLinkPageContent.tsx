@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/alert-dialog"
 
 import type { CommentAccount, CommentCombo } from "./types"
+import { getUserErrorMessage } from "@/lib/errorMessages"
 const COMMENT_BLUE_LINK_PRODUCT_KEY = "comment_combo_product_"
 
 const CHUNK_SIZE = 40
@@ -323,7 +324,7 @@ export default function CommentBlueLinkPage() {
 
     } catch (error) {
 
-      const message = error instanceof Error ? error.message : "生成商品版失败"
+      const message = getUserErrorMessage(error, "生成商品版失败")
 
       showToast(message, "error")
 
@@ -577,7 +578,7 @@ export default function CommentBlueLinkPage() {
 
     } catch (error) {
 
-      const message = error instanceof Error ? error.message : "提取失败"
+      const message = getUserErrorMessage(error, "提取失败")
 
       showToast(message, "error")
 
@@ -634,7 +635,7 @@ export default function CommentBlueLinkPage() {
       }
       setModalOpen(false)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "保存失败"
+      const message = getUserErrorMessage(error, "保存失败")
       showToast(message, "error")
     }
   }
@@ -652,7 +653,7 @@ export default function CommentBlueLinkPage() {
 
     } catch (error) {
 
-      const message = error instanceof Error ? error.message : "删除失败"
+      const message = getUserErrorMessage(error, "删除失败")
 
       showToast(message, "error")
 

@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Field, FieldContent, FieldLabel, FieldSet } from "@/components/ui/field"
+import { getUserErrorMessage } from "@/lib/errorMessages"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,7 +54,7 @@ export default function DirectPlansPageContent() {
       const list = Array.isArray(data?.plans) ? data.plans : []
       setPlans(list)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "加载失败"
+      const message = getUserErrorMessage(error, "加载失败")
       showToast(message, "error")
     } finally {
       setLoading(false)
@@ -152,7 +153,7 @@ export default function DirectPlansPageContent() {
       }
       closeForm()
     } catch (error) {
-      const message = error instanceof Error ? error.message : "保存失败"
+      const message = getUserErrorMessage(error, "保存失败")
       showToast(message, "error")
     } finally {
       setSubmitting(false)
@@ -171,7 +172,7 @@ export default function DirectPlansPageContent() {
       setPlans((prev) => prev.filter((item) => item.id !== deleteTarget.id))
       showToast("已删除定向计划", "success")
     } catch (error) {
-      const message = error instanceof Error ? error.message : "删除失败"
+      const message = getUserErrorMessage(error, "删除失败")
       showToast(message, "error")
     } finally {
       setConfirmOpen(false)
@@ -204,7 +205,7 @@ export default function DirectPlansPageContent() {
         body: JSON.stringify({ ids: next.map((item) => item.id) }),
       })
     } catch (error) {
-      const message = error instanceof Error ? error.message : "保存排序失败"
+      const message = getUserErrorMessage(error, "保存排序失败")
       showToast(message, "error")
       await fetchPlans()
     }

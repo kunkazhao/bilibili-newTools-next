@@ -15,6 +15,7 @@ import {
 
 import type { Account } from "@/types/account"
 import type { AccountVideo } from "./types"
+import { getUserErrorMessage } from "@/lib/errorMessages"
 
 type MyAccountState = {
   accounts: Account[]
@@ -165,7 +166,7 @@ export default function MyAccountPageContent() {
       setCurrentAccountId(created.id)
       showToast("账号已新增", "success")
     } catch (error) {
-      const message = error instanceof Error ? error.message : "新增失败"
+      const message = getUserErrorMessage(error, "新增失败")
       showToast(message, "error")
     } finally {
       setAccountSubmitting(false)
@@ -197,7 +198,7 @@ export default function MyAccountPageContent() {
       }))
       showToast("账号已更新", "success")
     } catch (error) {
-      const message = error instanceof Error ? error.message : "更新失败"
+      const message = getUserErrorMessage(error, "更新失败")
       showToast(message, "error")
       refresh().catch(() => {})
     }
@@ -224,7 +225,7 @@ export default function MyAccountPageContent() {
       }))
       showToast("主页链接已更新", "success")
     } catch (error) {
-      const message = error instanceof Error ? error.message : "更新失败"
+      const message = getUserErrorMessage(error, "更新失败")
       showToast(message, "error")
       refresh().catch(() => {})
     }
@@ -244,7 +245,7 @@ export default function MyAccountPageContent() {
       }
       showToast("账号已删除", "success")
     } catch (error) {
-      const message = error instanceof Error ? error.message : "删除失败"
+      const message = getUserErrorMessage(error, "删除失败")
       showToast(message, "error")
     }
   }
@@ -297,7 +298,7 @@ export default function MyAccountPageContent() {
           await syncMyAccountVideos(account.id)
           updateProgress(count, count)
         } catch (error) {
-          const message = error instanceof Error ? error.message : "同步失败"
+          const message = getUserErrorMessage(error, "同步失败")
           setProgressFailures((prev) => [
             ...prev,
             { name: account.name, reason: message },
@@ -318,7 +319,7 @@ export default function MyAccountPageContent() {
       await refresh()
       setProgressStatus("done")
     } catch (error) {
-      const message = error instanceof Error ? error.message : "同步失败"
+      const message = getUserErrorMessage(error, "同步失败")
       showToast(message, "error")
       setProgressStatus("error")
     } finally {

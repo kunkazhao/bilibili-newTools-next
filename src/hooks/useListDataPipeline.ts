@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { buildListCacheKey, getListCache, isFresh, setListCache } from "@/lib/listCache"
 import { stableStringify } from "@/lib/stableStringify"
+import { getUserErrorMessage } from "@/lib/errorMessages"
 
 type ListStatus = "idle" | "warmup" | "loading" | "ready" | "refreshing" | "error"
 
@@ -115,7 +116,7 @@ export function useListDataPipeline<TItem, TFilters, TResponse>(
     } catch (err) {
       if (!isMountedRef.current || requestId !== requestIdRef.current) return
       setStatus("error")
-      setError(err instanceof Error ? err.message : "Load failed")
+      setError(getUserErrorMessage(err, "\u52a0\u8f7d\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5"))
     }
   }, [filters, pageSize, storageKey])
 

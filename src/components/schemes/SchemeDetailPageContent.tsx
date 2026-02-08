@@ -1,5 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { apiRequest } from "@/lib/api"
+import { getUserErrorMessage } from "@/lib/errorMessages"
 import { useToast } from "@/components/Toast"
 import Empty from "@/components/Empty"
 import Skeleton from "@/components/Skeleton"
@@ -631,8 +632,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       }))
       if (message) showToast(message, "success")
     } catch (error) {
-      const text = error instanceof Error ? error.message : "保存失败"
-      showToast(text, "error")
+      showToast(getUserErrorMessage(error, "保存失败"), "error")
     }
   }
 
@@ -774,8 +774,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       setIsProductFormOpen(false)
       setEditingSourceId(null)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "保存失败"
-      showToast(message, "error")
+      showToast(getUserErrorMessage(error, "保存失败"), "error")
     }
   }
 
@@ -808,8 +807,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       setPickerHasMore(Boolean(data.has_more))
       setPickerOffset(data.next_offset ?? offset + list.length)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "加载选品失败"
-      showToast(message, "error")
+      showToast(getUserErrorMessage(error, "加载选品失败"), "error")
     } finally {
       setPickerLoading(false)
     }
@@ -889,8 +887,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       showToast("提示词已保存", "success")
       setPromptEditOpen(false)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "提示词保存失败"
-      showToast(message, "error")
+      showToast(getUserErrorMessage(error, "提示词保存失败"), "error")
     }
   }
 
@@ -915,8 +912,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       setOutput(response.output || "")
       showToast("\u751f\u6210\u5b8c\u6210", "success")
     } catch (error) {
-      const message = error instanceof Error ? error.message : "\u751f\u6210\u5931\u8d25"
-      showToast(message, "error")
+      showToast(getUserErrorMessage(error, "\u751f\u6210\u5931\u8d25"), "error")
     }
   }
 
@@ -950,8 +946,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       setCommentReplyOutput(response.output || "")
       showToast("\u751f\u6210\u5b8c\u6210", "success")
     } catch (error) {
-      const message = error instanceof Error ? error.message : "\u751f\u6210\u5931\u8d25"
-      showToast(message, "error")
+      showToast(getUserErrorMessage(error, "\u751f\u6210\u5931\u8d25"), "error")
     }
   }
   const formatProductLinksOutput = useCallback((rows: ProductLinkRow[], mode: ProductLinksMode) => {
@@ -1873,8 +1868,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       const filename = `带货商品_${timestamp}.xlsx`
       XLSX.writeFile(workbook, filename)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "导出失败"
-      showToast(message, "error")
+      showToast(getUserErrorMessage(error, "导出失败"), "error")
     }
   }
 
@@ -1934,8 +1928,7 @@ export default function SchemeDetailPage({ schemeId, onBack }: SchemeDetailPageP
       setFeishuOpen(false)
       showToast("已写入飞书表格", "success")
     } catch (error) {
-      const message = error instanceof Error ? error.message : "写入飞书失败"
-      showToast(message, "error")
+      showToast(getUserErrorMessage(error, "写入飞书失败"), "error")
     } finally {
       setFeishuSubmitting(false)
     }

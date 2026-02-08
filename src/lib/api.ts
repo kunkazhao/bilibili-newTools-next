@@ -4,6 +4,27 @@ export interface ApiRequestOptions extends RequestInit {
   timeout?: number
 }
 
+type ApiErrorInit = {
+  code: string
+  status?: number
+  detail?: unknown
+}
+
+export class ApiError extends Error {
+  code: string
+  status?: number
+  detail?: unknown
+
+  constructor(message: string, init: ApiErrorInit) {
+    super(message)
+    this.name = "ApiError"
+    this.code = init.code
+    this.status = init.status
+    this.detail = init.detail
+    Object.setPrototypeOf(this, new.target.prototype)
+  }
+}
+
 export async function apiRequest<T>(
   path: string,
   options: ApiRequestOptions = {}
@@ -51,22 +72,67 @@ export async function apiRequest<T>(
     const data = text ? safeJson(text) : {}
 
     if (!response.ok) {
-      const detail = (data as { detail?: string; message?: string })?.detail
-      const message = detail || (data as { message?: string })?.message
-      const fallback = text.trim()
-      throw new Error(message || fallback || `请求失败（${response.status}）`)
+      const errorPayload = parseApiErrorPayload(data, text, response.status)
+      throw new ApiError(errorPayload.message, {
+        code: errorPayload.code,
+        status: response.status,
+        detail: data,
+      })
     }
 
     return data as T
   } catch (error) {
-    if ((error as { name?: string })?.name === "AbortError") {
-      throw new Error(`请求超时（${timeout}ms）`)
+    if (error instanceof ApiError) {
+      throw error
     }
+
+    if ((error as { name?: string })?.name === "AbortError") {
+      throw new ApiError(`请求超时（${timeout}ms）`, {
+        code: "REQUEST_TIMEOUT",
+        status: 408,
+      })
+    }
+
+    if (error instanceof TypeError) {
+      throw new ApiError("网络连接异常", {
+        code: "NETWORK_ERROR",
+      })
+    }
+
     throw error
   } finally {
     clearTimeout(timeoutId)
     externalSignal?.removeEventListener("abort", abortByExternalSignal)
   }
+}
+
+function parseApiErrorPayload(data: unknown, rawText: string, status: number) {
+  const payload = asRecord(data)
+  const detail = payload?.detail
+  const detailRecord = asRecord(detail)
+
+  const code =
+    readString(payload?.code) ?? readString(detailRecord?.code) ?? `HTTP_${status}`
+
+  const fallback = rawText.trim() || `请求失败（${status}）`
+  const message =
+    readString(payload?.message) ??
+    readString(detailRecord?.message) ??
+    readString(detail) ??
+    fallback
+
+  return { code, message }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object") return null
+  return value as Record<string, unknown>
+}
+
+function readString(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
 }
 
 function safeJson(raw: string) {

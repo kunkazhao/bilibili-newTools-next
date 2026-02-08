@@ -10,6 +10,7 @@ import {
   type SubtitlePayload,
 } from "@/lib/subtitle"
 import * as XLSX from "xlsx"
+import { getUserErrorMessage } from "@/lib/errorMessages"
 
 const API_BASE = import.meta.env.VITE_API_BASE?.replace(/\/$/, "") ?? ""
 const SUBTITLE_STORAGE_KEY = "script_subtitle_data"
@@ -100,7 +101,7 @@ export default function ScriptPage() {
       saveSubtitleCache(subtitleData, info.status === "success" ? info : null)
       showToast("字幕已获取", "success")
     } catch (error) {
-      const message = error instanceof Error ? error.message : "获取字幕失败"
+      const message = getUserErrorMessage(error, "获取字幕失败")
       showToast(message, "error")
     } finally {
       setLoading(false)

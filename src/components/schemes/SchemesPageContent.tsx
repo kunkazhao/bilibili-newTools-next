@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react"
+﻿import { useEffect, useMemo, useRef, useState } from "react"
 import { apiRequest } from "@/lib/api"
 import { useToast } from "@/components/Toast"
 import SchemesDialogs from "@/components/schemes/SchemesDialogs"
@@ -6,6 +6,7 @@ import SchemesPageView from "@/components/schemes/SchemesPageView"
 import { useListDataPipeline } from "@/hooks/useListDataPipeline"
 import type { CategoryItem } from "@/components/archive/types"
 import type { Scheme, SchemesPageProps } from "@/components/schemes/types"
+import { getUserErrorMessage } from "@/lib/errorMessages"
 import {
   createCategory,
   deleteCategory,
@@ -60,10 +61,12 @@ export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
     }),
   })
   const [categories, setCategories] = useState<CategoryItem[]>([])
-  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null)
+  const [activeParentId, setActiveParentId] = useState("")
+  const [activeCategoryId, setActiveCategoryId] = useState("")
   const [isCategoryLoading, setIsCategoryLoading] = useState(true)
   const [statusMessage, setStatusMessage] = useState("")
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false)
+  const categorySaveTokenRef = useRef(0)
 
   const [formOpen, setFormOpen] = useState(false)
   const [formMode, setFormMode] = useState<"create" | "edit">("create")
@@ -81,6 +84,45 @@ export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
     categories.forEach((cat) => map.set(cat.id, cat.name))
     return map
   }, [categories])
+
+  const parentCategories = useMemo(
+    () =>
+      categories
+        .filter((category) => !category.parentId)
+        .slice()
+        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
+    [categories]
+  )
+
+  const childCategoriesByParent = useMemo(() => {
+    const map = new Map<string, CategoryItem[]>()
+    categories
+      .filter((category) => category.parentId)
+      .forEach((category) => {
+        const parentId = String(category.parentId)
+        if (!map.has(parentId)) {
+          map.set(parentId, [])
+        }
+        map.get(parentId)?.push(category)
+      })
+    map.forEach((list) =>
+      list.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    )
+    return map
+  }, [categories])
+
+  const activeChildCategories = useMemo(() => {
+    if (!activeParentId) return []
+    return childCategoriesByParent.get(activeParentId) ?? []
+  }, [activeParentId, childCategoriesByParent])
+
+  const childCategoryList = useMemo(
+    () =>
+      parentCategories.flatMap(
+        (parent) => childCategoriesByParent.get(parent.id) ?? []
+      ),
+    [parentCategories, childCategoriesByParent]
+  )
 
   const filteredSchemes = useMemo(() => {
     if (!activeCategoryId) return []
@@ -126,12 +168,36 @@ export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
   }, [schemeError, schemeStatus, schemes.length, showToast])
 
   useEffect(() => {
-    if (!categories.length) return
+    if (!parentCategories.length) return
+    setActiveParentId((prev) =>
+      parentCategories.some((item) => item.id === prev) ? prev : parentCategories[0].id
+    )
+  }, [parentCategories])
+
+  useEffect(() => {
     setActiveCategoryId((prev) => {
-      if (prev && categories.some((cat) => cat.id === prev)) return prev
-      return categories[0].id
+      const hasPrev =
+        prev.length > 0 && categories.some((category) => category.id === prev && category.parentId)
+      if (hasPrev) return prev
+
+      const preferredParentId = activeParentId || parentCategories[0]?.id || ""
+      const preferredChildren = preferredParentId
+        ? (childCategoriesByParent.get(preferredParentId) ?? [])
+        : []
+      if (preferredChildren.length > 0) {
+        return preferredChildren[0].id
+      }
+
+      for (const parent of parentCategories) {
+        const children = childCategoriesByParent.get(parent.id) ?? []
+        if (children.length > 0) {
+          return children[0].id
+        }
+      }
+
+      return ""
     })
-  }, [categories])
+  }, [activeParentId, categories, childCategoriesByParent, parentCategories])
 
   const loadCategories = async (): Promise<CategoryItem[]> => {
     try {
@@ -142,6 +208,7 @@ export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
         sortOrder: category.sort_order ?? 0,
         specFields: category.spec_fields ?? [],
         count: category.item_count ?? 0,
+        parentId: category.parent_id ?? null,
       }))
       return Array.isArray(list) ? list : []
     } catch {
@@ -151,46 +218,180 @@ export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
   }
 
   const handleSaveCategories = (next: CategoryItem[]) => {
-    const existingIds = new Set(categories.map((item) => item.id))
+    const previousCategories = categories
+    const previousCategoryMap = new Map(previousCategories.map((item) => [item.id, item]))
+    const existingIds = new Set(previousCategories.map((item) => item.id))
     const nextIds = new Set(next.map((item) => item.id))
-    const updates = next.map((item, index) => ({
+
+    const parents = next.filter((item) => !item.parentId)
+    const childrenByParent = new Map<string, CategoryItem[]>()
+    next
+      .filter((item) => item.parentId)
+      .forEach((item) => {
+        const parentId = String(item.parentId)
+        if (!childrenByParent.has(parentId)) {
+          childrenByParent.set(parentId, [])
+        }
+        childrenByParent.get(parentId)?.push(item)
+      })
+
+    const normalized: CategoryItem[] = [
+      ...parents.map((item, index) => ({
+        ...item,
+        parentId: null,
+        sortOrder: (index + 1) * 10,
+      })),
+      ...Array.from(childrenByParent.entries()).flatMap(([parentId, list]) =>
+        list.map((item, index) => ({
+          ...item,
+          parentId,
+          sortOrder: (index + 1) * 10,
+        }))
+      ),
+    ]
+
+    const optimisticCategories = normalized.map((item) => ({
       ...item,
-      sortOrder: (index + 1) * 10,
+      count: previousCategoryMap.get(item.id)?.count ?? item.count ?? 0,
     }))
-    const tasks: Promise<unknown>[] = []
-    updates.forEach((item) => {
-      if (existingIds.has(item.id)) {
-        tasks.push(
-          updateCategory(item.id, {
+
+    setCategories(optimisticCategories)
+    saveCache(ARCHIVE_CATEGORY_CACHE_KEY, optimisticCategories)
+
+    const saveToken = ++categorySaveTokenRef.current
+
+    void (async () => {
+      try {
+        const idMap = new Map<string, string>()
+        const persisted: CategoryItem[] = []
+
+        const parentQueue = normalized.filter((item) => !item.parentId)
+        const childQueue = normalized.filter((item) => item.parentId)
+
+        for (const item of parentQueue) {
+          if (existingIds.has(item.id)) {
+            await updateCategory(item.id, {
+              name: item.name,
+              sort_order: item.sortOrder,
+              parent_id: null,
+            })
+            persisted.push({
+              ...item,
+              parentId: null,
+              count: previousCategoryMap.get(item.id)?.count ?? item.count ?? 0,
+            })
+            continue
+          }
+
+          const response = await createCategory({
             name: item.name,
             sort_order: item.sortOrder,
+            parent_id: null,
           })
+          const created = response?.category
+          const createdId = created?.id ? String(created.id) : item.id
+          if (createdId !== item.id) {
+            idMap.set(item.id, createdId)
+          }
+          persisted.push({
+            ...item,
+            id: createdId,
+            parentId: null,
+            sortOrder: created?.sort_order ?? item.sortOrder,
+            specFields: created?.spec_fields ?? item.specFields,
+            count: created?.item_count ?? item.count ?? 0,
+          })
+        }
+
+        for (const item of childQueue) {
+          const resolvedParentId = item.parentId
+            ? (idMap.get(item.parentId) ?? item.parentId)
+            : null
+
+          if (existingIds.has(item.id)) {
+            await updateCategory(item.id, {
+              name: item.name,
+              sort_order: item.sortOrder,
+              parent_id: resolvedParentId,
+            })
+            persisted.push({
+              ...item,
+              parentId: resolvedParentId,
+              count: previousCategoryMap.get(item.id)?.count ?? item.count ?? 0,
+            })
+            continue
+          }
+
+          const response = await createCategory({
+            name: item.name,
+            sort_order: item.sortOrder,
+            parent_id: resolvedParentId,
+          })
+          const created = response?.category
+          const createdId = created?.id ? String(created.id) : item.id
+          if (createdId !== item.id) {
+            idMap.set(item.id, createdId)
+          }
+          persisted.push({
+            ...item,
+            id: createdId,
+            parentId: created?.parent_id ?? resolvedParentId,
+            sortOrder: created?.sort_order ?? item.sortOrder,
+            specFields: created?.spec_fields ?? item.specFields,
+            count: created?.item_count ?? item.count ?? 0,
+          })
+        }
+
+        await Promise.all(
+          previousCategories
+            .filter((item) => !nextIds.has(item.id))
+            .map((item) => deleteCategory(item.id))
         )
-      } else {
-        tasks.push(createCategory({ name: item.name, sort_order: item.sortOrder }))
+
+        if (saveToken !== categorySaveTokenRef.current) {
+          return
+        }
+
+        setCategories(persisted)
+        saveCache(ARCHIVE_CATEGORY_CACHE_KEY, persisted)
+
+        if (idMap.size > 0) {
+          setActiveParentId((prev) => idMap.get(prev) ?? prev)
+          setActiveCategoryId((prev) => idMap.get(prev) ?? prev)
+          setFormCategoryId((prev) => idMap.get(prev) ?? prev)
+        }
+      } catch {
+        if (saveToken !== categorySaveTokenRef.current) {
+          return
+        }
+
+        setCategories(previousCategories)
+        saveCache(ARCHIVE_CATEGORY_CACHE_KEY, previousCategories)
+        showToast("\u5206\u7c7b\u4fdd\u5b58\u5931\u8d25\uff0c\u5df2\u6062\u590d\u4e0a\u4e00\u6b21\u7ed3\u679c", "error")
+        const latest = await loadCategories()
+        if (latest.length) {
+          setCategories(latest)
+          saveCache(ARCHIVE_CATEGORY_CACHE_KEY, latest)
+        }
       }
-    })
-    categories.forEach((item) => {
-      if (!nextIds.has(item.id)) {
-        tasks.push(deleteCategory(item.id))
-      }
-    })
-    Promise.all(tasks)
-      .then(() => {
-        setCategories(updates)
-        saveCache(ARCHIVE_CATEGORY_CACHE_KEY, updates)
-        showToast("分类已保存", "success")
-      })
-      .catch(() => showToast("分类保存失败", "error"))
+    })()
   }
 
   const openCreate = () => {
     setFormMode("create")
     setEditingSchemeId(null)
     setFormName("")
-    setFormCategoryId(activeCategoryId ?? "")
+    setFormCategoryId(activeCategoryId)
     setFormRemark("")
     setFormOpen(true)
+  }
+
+  const handleSelectParent = (parentId: string) => {
+    setActiveParentId(parentId)
+  }
+
+  const handleSelectCategory = (categoryId: string) => {
+    setActiveCategoryId(categoryId)
   }
 
   const openEdit = (scheme: Scheme) => {
@@ -246,7 +447,7 @@ export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
       }
       setFormOpen(false)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "保存失败"
+      const message = getUserErrorMessage(error, "保存失败")
       showToast(message, "error")
     }
   }
@@ -268,7 +469,7 @@ export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
       showToast("方案已删除", "success")
     } catch (error) {
       setSchemes(snapshot)
-      const message = error instanceof Error ? error.message : "删除失败"
+      const message = getUserErrorMessage(error, "删除失败")
       showToast(message, "error")
     } finally {
       setPendingDeleteId(null)
@@ -281,6 +482,9 @@ export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
     <>
       <SchemesPageView
         categories={categories}
+        parentCategories={parentCategories}
+        childCategories={activeChildCategories}
+        activeParentId={activeParentId}
         schemes={schemes}
         filteredSchemes={filteredSchemes}
         activeCategoryId={activeCategoryId}
@@ -289,7 +493,8 @@ export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
         statusMessage={statusMessage}
         onCreate={openCreate}
         onManageCategories={() => setIsCategoryManagerOpen(true)}
-        onCategorySelect={setActiveCategoryId}
+        onParentSelect={handleSelectParent}
+        onCategorySelect={handleSelectCategory}
         onEditScheme={openEdit}
         onDeleteScheme={requestDelete}
         onEnterScheme={onEnterScheme}
@@ -307,7 +512,7 @@ export default function SchemesPage({ onEnterScheme }: SchemesPageProps) {
           name: formName,
           categoryId: formCategoryId,
           remark: formRemark,
-          categories,
+          categories: childCategoryList,
           onOpenChange: setFormOpen,
           onNameChange: setFormName,
           onCategoryChange: setFormCategoryId,

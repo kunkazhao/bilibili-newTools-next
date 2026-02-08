@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useToast } from "@/components/Toast"
 import type { CategoryItem } from "@/components/archive/types"
 import { useListDataPipeline } from "@/hooks/useListDataPipeline"
+import { getUserErrorMessage } from "@/lib/errorMessages"
 import ZhihuRadarPageView from "./ZhihuRadarPageView"
 import {
+  blacklistZhihuQuestion,
   createZhihuKeyword,
   createZhihuQuestion,
   deleteZhihuQuestion,
@@ -102,6 +104,8 @@ export default function ZhihuRadarPageContent() {
   })
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [blacklistTarget, setBlacklistTarget] = useState<ZhihuQuestionItem | null>(null)
+  const [blacklistingId, setBlacklistingId] = useState<string | null>(null)
   const lastFetchOffsetRef = useRef(0)
   const pollingRef = useRef<number | null>(null)
   const hasDeferredCountLoadedRef = useRef(false)
@@ -114,8 +118,7 @@ export default function ZhihuRadarPageContent() {
       setKeywords(list)
       setCache(CACHE_KEYS.keywords, list)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "加载关键词失败"
-      showToast(message, "error")
+      showToast(getUserErrorMessage(error, "加载关键词失败"), "error")
     } finally {
       setIsKeywordLoading(false)
     }
@@ -131,8 +134,7 @@ export default function ZhihuRadarPageContent() {
       setKeywordTotal(total)
       setCache(CACHE_KEYS.counts, { counts, total })
     } catch (error) {
-      const message = error instanceof Error ? error.message : "加载关键词数量失败"
-      showToast(message, "error")
+      showToast(getUserErrorMessage(error, "加载关键词数量失败"), "error")
     } finally {
       setIsCountLoading(false)
     }
@@ -277,8 +279,7 @@ export default function ZhihuRadarPageContent() {
         }
         showToast("关键词已更新", "success")
       } catch (error) {
-        const message = error instanceof Error ? error.message : "更新关键词失败"
-        showToast(message, "error")
+        showToast(getUserErrorMessage(error, "更新关键词失败"), "error")
       }
     },
     [activeKeywordId, keywords, loadCounts, loadKeywords, refreshQuestions, showToast]
@@ -296,8 +297,7 @@ export default function ZhihuRadarPageContent() {
           loading: false,
         }))
       } catch (error) {
-        const message = error instanceof Error ? error.message : "加载趋势失败"
-        showToast(message, "error")
+        showToast(getUserErrorMessage(error, "加载趋势失败"), "error")
         setTrendState((prev) => ({ ...prev, loading: false }))
       }
     },
@@ -310,21 +310,48 @@ export default function ZhihuRadarPageContent() {
       setDeletingId(item.id)
       try {
         await deleteZhihuQuestion(item.id)
-        const nextItems = items.filter((row) => row.id !== item.id)
-        setItems(nextItems)
+        setItems((prev) => prev.filter((row) => row.id !== item.id))
+        setBlacklistTarget((prev) => (prev?.id === item.id ? null : prev))
         setListTotal((prev) => Math.max(0, prev - 1))
         await loadCounts()
         await refreshQuestions()
         showToast("已删除问题", "success")
       } catch (error) {
-        const message = error instanceof Error ? error.message : "删除失败"
-        showToast(message, "error")
+        showToast(getUserErrorMessage(error, "删除失败"), "error")
       } finally {
         setDeletingId(null)
       }
     },
-    [deletingId, items, loadCounts, refreshQuestions, setItems, showToast]
+    [deletingId, loadCounts, refreshQuestions, setItems, showToast]
   )
+
+  const handleOpenBlacklistQuestion = useCallback(
+    (item: ZhihuQuestionItem) => {
+      if (!item?.id || deletingId || blacklistingId) return
+      setBlacklistTarget(item)
+    },
+    [blacklistingId, deletingId]
+  )
+
+  const handleConfirmBlacklist = useCallback(async () => {
+    if (!blacklistTarget?.id || blacklistingId) return
+    const target = blacklistTarget
+    setBlacklistingId(target.id)
+    try {
+      await blacklistZhihuQuestion(target.id)
+      setItems((prev) => prev.filter((row) => row.id !== target.id))
+      setBlacklistTarget(null)
+      setListTotal((prev) => Math.max(0, prev - 1))
+      await loadCounts()
+      await refreshQuestions()
+      showToast("已拉黑问题，后续更新将自动过滤", "success")
+    } catch (error) {
+      showToast(getUserErrorMessage(error, "拉黑失败"), "error")
+    } finally {
+      setBlacklistingId(null)
+    }
+  }, [blacklistTarget, blacklistingId, loadCounts, refreshQuestions, setItems, showToast])
+
 
   const stopPolling = useCallback(() => {
     if (pollingRef.current) {
@@ -389,8 +416,7 @@ export default function ZhihuRadarPageContent() {
       })
       setUpdateDialogOpen(false)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Update failed"
-      showToast(message, "error")
+      showToast(getUserErrorMessage(error, "\u66f4\u65b0\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5"), "error")
     } finally {
       setUpdateSubmitting(false)
     }
@@ -454,8 +480,7 @@ export default function ZhihuRadarPageContent() {
       await loadCounts()
       showToast("Question added and stats fetched", "success")
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Add question failed"
-      showToast(message, "error")
+      showToast(getUserErrorMessage(error, "\u6dfb\u52a0\u95ee\u9898\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5"), "error")
     } finally {
       setAddSubmitting(false)
     }
@@ -503,8 +528,7 @@ export default function ZhihuRadarPageContent() {
         if (cancelled) return
         stopPolling()
         setActiveJobId(null)
-        const message = error instanceof Error ? error.message : "数据更新失败"
-        showToast(message, "error")
+        showToast(getUserErrorMessage(error, "数据更新失败"), "error")
       }
     }
 
@@ -544,7 +568,19 @@ export default function ZhihuRadarPageContent() {
       onSaveKeywords={handleSaveKeywords}
       onOpenTrend={handleOpenTrend}
       onDeleteQuestion={handleDeleteQuestion}
+      onOpenBlacklistQuestion={handleOpenBlacklistQuestion}
       deletingId={deletingId}
+      blacklistingId={blacklistingId}
+      blacklistDialog={{
+        open: Boolean(blacklistTarget),
+        title: blacklistTarget?.title || "",
+        submitting: Boolean(blacklistingId),
+        onOpenChange: (open) => {
+          if (open || blacklistingId) return
+          setBlacklistTarget(null)
+        },
+        onConfirm: handleConfirmBlacklist,
+      }}
       trendDialog={{
         ...trendState,
         onOpenChange: (open) =>

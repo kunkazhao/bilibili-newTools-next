@@ -5,6 +5,7 @@ import * as XLSX from "xlsx"
 import RecognizeDialogs from "./RecognizeDialogs"
 import RecognizePageView from "./RecognizePageView"
 import type { PreviewImage, RecognizeEntry } from "./types"
+import { getUserErrorMessage } from "@/lib/errorMessages"
 
 const API_BASE = import.meta.env.VITE_API_BASE?.replace(/\/$/, "") ?? ""
 
@@ -505,7 +506,7 @@ export default function RecognizePageContent() {
           setProgressSuccess((prev) => prev + 1)
           setProgressProcessed((prev) => prev + 1)
         } catch (error) {
-          const message = error instanceof Error ? error.message : "识别失败"
+          const message = getUserErrorMessage(error, "识别失败")
           showToast(`识别失败: ${message}`, "error")
           setProgressFailures((prev) => [
             ...prev,

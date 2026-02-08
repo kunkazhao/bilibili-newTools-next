@@ -6,6 +6,7 @@ import { useListDataPipeline } from "@/hooks/useListDataPipeline"
 import BlueLinkMapDialogs from "./BlueLinkMapDialogs"
 import BlueLinkMapPageView from "./BlueLinkMapPageView"
 import { fetchBlueLinkMapState } from "./blueLinkMapApi"
+import { getUserErrorMessage } from "@/lib/errorMessages"
 import type {
   BlueLinkAccount,
   BlueLinkCategory,
@@ -240,6 +241,23 @@ function normalizeBlueLinkText(value?: string) {
   return String(value || "")
     .replace(/[​-‍⁠﻿ ⠀]/g, "")
     .trim()
+}
+
+function extractUrlFromLine(line: string): string | null {
+  // 首先尝试整行是否为URL
+  if (isLikelyBlueLinkUrl(line)) {
+    return line
+  }
+
+  // 如果整行不是URL，尝试从行中提取URL
+  const urlRegex = /https?:\/\/[^\s]+/g
+  const matches = line.match(urlRegex)
+  if (matches && matches.length > 0) {
+    // 返回第一个找到的URL
+    return matches[0]
+  }
+
+  return null
 }
 
 function isLikelyBlueLinkUrl(value: string) {
@@ -697,7 +715,7 @@ export default function BlueLinkMapPage() {
       setEditOpen(false)
       await refreshState()
     } catch (error) {
-      const message = error instanceof Error ? error.message : "更新失败"
+      const message = getUserErrorMessage(error, "更新失败")
       showToast(message, "error")
     }
   }
@@ -713,7 +731,7 @@ export default function BlueLinkMapPage() {
         entries: prev.entries.filter((item) => item.id !== entry.id),
       }))
     } catch (error) {
-      const message = error instanceof Error ? error.message : "删除失败"
+      const message = getUserErrorMessage(error, "删除失败")
       showToast(message, "error")
     }
   }
@@ -792,7 +810,7 @@ export default function BlueLinkMapPage() {
       setAccountNameInput("")
       await refreshState()
     } catch (error) {
-      const message = error instanceof Error ? error.message : "保存账号失败"
+      const message = getUserErrorMessage(error, "保存账号失败")
       showToast(message, "error")
     }
   }
@@ -813,7 +831,7 @@ export default function BlueLinkMapPage() {
       }))
       showToast("账号已更新", "success")
     } catch (error) {
-      const message = error instanceof Error ? error.message : "更新失败"
+      const message = getUserErrorMessage(error, "更新失败")
       showToast(message, "error")
     }
   }
@@ -829,7 +847,7 @@ export default function BlueLinkMapPage() {
           await removeAccount(accountId)
           await refreshState()
         } catch (error) {
-          const message = error instanceof Error ? error.message : "删除失败"
+          const message = getUserErrorMessage(error, "删除失败")
           showToast(message, "error")
         }
       },
@@ -867,7 +885,7 @@ export default function BlueLinkMapPage() {
       }
       setCategoryError("")
     } catch (error) {
-      const message = error instanceof Error ? error.message : "新增分类失败"
+      const message = getUserErrorMessage(error, "新增分类失败")
       setCategoryError(message)
     }
   }
@@ -894,7 +912,7 @@ export default function BlueLinkMapPage() {
       }))
       setCategoryError("")
     } catch (error) {
-      const message = error instanceof Error ? error.message : "更新失败"
+      const message = getUserErrorMessage(error, "更新失败")
       setCategoryError(message)
     }
   }
@@ -917,7 +935,7 @@ export default function BlueLinkMapPage() {
             categories: prev.categories.filter((item) => item.id !== categoryId),
           }))
         } catch (error) {
-          const message = error instanceof Error ? error.message : "删除分类失败"
+          const message = getUserErrorMessage(error, "删除分类失败")
           showToast(message, "error")
         }
       },
@@ -1003,7 +1021,7 @@ export default function BlueLinkMapPage() {
       setPickerOffset(data.next_offset ?? offset + list.length)
     } catch (error) {
       if (requestId !== pickerRequestIdRef.current) return
-      const message = error instanceof Error ? error.message : "加载商品失败"
+      const message = getUserErrorMessage(error, "加载商品失败")
       showToast(message, "error")
     } finally {
       if (requestId === pickerRequestIdRef.current) {
@@ -1077,7 +1095,7 @@ export default function BlueLinkMapPage() {
       showToast("已更新映射", "success")
       setPickerOpen(false)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "更新失败"
+      const message = getUserErrorMessage(error, "更新失败")
       showToast(message, "error")
     }
   }
@@ -1226,13 +1244,13 @@ export default function BlueLinkMapPage() {
           await patchEntryMapping(entry.id, matchedItem.id, sku)
           success += 1
         } catch (error) {
-          const message = error instanceof Error ? error.message : "写入失败"
+          const message = getUserErrorMessage(error, "写入失败")
           failures.push({ link, name: matchedItem.title || "未知商品", reason: message })
         }
         updateProgress(processed, success, failures)
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "映射失败"
+      const message = getUserErrorMessage(error, "映射失败")
       failures.push({ link: "--", name: "未知商品", reason: message })
     } finally {
       finishProgress(importCancelRef.current)
@@ -1251,7 +1269,13 @@ export default function BlueLinkMapPage() {
     const normalizedLines = importText
       .split(/\r?\n/)
       .map((line) => normalizeBlueLinkText(line))
-    const lines = normalizedLines.filter((line) => isLikelyBlueLinkUrl(line))
+
+    // 尝试从每行中提取URL，支持混合内容
+    const extractedUrls = normalizedLines
+      .map((line) => extractUrlFromLine(line))
+      .filter((url): url is string => url !== null)
+
+    const lines = extractedUrls
     if (!lines.length) {
       showToast("请粘贴蓝链链接", "error")
       return
@@ -1303,7 +1327,7 @@ export default function BlueLinkMapPage() {
         await refreshState()
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "导入失败"
+      const message = getUserErrorMessage(error, "导入失败")
       showToast(message, "error")
     } finally {
       setImporting(false)

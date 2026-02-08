@@ -10,6 +10,7 @@ import BenchmarkDialogs from "@/components/benchmark/BenchmarkDialogs"
 import BenchmarkPageView from "@/components/benchmark/BenchmarkPageView"
 import { pickCategoryColor } from "@/components/benchmark/benchmarkUtils"
 import { useListDataPipeline } from "@/hooks/useListDataPipeline"
+import { getUserErrorMessage } from "@/lib/errorMessages"
 import type {
   BenchmarkCategory,
   BenchmarkEntry,
@@ -166,7 +167,7 @@ export default function BenchmarkPage() {
       showToast("已添加到对标库", "success")
       setAddOpen(false)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "添加失败"
+      const message = getUserErrorMessage(error, "添加失败")
       showToast(message, "error")
     } finally {
       setAddSubmitting(false)
@@ -221,7 +222,7 @@ export default function BenchmarkPage() {
       showToast("已更新视频信息", "success")
       setEditing(null)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "更新失败"
+      const message = getUserErrorMessage(error, "更新失败")
       showToast(message, "error")
     } finally {
       setEditSubmitting(false)
@@ -238,7 +239,7 @@ export default function BenchmarkPage() {
       }))
       showToast("已删除该视频", "success")
     } catch (error) {
-      const message = error instanceof Error ? error.message : "删除失败"
+      const message = getUserErrorMessage(error, "删除失败")
       showToast(message, "error")
     } finally {
       setEntryToDelete(null)
@@ -293,7 +294,7 @@ export default function BenchmarkPage() {
       if (filter === categoryId) setFilter("all")
       showToast("分类已删除", "success")
     } catch (error) {
-      const message = error instanceof Error ? error.message : "删除分类失败"
+      const message = getUserErrorMessage(error, "删除分类失败")
       showToast(message, "error")
     } finally {
       setCategoryToDelete(null)
@@ -339,7 +340,7 @@ export default function BenchmarkPage() {
       if (keepFilter) setFilter(String(created.id))
       showToast("分类已更新", "success")
     } catch (error) {
-      const message = error instanceof Error ? error.message : "分类更新失败"
+      const message = getUserErrorMessage(error, "分类更新失败")
       showToast(message, "error")
       await refresh()
     } finally {
@@ -362,7 +363,7 @@ export default function BenchmarkPage() {
         showToast("未获取到字幕内容", "info")
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "获取字幕失败"
+      const message = getUserErrorMessage(error, "获取字幕失败")
       showToast(message, "error")
     } finally {
       setSubtitleLoading(false)

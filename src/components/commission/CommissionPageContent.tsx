@@ -4,10 +4,12 @@ import CommissionPageView from "@/components/commission/CommissionPageView"
 import CommissionDialogs from "@/components/commission/CommissionDialogs"
 import { useToast } from "@/components/Toast"
 import { apiRequest } from "@/lib/api"
+import { getUserErrorMessage } from "@/lib/errorMessages"
 import { fetchCategories } from "@/components/archive/archiveApi"
 import {
   COMMISSION_SOURCE_LABEL_KEY,
   getCommissionSourceDisplay,
+  getCommissionSourceLink,
 } from "@/components/commission/commissionSource"
 import {
   getCommissionExportHeaders,
@@ -448,6 +450,7 @@ export default function CommissionPage() {
   const [lastNewIds, setLastNewIds] = useState<string[]>([])
   const authorRequestedRef = useRef<Set<string>>(new Set())
   const processingRef = useRef(false)
+  const archiveInitFrameRef = useRef<number | null>(null)
 
   useEffect(() => {
     const localItems = getLocalItems()
@@ -469,11 +472,13 @@ export default function CommissionPage() {
     }
     try {
       const response = await fetchCategories({ includeCounts: false })
-      const normalized = (response.categories ?? []).map((category) => ({
-        id: category.id,
-        name: category.name,
-        sortOrder: category.sort_order ?? 0,
-      }))
+      const normalized = (response.categories ?? [])
+        .filter((category) => category.parent_id)
+        .map((category) => ({
+          id: category.id,
+          name: category.name,
+          sortOrder: category.sort_order ?? 0,
+        }))
       setCategories(normalized)
       setCache(CATEGORY_CACHE_KEY, normalized)
     } catch {
@@ -494,6 +499,20 @@ export default function CommissionPage() {
       return categories[0].id
     })
   }, [categories])
+
+  const cancelArchiveInitFrame = useCallback(() => {
+    if (archiveInitFrameRef.current === null) return
+    if (typeof window !== "undefined" && typeof window.cancelAnimationFrame === "function") {
+      window.cancelAnimationFrame(archiveInitFrameRef.current)
+    }
+    archiveInitFrameRef.current = null
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      cancelArchiveInitFrame()
+    }
+  }, [cancelArchiveInitFrame])
 
   useEffect(() => {
     if (!items.length) return
@@ -559,6 +578,7 @@ export default function CommissionPage() {
       image: item.image,
       shopName: item.shopName,
       source: getCommissionSourceDisplay(item.spec),
+      sourceLink: getCommissionSourceLink(item.spec),
       isFocused: item.isFocused,
       isArchived: isItemArchived(item),
     }
@@ -646,8 +666,7 @@ export default function CommissionPage() {
         setCache(BENCHMARK_PICK_CACHE_KEY, { categories: categoryList, videos })
         return videos
       } catch (error) {
-        const message = error instanceof Error ? error.message : "加载对标视频失败"
-        showToast(message, "error")
+        showToast(getUserErrorMessage(error, "加载对标视频失败"), "error")
         return cached?.videos || []
       }
     },
@@ -802,8 +821,7 @@ export default function CommissionPage() {
             summary.newCount += 1
           }
         } catch (error) {
-          const message = error instanceof Error ? error.message : "解析失败"
-          summary.failedLinks.push({ link, reason: message })
+          summary.failedLinks.push({ link, reason: getUserErrorMessage(error, "解析失败") })
         } finally {
           productTracker.processed += 1
           setProgress({ current: productTracker.processed, total: productTracker.total })
@@ -864,8 +882,7 @@ export default function CommissionPage() {
         summary.taobaoLinks += taobaoLinks.length
         enqueueProductLinks([...jdLinks, ...taobaoLinks], { sourceLink: link, sourceAuthor })
       } catch (error) {
-        const message = error instanceof Error ? error.message : "解析视频失败"
-        summary.failedLinks.push({ link, reason: message })
+        summary.failedLinks.push({ link, reason: getUserErrorMessage(error, "解析视频失败") })
       }
     })
 
@@ -935,8 +952,7 @@ export default function CommissionPage() {
           summary.newCount += 1
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : "解析失败"
-        summary.failedLinks.push({ link, reason: message })
+        summary.failedLinks.push({ link, reason: getUserErrorMessage(error, "解析失败") })
       } finally {
         tracker.processed += 1
         setProgress({ current: tracker.processed, total: tracker.total })
@@ -1016,9 +1032,40 @@ export default function CommissionPage() {
       showToast("暂无可归档商品", "info")
       return
     }
+    cancelArchiveInitFrame()
     setArchiveTargetIds(ids)
     setArchiveOpen(true)
   }
+
+  const openArchiveAll = useCallback(() => {
+    if (!filteredItems.length) {
+      showToast("暂无可归档商品", "info")
+      return
+    }
+
+    cancelArchiveInitFrame()
+    setArchiveTargetIds([])
+    setArchiveOpen(true)
+
+    const nextIds = filteredItems.map((item) => item.id)
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+      archiveInitFrameRef.current = window.requestAnimationFrame(() => {
+        archiveInitFrameRef.current = null
+        setArchiveTargetIds(nextIds)
+      })
+      return
+    }
+
+    setTimeout(() => {
+      setArchiveTargetIds(nextIds)
+    }, 0)
+  }, [cancelArchiveInitFrame, filteredItems, showToast])
+
+  const handleCloseArchive = useCallback(() => {
+    cancelArchiveInitFrame()
+    setArchiveOpen(false)
+    setArchiveTargetIds([])
+  }, [cancelArchiveInitFrame])
 
   const handleArchiveConfirm = async () => {
     if (!archiveCategoryId) {
@@ -1051,8 +1098,7 @@ export default function CommissionPage() {
       showToast(`归档成功（${pending.length} 条）`, "success")
       setArchiveOpen(false)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "归档失败"
-      showToast(message, "error")
+      showToast(getUserErrorMessage(error, "归档失败"), "error")
     } finally {
       setArchiveSubmitting(false)
     }
@@ -1151,7 +1197,6 @@ export default function CommissionPage() {
         onCardClick={handleCardClick}
         onClearAll={handleClearAll}
         onExport={handleExport}
-        onDownloadImages={() => showToast("下载图片功能待迁移", "info")}
         onParseBili={() => {
           const urls = parseLines(inputValue).filter((line) => isBilibiliInput(line))
           void extractFromBiliLinks(urls)
@@ -1208,7 +1253,7 @@ export default function CommissionPage() {
           showToast("保存成功", "success")
         }}
         onCloseEdit={() => setEditTargetId(null)}
-        onArchiveAll={() => openArchive(filteredItems.map((item) => item.id))}
+        onArchiveAll={openArchiveAll}
       />
       <CommissionDialogs
         clearOpen={clearOpen}
@@ -1228,10 +1273,7 @@ export default function CommissionPage() {
         isLoading={isCategoryLoading}
         onCategoryChange={setArchiveCategoryId}
         onConfirmArchive={handleArchiveConfirm}
-        onCloseArchive={() => {
-          setArchiveOpen(false)
-          setArchiveTargetIds([])
-        }}
+        onCloseArchive={handleCloseArchive}
       />
     </>
   )

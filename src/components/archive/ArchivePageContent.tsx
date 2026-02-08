@@ -33,13 +33,14 @@ import {
 } from "@/components/ui/select"
 import * as XLSX from "xlsx"
 import { apiRequest } from "@/lib/api"
+import { getUserErrorMessage } from "@/lib/errorMessages"
 import {
   formatArchivePriceForExport,
   resolveArchiveExportLink,
   resolveArchiveProductId,
   resolveArchiveShopName,
 } from "@/components/archive/archiveExport"
-import { getArchiveSourceDisplay } from "@/components/archive/archiveSource"
+import { getArchiveSourceDisplay, getArchiveSourceLink } from "@/components/archive/archiveSource"
 import {
   createCategory,
   createItem,
@@ -58,7 +59,6 @@ import {
 } from "@/components/archive/archiveApi"
 import type { ItemResponse } from "@/components/archive/archiveApi"
 import type { CategoryItem, SpecField } from "@/components/archive/types"
-import { getDefaultArchiveCategoryId } from "@/components/archive/archiveCategoryUtils"
 import ProgressDialog from "@/components/ProgressDialog"
 
 interface ArchiveItem {
@@ -111,6 +111,12 @@ const META_KEYS = {
   promoLink: "_promo_link",
   taobaoPromoLink: "_tb_promo_link",
 }
+
+const AI_MODEL_OPTIONS = [
+  { value: "qwen3-max-2026-01-23", label: "Qwen3-Max" },
+  { value: "deepseek-chat", label: "DeepSeek" },
+  { value: "glm-4.7-FlashX", label: "GLM-4.7" },
+]
 
 const padSortOrder = (value: number) => String(value).padStart(6, "0")
 
@@ -186,7 +192,7 @@ export const resolvePriceRange = (
 }
 
 export const filterSchemesByCategory = (schemes: Scheme[], categoryValue: string) => {
-  if (!categoryValue || categoryValue === "all") {
+  if (!categoryValue) {
     return schemes
   }
   return schemes.filter(
@@ -437,9 +443,11 @@ export default function ArchivePage() {
   const categoryCountsRef = useRef<Record<string, number> | null>(null)
   const [isCategoryLoading, setIsCategoryLoading] = useState(true)
   const [searchValue, setSearchValue] = useState("")
-  const [categoryValue, setCategoryValue] = useState("all")
+  const [activeParentId, setActiveParentId] = useState("")
+  const [activeCategoryId, setActiveCategoryId] = useState("")
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 0])
   const [manualOrder, setManualOrder] = useState<string[]>([])
+  const [newPinnedIds, setNewPinnedIds] = useState<string[]>([])
   const [sortValue, setSortValue] = useState("manual")
   const [schemeFilterId, setSchemeFilterId] = useState("")
   const [schemeFilterItems, setSchemeFilterItems] = useState<ArchiveItem[]>([])
@@ -486,10 +494,13 @@ export default function ArchivePage() {
   const softRefreshOrderRef = useRef<string[] | null>(null)
   const schemeFilterCacheRef = useRef<Map<string, SchemeFilterCacheEntry>>(new Map())
   const schemeFilterTokenRef = useRef(0)
+  const categorySaveTokenRef = useRef(0)
   const skipNextLoadRef = useRef(false)
   const lastFetchOffsetRef = useRef(0)
   const itemsRef = useRef<ArchiveItem[]>([])
   const [aiModel, setAiModel] = useState("qwen3-max-2026-01-23")
+  const [aiModelSelectOpen, setAiModelSelectOpen] = useState(false)
+  const [pendingAiModel, setPendingAiModel] = useState(aiModel)
   const [aiProgressOpen, setAiProgressOpen] = useState(false)
   const [aiProgressLabel, setAiProgressLabel] = useState("获取参数")
   const [aiProgressStatus, setAiProgressStatus] = useState<
@@ -521,14 +532,67 @@ export default function ArchivePage() {
     []
   )
 
-  useEffect(() => {
-    if (!categories.length) return
-    setCategoryValue((prev) => {
-      const next = getDefaultArchiveCategoryId(categories, prev)
-      if (!next || next === prev) return prev
-      return next
-    })
+  const parentCategories = useMemo(() => {
+    return categories
+      .filter((category) => !category.parentId)
+      .slice()
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
   }, [categories])
+
+  const childCategoriesByParent = useMemo(() => {
+    const map = new Map<string, CategoryItem[]>()
+    categories
+      .filter((category) => category.parentId)
+      .forEach((category) => {
+        const parentId = String(category.parentId)
+        if (!map.has(parentId)) map.set(parentId, [])
+        map.get(parentId)?.push(category)
+      })
+    map.forEach((list) =>
+      list.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    )
+    return map
+  }, [categories])
+
+  const activeChildCategories = useMemo(() => {
+    if (!activeParentId) return []
+    return childCategoriesByParent.get(activeParentId) ?? []
+  }, [activeParentId, childCategoriesByParent])
+
+
+  useEffect(() => {
+    if (!parentCategories.length) return
+    setActiveParentId((prev) =>
+      parentCategories.some((parent) => parent.id === prev)
+        ? prev
+        : parentCategories[0].id
+    )
+  }, [parentCategories])
+
+  useEffect(() => {
+    setActiveCategoryId((prev) => {
+      const hasPrev =
+        prev.length > 0 && categories.some((category) => category.id === prev && category.parentId)
+      if (hasPrev) return prev
+
+      const preferredParentId = activeParentId || parentCategories[0]?.id || ""
+      const preferredChildren = preferredParentId
+        ? (childCategoriesByParent.get(preferredParentId) ?? [])
+        : []
+      if (preferredChildren.length > 0) {
+        return preferredChildren[0].id
+      }
+
+      for (const parent of parentCategories) {
+        const children = childCategoriesByParent.get(parent.id) ?? []
+        if (children.length > 0) {
+          return children[0].id
+        }
+      }
+
+      return ""
+    })
+  }, [activeParentId, categories, childCategoriesByParent, parentCategories])
 
   const {
     items,
@@ -548,11 +612,11 @@ export default function ArchivePage() {
     cacheKey: "archive-items",
     ttlMs: 3 * 60 * 1000,
     pageSize: 50,
-    initialFilters: { categoryId: "all", keyword: "", sort: "manual" },
+    initialFilters: { categoryId: "", keyword: "", sort: "manual" },
     fetcher: async ({ filters, offset, limit }) => {
       lastFetchOffsetRef.current = offset
       return fetchItems({
-        categoryId: filters.categoryId === "all" ? undefined : filters.categoryId,
+        categoryId: filters.categoryId || undefined,
         limit,
         offset,
         keyword: filters.keyword || undefined,
@@ -594,8 +658,8 @@ export default function ArchivePage() {
       skipNextLoadRef.current = false
       return
     }
-    setFilters({ categoryId: categoryValue, keyword: searchValue, sort: sortValue })
-  }, [categoryValue, searchValue, sortValue, setFilters])
+    setFilters({ categoryId: activeCategoryId, keyword: searchValue, sort: sortValue })
+  }, [activeCategoryId, searchValue, sortValue, setFilters])
 
   
   const isListLoading =
@@ -614,26 +678,34 @@ export default function ArchivePage() {
   )
 
   const orderedItems = useMemo(() => {
+    const applyPinned = (list: ArchiveItem[]) => {
+      if (!newPinnedIds.length) return list
+      const pinnedSet = new Set(newPinnedIds)
+      const pinned = list.filter((item) => pinnedSet.has(item.id))
+      const rest = list.filter((item) => !pinnedSet.has(item.id))
+      return [...pinned, ...rest]
+    }
     if (schemeFilterId) {
       if (sortValue === "manual") {
-        return [...baseItems]
+        return applyPinned([...baseItems])
       }
-      return [...baseItems].sort((a, b) => a.price - b.price)
+      return applyPinned([...baseItems].sort((a, b) => a.price - b.price))
     }
     if (sortValue === "manual" && manualOrder.length > 0) {
       const orderMap = new Map(manualOrder.map((id, index) => [id, index]))
-      return [...baseItems].sort((a, b) => {
+      const sorted = [...baseItems].sort((a, b) => {
         const aIndex = orderMap.get(a.id) ?? Number.MAX_SAFE_INTEGER
         const bIndex = orderMap.get(b.id) ?? Number.MAX_SAFE_INTEGER
         return aIndex - bIndex
       })
+      return applyPinned(sorted)
     }
-    return [...baseItems].sort((a, b) => a.price - b.price)
-  }, [baseItems, manualOrder, sortValue, schemeFilterId])
+    return applyPinned([...baseItems].sort((a, b) => a.price - b.price))
+  }, [baseItems, manualOrder, sortValue, schemeFilterId, newPinnedIds])
 
   const visibleSchemes = useMemo(
-    () => filterSchemesByCategory(schemes, categoryValue),
-    [schemes, categoryValue]
+    () => filterSchemesByCategory(schemes, activeCategoryId),
+    [schemes, activeCategoryId]
   )
 
   useEffect(() => {
@@ -672,14 +744,13 @@ export default function ArchivePage() {
       const matchesSearch =
         searchValue.trim() === "" ||
         item.title.toLowerCase().includes(searchValue.toLowerCase())
-      const matchesCategory =
-        categoryValue === "all" || item.categoryId === categoryValue
+      const matchesCategory = !activeCategoryId || item.categoryId === activeCategoryId
       const matchesMin = item.price >= safePriceRange[0]
       const matchesMax = item.price <= safePriceRange[1]
 
       return matchesSearch && matchesCategory && matchesMin && matchesMax
     })
-  }, [orderedItems, searchValue, categoryValue, safePriceRange])
+  }, [orderedItems, searchValue, activeCategoryId, safePriceRange])
 
   const isSameOrderById = (prevIds: string[], nextIds: string[]) => {
     if (prevIds.length !== nextIds.length) return false
@@ -691,6 +762,13 @@ export default function ArchivePage() {
 
   const buildFilteredItemsSnapshot = useCallback(
     (options?: { items?: ArchiveItem[]; schemeItems?: ArchiveItem[] }) => {
+      const applyPinned = (list: ArchiveItem[]) => {
+        if (!newPinnedIds.length) return list
+        const pinnedSet = new Set(newPinnedIds)
+        const pinned = list.filter((item) => pinnedSet.has(item.id))
+        const rest = list.filter((item) => !pinnedSet.has(item.id))
+        return [...pinned, ...rest]
+      }
       const nextItems = options?.items ?? items
       const nextSchemeItems = options?.schemeItems ?? schemeFilterItems
       const nextBaseItems = schemeFilterId ? nextSchemeItems : nextItems
@@ -711,6 +789,7 @@ export default function ArchivePage() {
       } else {
         nextOrdered = [...nextBaseItems].sort((a, b) => a.price - b.price)
       }
+      nextOrdered = applyPinned(nextOrdered)
 
       const values = nextBaseItems
         .map((item) => item.price)
@@ -722,7 +801,7 @@ export default function ArchivePage() {
       const keyword = searchValue.trim().toLowerCase()
       const nextFiltered = nextOrdered.filter((item) => {
         const matchesSearch = keyword === "" || item.title.toLowerCase().includes(keyword)
-        const matchesCategory = categoryValue === "all" || item.categoryId === categoryValue
+        const matchesCategory = !activeCategoryId || item.categoryId === activeCategoryId
         const matchesMin = item.price >= nextSafeRange[0]
         const matchesMax = item.price <= nextSafeRange[1]
 
@@ -737,17 +816,18 @@ export default function ArchivePage() {
       schemeFilterId,
       sortValue,
       manualOrder,
+      newPinnedIds,
       priceRange,
       searchValue,
-      categoryValue,
+      activeCategoryId,
     ]
   )
 
   const selectedCategoryName = useMemo(() => {
-    if (categoryValue === "all") return "全部"
-    const category = categories.find((item) => item.id === categoryValue)
+    if (!activeCategoryId) return "分类"
+    const category = categories.find((item) => item.id === activeCategoryId)
     return category?.name || "分类"
-  }, [categoryValue, categories])
+  }, [activeCategoryId, categories])
 
   useEffect(() => {
     if (chunkTimerRef.current) {
@@ -807,6 +887,14 @@ export default function ArchivePage() {
   const handleSortChange = (value: string) => {
     if (isFixSortSaving) return
     setSortValue(value)
+  }
+
+  const handleSelectParent = (parentId: string) => {
+    setActiveParentId(parentId)
+  }
+
+  const handleSelectCategory = (categoryId: string) => {
+    setActiveCategoryId(categoryId)
   }
 
   const hydrateCategoriesFromCache = useCallback(() => {
@@ -889,6 +977,7 @@ export default function ArchivePage() {
         sortOrder: category.sort_order ?? 0,
         specFields: category.spec_fields ?? [],
         count: category.item_count ?? 0,
+        parentId: category.parent_id ?? null,
       }))
       setCategories(
         applyCountsToCategories(normalized, categoryCountsRef.current)
@@ -998,8 +1087,7 @@ export default function ArchivePage() {
       } catch (error) {
         if (token !== schemeFilterTokenRef.current) return
         setSchemeFilterItems([])
-        const message = error instanceof Error ? error.message : "加载方案商品失败"
-        setSchemeErrorMessage(message)
+        setSchemeErrorMessage(getUserErrorMessage(error, "\u52a0\u8f7d\u65b9\u6848\u5546\u54c1\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5"))
       } finally {
         if (token === schemeFilterTokenRef.current) {
           setSchemeListLoading(false)
@@ -1038,13 +1126,13 @@ export default function ArchivePage() {
 
   useEffect(() => {
     if (!schemeFilterId) return
-    if (categoryValue === "all") return
+    if (!activeCategoryId) return
     if (isSchemeLoading && schemes.length === 0) return
     const current = schemes.find((scheme) => scheme.id === schemeFilterId)
-    if (!current || String(current.category_id ?? "") !== String(categoryValue)) {
+    if (!current || String(current.category_id ?? "") !== String(activeCategoryId)) {
       setSchemeFilterId("")
     }
-  }, [categoryValue, isSchemeLoading, schemeFilterId, schemes])
+  }, [activeCategoryId, isSchemeLoading, schemeFilterId, schemes])
 
   const loadMore = useCallback(async () => {
     if (schemeFilterId) return
@@ -1112,8 +1200,7 @@ export default function ArchivePage() {
       showToast("已加入方案", "success")
       closeSchemeJoinDialog()
     } catch (error) {
-      const message = error instanceof Error ? error.message : "加入方案失败"
-      showToast(message, "error")
+      showToast(getUserErrorMessage(error, "加入方案失败"), "error")
     } finally {
       setIsSchemeJoinSaving(false)
     }
@@ -1167,6 +1254,7 @@ export default function ArchivePage() {
     nextOrder.splice(toIndex, 0, moved)
     dragIdRef.current = null
     setManualOrder(nextOrder)
+    setNewPinnedIds([])
     if (sortValue !== "manual") {
       skipNextLoadRef.current = true
       setSortValue("manual")
@@ -1192,6 +1280,7 @@ export default function ArchivePage() {
     )
     setManualOrder(updates.map((item) => item.id))
     setSortValue("manual")
+    setNewPinnedIds([])
     const results = await Promise.allSettled(
       updates.map((item) => updateItem(item.id, { spec: item.spec }))
     )
@@ -1375,8 +1464,7 @@ export default function ArchivePage() {
       const filename = `${sanitizeFilename(selectedCategoryName)}-${getTimestamp()}.xlsx`
       XLSX.writeFile(workbook, filename)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "导出失败"
-      showToast(message, "error")
+      showToast(getUserErrorMessage(error, "导出失败"), "error")
     }
   }
 
@@ -1452,7 +1540,7 @@ export default function ArchivePage() {
             ],
           }))
         } catch (error) {
-          const reason = error instanceof Error ? error.message : "上传失败"
+          const reason = getUserErrorMessage(error, "\u4e0a\u4f20\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5")
           setReplaceCoverProgress((prev) => ({
             ...prev,
             processed: prev.processed + 1,
@@ -1569,10 +1657,9 @@ export default function ArchivePage() {
       setAiProgressOpen(false)
       setAiPreviewOpen(true)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "获取参数失败"
       setAiProgressStatus("error")
       setAiProgressOpen(false)
-      showToast(message, "error")
+      showToast(getUserErrorMessage(error, "\u83b7\u53d6\u53c2\u6570\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5"), "error")
     }
   }
 
@@ -1608,14 +1695,13 @@ export default function ArchivePage() {
       showToast("参数已写入", "success")
       closeAiPreview()
     } catch (error) {
-      const message = error instanceof Error ? error.message : "参数写入失败"
-      showToast(message, "error")
+      showToast(getUserErrorMessage(error, "参数写入失败"), "error")
     } finally {
       setAiConfirmSaving(false)
     }
   }
 
-  const handleBatchFetchParams = async () => {
+  const startBatchFetchParams = async (model: string) => {
     if (aiProgressStatus === "running") return
     setAiProgressLabel("批量获取参数")
     setAiProgressOpen(true)
@@ -1625,13 +1711,13 @@ export default function ArchivePage() {
     setAiProgressFailures([])
     try {
       const start = await aiBatchStart({
-        category_id: categoryValue === "all" ? undefined : categoryValue,
+        category_id: activeCategoryId || undefined,
         scheme_id: schemeFilterId || undefined,
         keyword: searchValue.trim() || undefined,
         price_min: safePriceRange[0] || undefined,
         price_max: safePriceRange[1] || undefined,
         sort: sortValue || undefined,
-        model: aiModel,
+        model,
       })
       setAiBatchJobId(start.job_id)
       setAiProgressTotal(start.total)
@@ -1662,16 +1748,27 @@ export default function ArchivePage() {
         } catch (error) {
           clearAiBatchTimer()
           setAiProgressStatus("error")
-          const message = error instanceof Error ? error.message : "批量获取参数失败"
-          showToast(message, "error")
+          showToast(getUserErrorMessage(error, "批量获取参数失败"), "error")
         }
       }, 1200)
     } catch (error) {
       setAiProgressStatus("error")
       setAiProgressOpen(false)
-      const message = error instanceof Error ? error.message : "批量获取参数失败"
-      showToast(message, "error")
+      showToast(getUserErrorMessage(error, "批量获取参数失败"), "error")
     }
+  }
+
+  const handleBatchFetchParams = () => {
+    if (aiProgressStatus === "running") return
+    setPendingAiModel(aiModel)
+    setAiModelSelectOpen(true)
+  }
+
+  const handleConfirmBatchFetch = () => {
+    const nextModel = pendingAiModel
+    setAiModel(nextModel)
+    setAiModelSelectOpen(false)
+    startBatchFetchParams(nextModel)
   }
 
   const handleOpenLink = (link: string) => {
@@ -1871,8 +1968,17 @@ export default function ArchivePage() {
         remark: values.remark,
         spec: specPayload,
       })
-        .then(() => {
-          refreshItems()
+        .then((data) => {
+          const created = data?.item
+            ? normalizeArchiveItem(data.item as ItemResponse)
+            : null
+          if (!created) {
+            refreshItems()
+            return
+          }
+          setItems((prev) => [created, ...prev])
+          setManualOrder((prev) => [created.id, ...prev.filter((id) => id !== created.id)])
+          setNewPinnedIds((prev) => [created.id, ...prev.filter((id) => id !== created.id)])
         })
         .catch((error) => {
           throw error
@@ -1883,36 +1989,162 @@ export default function ArchivePage() {
   }
 
   const handleSaveCategories = (next: CategoryItem[]) => {
-    const existingIds = new Set(categories.map((item) => item.id))
+    const previousCategories = categories
+    const previousCategoryMap = new Map(previousCategories.map((item) => [item.id, item]))
+    const existingIds = new Set(previousCategories.map((item) => item.id))
     const nextIds = new Set(next.map((item) => item.id))
-    const updates = next.map((item, index) => ({
-      ...item,
-      sortOrder: (index + 1) * 10,
-    }))
-    const tasks: Promise<unknown>[] = []
-    updates.forEach((item) => {
-      if (existingIds.has(item.id)) {
-        tasks.push(
-          updateCategory(item.id, {
+
+    const parents = next.filter((item) => !item.parentId)
+    const childrenByParent = new Map<string, CategoryItem[]>()
+    next
+      .filter((item) => item.parentId)
+      .forEach((item) => {
+        const parentId = String(item.parentId)
+        if (!childrenByParent.has(parentId)) {
+          childrenByParent.set(parentId, [])
+        }
+        childrenByParent.get(parentId)?.push(item)
+      })
+
+    const normalized: CategoryItem[] = [
+      ...parents.map((item, index) => ({
+        ...item,
+        parentId: null,
+        sortOrder: (index + 1) * 10,
+      })),
+      ...Array.from(childrenByParent.entries()).flatMap(([parentId, list]) =>
+        list.map((item, index) => ({
+          ...item,
+          parentId,
+          sortOrder: (index + 1) * 10,
+        }))
+      ),
+    ]
+
+    const optimisticCategories = applyCountsToCategories(
+      normalized.map((item) => ({
+        ...item,
+        count: previousCategoryMap.get(item.id)?.count ?? item.count ?? 0,
+      })),
+      categoryCountsRef.current
+    )
+
+    setCategories(optimisticCategories)
+    setCache(CACHE_KEYS.categories, optimisticCategories)
+
+    const saveToken = ++categorySaveTokenRef.current
+
+    void (async () => {
+      try {
+        const idMap = new Map<string, string>()
+        const persisted: CategoryItem[] = []
+
+        const parentQueue = normalized.filter((item) => !item.parentId)
+        const childQueue = normalized.filter((item) => item.parentId)
+
+        for (const item of parentQueue) {
+          if (existingIds.has(item.id)) {
+            await updateCategory(item.id, {
+              name: item.name,
+              sort_order: item.sortOrder,
+              parent_id: null,
+            })
+            persisted.push({
+              ...item,
+              parentId: null,
+              count: previousCategoryMap.get(item.id)?.count ?? item.count ?? 0,
+            })
+            continue
+          }
+
+          const response = await createCategory({
             name: item.name,
             sort_order: item.sortOrder,
+            parent_id: null,
           })
+          const created = response?.category
+          const createdId = created?.id ? String(created.id) : item.id
+          if (createdId !== item.id) {
+            idMap.set(item.id, createdId)
+          }
+          persisted.push({
+            ...item,
+            id: createdId,
+            parentId: null,
+            sortOrder: created?.sort_order ?? item.sortOrder,
+            specFields: created?.spec_fields ?? item.specFields,
+            count: created?.item_count ?? item.count ?? 0,
+          })
+        }
+
+        for (const item of childQueue) {
+          const resolvedParentId = item.parentId
+            ? (idMap.get(item.parentId) ?? item.parentId)
+            : null
+
+          if (existingIds.has(item.id)) {
+            await updateCategory(item.id, {
+              name: item.name,
+              sort_order: item.sortOrder,
+              parent_id: resolvedParentId,
+            })
+            persisted.push({
+              ...item,
+              parentId: resolvedParentId,
+              count: previousCategoryMap.get(item.id)?.count ?? item.count ?? 0,
+            })
+            continue
+          }
+
+          const response = await createCategory({
+            name: item.name,
+            sort_order: item.sortOrder,
+            parent_id: resolvedParentId,
+          })
+          const created = response?.category
+          const createdId = created?.id ? String(created.id) : item.id
+          if (createdId !== item.id) {
+            idMap.set(item.id, createdId)
+          }
+          persisted.push({
+            ...item,
+            id: createdId,
+            parentId: created?.parent_id ?? resolvedParentId,
+            sortOrder: created?.sort_order ?? item.sortOrder,
+            specFields: created?.spec_fields ?? item.specFields,
+            count: created?.item_count ?? item.count ?? 0,
+          })
+        }
+
+        await Promise.all(
+          previousCategories
+            .filter((item) => !nextIds.has(item.id))
+            .map((item) => deleteCategory(item.id))
         )
-      } else {
-        tasks.push(createCategory({ name: item.name, sort_order: item.sortOrder }))
+
+        if (saveToken !== categorySaveTokenRef.current) {
+          return
+        }
+
+        const finalCategories = applyCountsToCategories(persisted, categoryCountsRef.current)
+        setCategories(finalCategories)
+        setCache(CACHE_KEYS.categories, finalCategories)
+
+        if (idMap.size > 0) {
+          setActiveParentId((prev) => idMap.get(prev) ?? prev)
+          setActiveCategoryId((prev) => idMap.get(prev) ?? prev)
+        }
+      } catch {
+        if (saveToken !== categorySaveTokenRef.current) {
+          return
+        }
+
+        setCategories(previousCategories)
+        setCache(CACHE_KEYS.categories, previousCategories)
+        showToast("\u5206\u7c7b\u4fdd\u5b58\u5931\u8d25\uff0c\u5df2\u6062\u590d\u4e0a\u4e00\u6b21\u7ed3\u679c", "error")
+        loadCategories()
       }
-    })
-    categories.forEach((item) => {
-      if (!nextIds.has(item.id)) {
-        tasks.push(deleteCategory(item.id))
-      }
-    })
-    Promise.all(tasks)
-      .then(() => {
-        showToast("分类已保存", "success")
-        refreshItems()
-      })
-      .catch(() => showToast("分类保存失败", "error"))
+    })()
   }
 
   const handleSavePresetFields = (
@@ -1985,6 +2217,11 @@ export default function ArchivePage() {
         sourceRef: item.sourceRef,
         spec: item.spec,
       }),
+      sourceLink: getArchiveSourceLink({
+        sourceType: item.sourceType,
+        sourceRef: item.sourceRef,
+        spec: item.spec,
+      }),
     }
   })
 
@@ -1993,6 +2230,10 @@ export default function ArchivePage() {
       <ArchivePageView
       items={itemsView}
       categories={categories}
+      parentCategories={parentCategories}
+      childCategories={activeChildCategories}
+      activeParentId={activeParentId}
+      activeCategoryId={activeCategoryId}
       isCategoryLoading={isCategoryLoading}
       isListLoading={isListLoading}
       isRefreshing={isRefreshing}
@@ -2002,7 +2243,6 @@ export default function ArchivePage() {
       isSchemeLoading={isSchemeLoading}
       onSchemeChange={(value) => setSchemeFilterId(value)}
       errorMessage={errorMessage}
-      selectedCategory={categoryValue}
       searchValue={searchValue}
       onSearchChange={setSearchValue}
       priceRange={priceRange}
@@ -2031,11 +2271,10 @@ export default function ArchivePage() {
       onOpenLink={handleOpenLink}
       onCoverClick={handleCoverClick}
       onFetchParams={handleFetchParams}
-      aiModel={aiModel}
-      onAiModelChange={setAiModel}
       onBatchFetchParams={handleBatchFetchParams}
       isAiBatchRunning={aiProgressStatus === "running"}
-      onSelectCategory={(id) => setCategoryValue(id)}
+      onSelectParent={handleSelectParent}
+      onSelectCategory={handleSelectCategory}
       onClearList={() => {
         if (!filteredItems.length) {
           showToast("当前没有可清空的商品", "info")
@@ -2064,8 +2303,8 @@ export default function ArchivePage() {
       onSubmitProductForm={handleSubmitProductForm}
       productFormInitialValues={productFormInitialValues}
       presetFields={
-        categories.find((item) => item.id === categoryValue)?.specFields ??
-        categories[0]?.specFields ??
+        categories.find((item) => item.id === activeCategoryId)?.specFields ??
+        activeChildCategories[0]?.specFields ??
         []
       }
       importProgressState={importState}
@@ -2131,6 +2370,43 @@ export default function ArchivePage() {
           }
         }}
       />
+      <Dialog
+        open={aiModelSelectOpen}
+        onOpenChange={(open) => {
+          if (!open) setAiModelSelectOpen(false)
+        }}
+      >
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>选择模型</DialogTitle>
+            <DialogDescription>批量获取参数前请选择使用的模型。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="text-sm text-slate-600">模型</div>
+            <Select value={pendingAiModel} onValueChange={setPendingAiModel}>
+              <SelectTrigger aria-label="AI model">
+                <SelectValue placeholder="选择模型" />
+              </SelectTrigger>
+              <SelectContent>
+                {AI_MODEL_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setAiModelSelectOpen(false)}
+            >
+              取消
+            </Button>
+            <Button onClick={handleConfirmBatchFetch}>开始获取</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={isSchemeJoinOpen}
         onOpenChange={(open) => {

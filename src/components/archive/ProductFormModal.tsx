@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/Toast"
 import { apiRequest } from "@/lib/api"
+import { getUserErrorMessage } from "@/lib/errorMessages"
 
 interface CategoryOption {
   label: string
@@ -405,7 +406,7 @@ export default function ProductFormModal({
       showToast("\u89e3\u6790\u6210\u529f", "success")
     } catch (error) {
       showToast(
-        error instanceof Error ? error.message : "????????",
+        getUserErrorMessage(error, "\u89e3\u6790\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5"),
         "error"
       )
     } finally {
@@ -463,7 +464,7 @@ export default function ProductFormModal({
       showToast("\u89e3\u6790\u6210\u529f", "success")
     } catch (error) {
       showToast(
-        error instanceof Error ? error.message : "????????",
+        getUserErrorMessage(error, "\u89e3\u6790\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5"),
         "error"
       )
     } finally {
@@ -534,7 +535,7 @@ export default function ProductFormModal({
       ;(result as Promise<void>)
         .then(() => showToast(successMessage, "success"))
         .catch((error) => {
-          const message = error instanceof Error ? error.message : errorMessage
+          const message = getUserErrorMessage(error, errorMessage)
           showToast(message, "error")
         })
     }
@@ -574,7 +575,7 @@ export default function ProductFormModal({
     } catch (error) {
       setValues((prev) => ({ ...prev, image: previous }))
       showToast(
-        error instanceof Error ? error.message : "封面上传失败",
+        getUserErrorMessage(error, "封面上传失败"),
         "error"
       )
     } finally {
