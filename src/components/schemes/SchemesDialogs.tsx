@@ -84,7 +84,10 @@ export default function SchemesDialogs({
       ) : null}
 
       <Dialog open={formDialog.open} onOpenChange={formDialog.onOpenChange}>
-        <DialogContent className="sm:max-w-[520px]">
+        <DialogContent
+          className="sm:max-w-[520px]"
+          onInteractOutside={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>{formDialog.mode === "edit" ? "编辑方案" : "新建方案"}</DialogTitle>
             <DialogDescription>完善方案信息，方便后续管理。</DialogDescription>

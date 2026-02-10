@@ -111,7 +111,7 @@ export default function SchemeDetailPageView({
   sidebar,
 }: SchemeDetailPageViewProps) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-0">
       <SchemeDetailHeader
         name={header.name}
         categoryName={header.categoryName}
@@ -121,15 +121,17 @@ export default function SchemeDetailPageView({
         onExportJson={header.onExportJson}
         onExportExcel={header.onExportExcel}
         onOpenFeishu={header.onOpenFeishu}
+        className="rounded-none border-b-0"
       />
 
-      <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
-        <div className="space-y-6">
+      <div className="grid gap-0 lg:grid-cols-[320px_1fr]">
+        <div className="rounded-b-2xl border border-slate-200 bg-white shadow-card">
           <SchemeDetailToolbar
             sortValue={toolbar.sortValue}
             onSortChange={toolbar.onSortChange}
             onClearItems={toolbar.onClearItems}
             onOpenPicker={toolbar.onOpenPicker}
+            className="rounded-none border-x-0 border-t-0 border-b border-slate-200 bg-transparent p-5 shadow-none"
           />
 
           <SchemeDetailProductList
@@ -142,16 +144,19 @@ export default function SchemeDetailPageView({
             onDragStart={productList.onDragStart}
             onDrop={productList.onDrop}
             onCardClick={productList.onCardClick}
+            className="rounded-none border-0 bg-transparent p-5 shadow-none"
           />
         </div>
 
-        <SchemeDetailSidebar
-          copywriting={sidebar.copywriting}
-          productLinks={sidebar.productLinks}
-          commentReply={sidebar.commentReply}
-          blueLink={sidebar.blueLink}
-          image={sidebar.image}
-        />
+        <div className="p-6">
+          <SchemeDetailSidebar
+            copywriting={sidebar.copywriting}
+            productLinks={sidebar.productLinks}
+            commentReply={sidebar.commentReply}
+            blueLink={sidebar.blueLink}
+            image={sidebar.image}
+          />
+        </div>
       </div>
     </div>
   )

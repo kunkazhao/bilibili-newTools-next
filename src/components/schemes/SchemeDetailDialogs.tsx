@@ -174,7 +174,10 @@ export default function SchemeDetailDialogs({
       </Dialog>
 
       <Dialog open={prompt.open} onOpenChange={prompt.onOpenChange}>
-        <DialogContent className="sm:max-w-[640px]">
+        <DialogContent
+          className="sm:max-w-[640px]"
+          onInteractOutside={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>修改提示词</DialogTitle>
             <DialogDescription>可根据需求调整生成提示词。</DialogDescription>
@@ -194,7 +197,10 @@ export default function SchemeDetailDialogs({
       </Dialog>
 
       <Dialog open={feishu.open} onOpenChange={feishu.onOpenChange}>
-        <DialogContent className="sm:max-w-[680px]">
+        <DialogContent
+          className="sm:max-w-[680px]"
+          onInteractOutside={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>写入飞书表格</DialogTitle>
             <DialogDescription>将当前筛选结果写入飞书多维表格。</DialogDescription>

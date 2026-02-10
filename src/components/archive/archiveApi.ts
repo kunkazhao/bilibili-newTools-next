@@ -69,6 +69,7 @@ export async function fetchOverview(params: {
 export async function createCategory(payload: {
   name: string
   sort_order?: number
+  parent_id?: string | null
 }) {
   return apiRequest<{ category: CategoryResponse }>(
     "/api/sourcing/categories",
@@ -84,6 +85,7 @@ export async function updateCategory(
   payload: {
     name?: string
     sort_order?: number
+    parent_id?: string | null
     spec_fields?: { key: string; value?: string; example?: string }[]
   }
 ) {

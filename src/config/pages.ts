@@ -13,7 +13,7 @@ import ScriptPage from "@/pages/ScriptPage"
 import ZhihuRadarPage from "@/pages/ZhihuRadarPage"
 import { openSchemeDetailPage } from "@/utils/standaloneRoutes"
 
-export type PageGroup = "primary" | "utility"
+export type PageGroup = "primary" | "utility" | "edge"
 
 export interface PageConfig {
   id: string
@@ -68,7 +68,7 @@ export const PAGES: PageConfig[] = [
   {
     id: "recognize",
     label: "获取商品参数",
-    group: "utility",
+    group: "edge",
     render: () => createElement(RecognizePage),
   },
   {
@@ -80,25 +80,26 @@ export const PAGES: PageConfig[] = [
   {
     id: "script",
     label: "提取视频文案",
-    group: "utility",
+    group: "edge",
     render: () => createElement(ScriptPage),
   },
   {
     id: "autocart",
     label: "一键抠图",
-    group: "utility",
+    group: "edge",
     render: () => createElement(AutoCartPage),
   },
   {
     id: "zhihu-radar",
     label: "知乎流量雷达",
-    group: "utility",
+    group: "edge",
     render: () => createElement(ZhihuRadarPage),
   },
 ]
 
 export const PRIMARY_PAGES = PAGES.filter((page) => page.group === "primary")
 export const UTILITY_PAGES = PAGES.filter((page) => page.group === "utility")
+export const EDGE_PAGES = PAGES.filter((page) => page.group === "edge")
 
 export function getPageById(pageId: string): PageConfig | undefined {
   return PAGES.find((page) => page.id === pageId)

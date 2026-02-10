@@ -102,6 +102,7 @@ class SourcingCategoryCreate(BaseModel):
     color: Optional[str] = None
     spec_fields: Optional[List[Dict[str, Any]]] = None
     sort_order: Optional[int] = None
+    parent_id: Optional[str] = None
 
 
 class SourcingCategoryUpdate(BaseModel):
@@ -109,6 +110,7 @@ class SourcingCategoryUpdate(BaseModel):
     color: Optional[str] = None
     spec_fields: Optional[List[Dict[str, Any]]] = None
     sort_order: Optional[int] = None
+    parent_id: Optional[str] = None
 
 
 class SourcingItemBase(BaseModel):
@@ -4357,6 +4359,7 @@ def normalize_sourcing_category(row: Dict[str, Any], spec_fields: Optional[List[
         "uid_counter": row.get("uid_counter") or 0,
         "item_count": count,
         "sort_order": row.get("sort_order"),
+        "parent_id": row.get("parent_id"),
         "spec_fields": spec_fields,
         "created_at": row.get("created_at"),
 

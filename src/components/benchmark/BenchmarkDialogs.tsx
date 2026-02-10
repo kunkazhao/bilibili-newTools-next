@@ -181,7 +181,10 @@ export default function BenchmarkDialogs({
       </Dialog>
 
       <Dialog open={addDialog.open} onOpenChange={addDialog.onOpenChange}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent
+          className="max-w-2xl"
+          onInteractOutside={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>添加对标视频</DialogTitle>
             <DialogDescription>支持粘贴多个链接或 BV 号，每行一个。</DialogDescription>
@@ -244,7 +247,10 @@ export default function BenchmarkDialogs({
           if (!open) editDialog.onClose()
         }}
       >
-        <DialogContent className="max-w-xl">
+        <DialogContent
+          className="max-w-xl"
+          onInteractOutside={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>编辑对标视频</DialogTitle>
             <DialogDescription>Edit benchmark video.</DialogDescription>
@@ -296,7 +302,10 @@ export default function BenchmarkDialogs({
       </Dialog>
 
       <Dialog open={categoryDialog.open} onOpenChange={categoryDialog.onOpenChange}>
-        <DialogContent className="max-w-xl">
+        <DialogContent
+          className="max-w-xl"
+          onInteractOutside={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>分类管理</DialogTitle>
             <DialogDescription>支持空格分隔一次新增多个分类。</DialogDescription>

@@ -238,6 +238,7 @@ export default function DirectPlansPageContent() {
         isOpen={formOpen}
         title={formTitle}
         onSubmit={handleSubmit}
+        closeOnOverlayClick={false}
         onOpenChange={(open) => {
           if (!open) closeForm()
         }}

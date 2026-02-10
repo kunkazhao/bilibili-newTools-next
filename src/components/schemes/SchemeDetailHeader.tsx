@@ -1,4 +1,5 @@
 ﻿import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 
 type SchemeDetailHeaderProps = {
   name: string
@@ -9,6 +10,7 @@ type SchemeDetailHeaderProps = {
   onExportJson: () => void
   onExportExcel: () => void
   onOpenFeishu: () => void
+  className?: string
 }
 
 export default function SchemeDetailHeader({
@@ -19,9 +21,15 @@ export default function SchemeDetailHeader({
   onExportJson,
   onExportExcel,
   onOpenFeishu,
+  className,
 }: SchemeDetailHeaderProps) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
+    <div
+      className={cn(
+        "flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-card",
+        className
+      )}
+    >
       <div className="flex flex-wrap items-center gap-4 text-sm text-slate-600">
         <span className="font-semibold text-slate-900">方案：{name}</span>
         <span>分类：{categoryName}</span>

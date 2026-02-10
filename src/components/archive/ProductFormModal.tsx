@@ -597,6 +597,7 @@ export default function ProductFormModal({
       onSubmit={handleSubmit}
       confirmLabel="保存"
       size="lg"
+      closeOnOverlayClick={false}
     >
       <div className="space-y-5">
         <div className="space-y-2">

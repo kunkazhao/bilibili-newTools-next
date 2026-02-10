@@ -4,6 +4,7 @@ export interface CategoryResponse {
   id: string
   name: string
   sort_order: number | null
+  parent_id?: string | null
   spec_fields: SpecField[]
   item_count?: number
 }

@@ -74,7 +74,10 @@ export default function MyAccountDialogs({
 
   return (
     <Dialog open={accountModalOpen} onOpenChange={onAccountOpenChange}>
-      <DialogContent className="sm:max-w-[640px]">
+      <DialogContent
+        className="sm:max-w-[640px]"
+        onInteractOutside={(event) => event.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>账号管理</DialogTitle>
           <DialogDescription>新增、编辑或删除账号。</DialogDescription>

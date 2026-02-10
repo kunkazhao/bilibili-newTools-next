@@ -98,7 +98,7 @@ export default function SchemeDetailSidebar({
 }: SchemeDetailSidebarProps) {
   const countId = useId()
   return (
-    <aside className="grid gap-3 lg:grid-cols-3">
+    <aside className="grid gap-6 lg:grid-cols-3">
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
         <div className="flex items-start justify-between gap-3">
           <div>

@@ -4,13 +4,6 @@ import { Button } from "@/components/ui/button"
 import EditableListRow from "@/components/ui/editable-list-row"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Plus } from "lucide-react"
 import type { CategoryItem } from "@/components/archive/types"
 
@@ -197,21 +190,6 @@ export default function CategoryManagerModal({
     )
   }
 
-  const handleChangeChildParent = (id: string, parentId: string) => {
-    const siblings = childrenByParent.get(parentId) ?? []
-    setDrafts((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              parentId,
-              sortOrder: getNextSortOrder(siblings),
-            }
-          : item
-      )
-    )
-  }
-
   const handleParentReorder = (targetId: string) => {
     if (!dragState || dragState.type !== "parent") return
     const ordered = reorderList(parentDrafts, dragState.id, targetId)
@@ -311,6 +289,7 @@ export default function CategoryManagerModal({
         if (!open) onClose()
       }}
       onSubmit={handleSave}
+      closeOnOverlayClick={false}
       confirmLabel="保存"
     >
       {errorMessage ? <div className="text-xs text-rose-500">{errorMessage}</div> : null}
@@ -325,6 +304,11 @@ export default function CategoryManagerModal({
               name="new-parent-category"
               aria-label="New parent category"
               onChange={(event) => setNewParentName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return
+                event.preventDefault()
+                handleAddParent()
+              }}
             />
             
             <Button
@@ -337,7 +321,7 @@ export default function CategoryManagerModal({
               <Plus className="h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
-          <ScrollArea className="dialog-list rounded-xl border border-slate-200 bg-slate-50/40 p-2" data-dialog-scroll="true">
+          <ScrollArea className="dialog-list" data-dialog-scroll="true">
             <div className="space-y-2 pr-2">
               {parentDrafts.map((item) => (
                 <EditableListRow
@@ -378,25 +362,7 @@ export default function CategoryManagerModal({
         </div>
 
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="text-sm font-semibold text-slate-700">二级分类</div>
-            <Select
-              value={activeParentId}
-              onValueChange={(value) => setActiveParentId(value)}
-              disabled={parentDrafts.length === 0}
-            >
-              <SelectTrigger className="h-10 w-[180px]" aria-label="Select parent">
-                <SelectValue placeholder="选择一级分类" />
-              </SelectTrigger>
-              <SelectContent>
-                {parentDrafts.map((parent) => (
-                  <SelectItem key={parent.id} value={parent.id}>
-                    {parent.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <div className="text-sm font-semibold text-slate-700">二级分类</div>
           <div className="flex items-center gap-2">
             <input
               className="h-10 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
@@ -405,6 +371,11 @@ export default function CategoryManagerModal({
               name="new-child-category"
               aria-label="New child category"
               onChange={(event) => setNewChildName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return
+                event.preventDefault()
+                handleAddChild()
+              }}
             />
             
             <Button
@@ -418,7 +389,7 @@ export default function CategoryManagerModal({
               <Plus className="h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
-          <ScrollArea className="dialog-list rounded-xl border border-slate-200 bg-slate-50/40 p-2" data-dialog-scroll="true">
+          <ScrollArea className="dialog-list" data-dialog-scroll="true">
             <div className="space-y-2 pr-2">
               {activeChildren.map((item) => (
                 <EditableListRow
@@ -437,51 +408,17 @@ export default function CategoryManagerModal({
                   onConfirm={() => handleConfirmEditChild(item.id)}
                   onCancel={handleCancelEditChild}
                   viewContent={(
-                    <div className="flex items-center gap-2">
-                      <div className="modal-list-field flex-1 border-transparent bg-transparent">
-                        {item.name}
-                      </div>
-                      <Select
-                        value={String(item.parentId)}
-                        onValueChange={(value) => handleChangeChildParent(item.id, value)}
-                      >
-                        <SelectTrigger className="h-8 w-[120px]" aria-label="Move parent">
-                          <SelectValue placeholder="???????" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {parentDrafts.map((parent) => (
-                            <SelectItem key={parent.id} value={parent.id}>
-                              {parent.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                    <div className="modal-list-field border-transparent bg-transparent">
+                      {item.name}
                     </div>
                   )}
                   editContent={(
-                    <div className="flex items-center gap-2">
-                      <Input
-                        aria-label="Child category name"
-                        className="modal-list-field flex-1 focus-visible:ring-2 focus-visible:ring-brand/30"
-                        value={editingChildId === item.id ? editingChildName : item.name}
-                        onChange={(event) => setEditingChildName(event.target.value)}
-                      />
-                      <Select
-                        value={String(item.parentId)}
-                        onValueChange={(value) => handleChangeChildParent(item.id, value)}
-                      >
-                        <SelectTrigger className="h-8 w-[120px]" aria-label="Move parent">
-                          <SelectValue placeholder="???????" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {parentDrafts.map((parent) => (
-                            <SelectItem key={parent.id} value={parent.id}>
-                              {parent.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    <Input
+                      aria-label="Child category name"
+                      className="modal-list-field focus-visible:ring-2 focus-visible:ring-brand/30"
+                      value={editingChildId === item.id ? editingChildName : item.name}
+                      onChange={(event) => setEditingChildName(event.target.value)}
+                    />
                   )}
                 />
               ))}

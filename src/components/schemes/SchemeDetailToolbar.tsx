@@ -6,12 +6,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { cn } from "@/lib/utils"
 
 type SchemeDetailToolbarProps = {
   sortValue: string
   onSortChange: (value: string) => void
   onClearItems: () => void
   onOpenPicker: () => void
+  className?: string
 }
 
 export default function SchemeDetailToolbar({
@@ -19,9 +21,10 @@ export default function SchemeDetailToolbar({
   onSortChange,
   onClearItems,
   onOpenPicker,
+  className,
 }: SchemeDetailToolbarProps) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
+    <section className={cn("rounded-2xl border border-slate-200 bg-white p-5 shadow-card", className)}>
       <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap">
         <Select value={sortValue} onValueChange={onSortChange}>
           <SelectTrigger

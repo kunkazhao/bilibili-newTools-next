@@ -1,5 +1,5 @@
 ﻿import type { ReactNode } from "react"
-import { PRIMARY_PAGES, UTILITY_PAGES } from "@/config/pages"
+import { EDGE_PAGES, PRIMARY_PAGES, UTILITY_PAGES } from "@/config/pages"
 
 interface AppLayoutProps {
   children?: ReactNode
@@ -50,6 +50,26 @@ export default function AppLayout({
               <p className="text-xs font-semibold text-slate-500">小工具</p>
               <div className="space-y-2">
                 {UTILITY_PAGES.map((page) => (
+                  <button
+                    key={page.id}
+                    className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
+                      page.id === activePageId
+                        ? "bg-brand/10 text-brand"
+                        : "text-slate-700 hover:bg-slate-900/5 hover:text-slate-900"
+                    }`}
+                    type="button"
+                    onClick={() => onSelect?.(page.id)}
+                  >
+                    <span>{page.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-slate-500">边缘</p>
+              <div className="space-y-2">
+                {EDGE_PAGES.map((page) => (
                   <button
                     key={page.id}
                     className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${

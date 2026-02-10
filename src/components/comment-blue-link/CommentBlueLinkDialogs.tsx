@@ -59,7 +59,10 @@ export default function CommentBlueLinkDialogs({
 }: CommentBlueLinkDialogsProps) {
   return (
     <Dialog open={modalOpen} onOpenChange={onModalOpenChange}>
-      <DialogContent className="sm:max-w-[620px]">
+      <DialogContent
+        className="sm:max-w-[620px]"
+        onInteractOutside={(event) => event.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>{editing ? "编辑蓝链组合" : "新增蓝链组合"}</DialogTitle>
           <DialogDescription>{"\u7528\u4e8e\u8bc4\u8bba\u533a\u84dd\u94fe\u8bc4\u8bba"}</DialogDescription>

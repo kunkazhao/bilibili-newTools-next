@@ -164,6 +164,7 @@ export default function PresetFieldsModal({
         if (!open) onClose()
       }}
       onSubmit={handleSave}
+      closeOnOverlayClick={false}
       confirmLabel="保存"
     >
       <div className="space-y-4">

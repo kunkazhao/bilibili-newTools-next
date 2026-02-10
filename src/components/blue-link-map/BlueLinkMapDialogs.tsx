@@ -267,7 +267,10 @@ export default function BlueLinkMapDialogs({
   return (
     <>
       <Dialog open={editOpen} onOpenChange={onEditOpenChange}>
-        <DialogContent className="sm:max-w-[560px]">
+        <DialogContent
+          className="sm:max-w-[560px]"
+          onInteractOutside={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>编辑蓝链</DialogTitle>
             <DialogDescription>修改蓝链链接并重新匹配商品。</DialogDescription>
@@ -295,7 +298,10 @@ export default function BlueLinkMapDialogs({
       </Dialog>
 
       <Dialog open={importOpen} onOpenChange={onImportOpenChange}>
-        <DialogContent className="sm:max-w-[560px]">
+        <DialogContent
+          className="sm:max-w-[560px]"
+          onInteractOutside={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>导入蓝链</DialogTitle>
             <DialogDescription>每行一条蓝链，系统会自动匹配商品。</DialogDescription>
@@ -318,7 +324,10 @@ export default function BlueLinkMapDialogs({
       </Dialog>
 
       <Dialog open={accountModalOpen} onOpenChange={onAccountOpenChange}>
-        <DialogContent className="sm:max-w-[560px]">
+        <DialogContent
+          className="sm:max-w-[560px]"
+          onInteractOutside={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>账号管理</DialogTitle>
             <DialogDescription>新增、编辑或删除账号。</DialogDescription>
@@ -372,7 +381,10 @@ export default function BlueLinkMapDialogs({
       </Dialog>
 
       <Dialog open={categoryModalOpen} onOpenChange={onCategoryOpenChange}>
-        <DialogContent className="sm:max-w-[560px]">
+        <DialogContent
+          className="sm:max-w-[560px]"
+          onInteractOutside={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>分类管理</DialogTitle>
             <DialogDescription>管理当前账号下的蓝链分类。</DialogDescription>

@@ -1,16 +1,15 @@
-﻿import { useEffect, useMemo, useState, useId } from "react"
+import { useEffect, useMemo, useState, useId } from "react"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogClose,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Field, FieldLabel } from "@/components/ui/field"
-import { X } from "lucide-react"
+import { Field, FieldContent, FieldLabel } from "@/components/ui/field"
 
 interface CommissionEditModalProps {
   isOpen: boolean
@@ -51,53 +50,69 @@ export default function CommissionEditModal({
     return (p * r) / 100
   }, [localPrice, localRate])
 
+  const handleSave = () => {
+    onSave({
+      title: localTitle.trim(),
+      price: Number(localPrice || 0),
+      commissionRate: Number(localRate || 0),
+    })
+    onClose()
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => (open ? null : onClose())}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader className="flex items-start justify-between">
+      <DialogContent
+        className="sm:max-w-[520px]"
+        onInteractOutside={(event) => event.preventDefault()}
+      >
+        <DialogHeader>
           <DialogTitle>编辑商品</DialogTitle>
-          <DialogDescription>Edit product details.</DialogDescription>
-          <DialogClose asChild>
-            <button type="button" className="text-slate-400 hover:text-slate-600">
-              <X className="h-4 w-4" />
-            </button>
-          </DialogClose>
+          <DialogDescription>修改商品信息后保存。</DialogDescription>
         </DialogHeader>
 
-        <div className="mt-4 space-y-4">
-          <Field orientation="horizontal">
-            <FieldLabel className="w-16" htmlFor={titleId}>标题</FieldLabel>
-            <Input id={titleId} value={localTitle} onChange={(e) => setLocalTitle(e.target.value)} />
+        <div className="space-y-4">
+          <Field orientation="horizontal" className="items-start">
+            <FieldLabel className="w-20 pt-2" htmlFor={titleId}>
+              标题
+            </FieldLabel>
+            <FieldContent className="flex-1">
+              <Input id={titleId} value={localTitle} onChange={(event) => setLocalTitle(event.target.value)} />
+            </FieldContent>
           </Field>
-          <Field orientation="horizontal">
-            <FieldLabel className="w-16" htmlFor={priceId}>价格</FieldLabel>
-            <Input id={priceId} value={localPrice} onChange={(e) => setLocalPrice(e.target.value)} />
+          <Field orientation="horizontal" className="items-start">
+            <FieldLabel className="w-20 pt-2" htmlFor={priceId}>
+              价格
+            </FieldLabel>
+            <FieldContent className="flex-1">
+              <Input id={priceId} value={localPrice} onChange={(event) => setLocalPrice(event.target.value)} />
+            </FieldContent>
           </Field>
-          <Field orientation="horizontal">
-            <FieldLabel className="w-16" htmlFor={commissionId}>佣金</FieldLabel>
-            <Input id={commissionId} value={computedCommission.toFixed(2)} disabled />
+          <Field orientation="horizontal" className="items-start">
+            <FieldLabel className="w-20 pt-2" htmlFor={commissionId}>
+              佣金
+            </FieldLabel>
+            <FieldContent className="flex-1">
+              <Input id={commissionId} value={computedCommission.toFixed(2)} disabled />
+            </FieldContent>
           </Field>
-          <Field orientation="horizontal">
-            <FieldLabel className="w-16" htmlFor={rateId}>佣金比例</FieldLabel>
-            <Input id={rateId} value={localRate} onChange={(e) => setLocalRate(e.target.value)} />
+          <Field orientation="horizontal" className="items-start">
+            <FieldLabel className="w-20 pt-2" htmlFor={rateId}>
+              佣金比例
+            </FieldLabel>
+            <FieldContent className="flex-1">
+              <Input id={rateId} value={localRate} onChange={(event) => setLocalRate(event.target.value)} />
+            </FieldContent>
           </Field>
         </div>
 
-        <div className="mt-6 flex items-center justify-center">
-          <Button
-            className="min-w-[140px]"
-            onClick={() => {
-              onSave({
-                title: localTitle.trim(),
-                price: Number(localPrice || 0),
-                commissionRate: Number(localRate || 0),
-              })
-              onClose()
-            }}
-          >
+        <DialogFooter className="gap-2">
+          <Button variant="outline" type="button" onClick={onClose}>
+            取消
+          </Button>
+          <Button type="button" onClick={handleSave}>
             保存
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

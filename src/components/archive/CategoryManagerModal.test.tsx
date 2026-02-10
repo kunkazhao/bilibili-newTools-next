@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeAll, describe, expect, it } from "vitest"
+import { beforeAll, describe, expect, it, vi } from "vitest"
 import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import CategoryManagerModal from "./CategoryManagerModal"
@@ -122,4 +122,52 @@ describe("CategoryManagerModal", () => {
     expect(scope.getByLabelText("Confirm edit")).toBeTruthy()
     expect(scope.getByLabelText("Cancel edit")).toBeTruthy()
   })
+
+
+  it("adds a parent category when pressing Enter in parent input", async () => {
+    const user = userEvent.setup()
+    const onSave = vi.fn()
+
+    render(
+      <CategoryManagerModal
+        isOpen
+        categories={[]}
+        onClose={() => {}}
+        onSave={onSave}
+      />
+    )
+
+    const dialog = screen.getAllByRole("dialog").slice(-1)[0]
+    const scope = within(dialog)
+    const parentInput = scope.getByLabelText("New parent category")
+    await user.type(parentInput, "Parent New")
+    await user.keyboard("{Enter}")
+
+    expect(scope.getByText("Parent New")).toBeTruthy()
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it("adds a child category when pressing Enter in child input", async () => {
+    const user = userEvent.setup()
+    const onSave = vi.fn()
+
+    render(
+      <CategoryManagerModal
+        isOpen
+        categories={[{ id: "1", name: "Root", sortOrder: 10 }]}
+        onClose={() => {}}
+        onSave={onSave}
+      />
+    )
+
+    const dialog = screen.getAllByRole("dialog").slice(-1)[0]
+    const scope = within(dialog)
+    const childInput = scope.getByLabelText("New child category")
+    await user.type(childInput, "Child New")
+    await user.keyboard("{Enter}")
+
+    expect(scope.getByText("Child New")).toBeTruthy()
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
 })

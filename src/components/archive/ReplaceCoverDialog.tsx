@@ -22,6 +22,7 @@ export default function ReplaceCoverDialog({
       onOpenChange={onOpenChange}
       onSubmit={() => onSubmit(files)}
       size="sm"
+      closeOnOverlayClick={false}
     >
       <div className="space-y-3">
         <label className="text-sm text-slate-600" htmlFor="replace-cover-input">

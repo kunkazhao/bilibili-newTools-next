@@ -17,6 +17,7 @@ interface ModalFormProps {
   onOpenChange: (_open: boolean) => void
   confirmLabel?: string
   size?: "sm" | "md" | "lg" | "xl"
+  closeOnOverlayClick?: boolean
   children?: ReactNode
 }
 
@@ -27,6 +28,7 @@ export default function ModalForm({
   onOpenChange,
   confirmLabel = "确认",
   size = "md",
+  closeOnOverlayClick = true,
   children,
 }: ModalFormProps) {
   const sizeClass = {
@@ -37,7 +39,12 @@ export default function ModalForm({
   }[size]
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className={`${sizeClass} max-h-[85vh] flex flex-col`}>
+      <DialogContent
+        className={`${sizeClass} max-h-[85vh] flex flex-col`}
+        onInteractOutside={(event) => {
+          if (!closeOnOverlayClick) event.preventDefault()
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>Form details.</DialogDescription>

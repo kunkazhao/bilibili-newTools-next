@@ -422,7 +422,10 @@ export default function ZhihuRadarPageView({
       </Dialog>
 
       <Dialog open={addQuestionDialog.open} onOpenChange={addQuestionDialog.onOpenChange}>
-        <DialogContent className="sm:max-w-[460px]">
+        <DialogContent
+          className="sm:max-w-[460px]"
+          onInteractOutside={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle className="text-base font-semibold text-slate-900">
               Add Question

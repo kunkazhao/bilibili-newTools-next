@@ -111,6 +111,9 @@ export const fetchZhihuQuestionStats = (id: string, days = 15) =>
 export const deleteZhihuQuestion = (id: string) =>
   apiRequest(`/api/zhihu/questions/${id}`, { method: "DELETE" })
 
+export const blacklistZhihuQuestion = (id: string) =>
+  apiRequest(`/api/zhihu/questions/${id}/blacklist`, { method: "POST" })
+
 export const runZhihuScrape = async (params: { keywordId?: string }) => {
   const data = await apiRequest<{
     job_id?: string

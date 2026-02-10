@@ -222,6 +222,7 @@ async def create_sourcing_category(payload: SourcingCategoryCreate):
 
         "spec_fields": spec_fields,
         "sort_order": sort_order,
+        "parent_id": payload.parent_id,
 
         "uid_prefix": derive_uid_prefix(name),
 
@@ -278,6 +279,9 @@ async def patch_sourcing_category(category_id: str, payload: SourcingCategoryUpd
 
     if payload.sort_order is not None:
         updates["sort_order"] = payload.sort_order
+
+    if "parent_id" in getattr(payload, "__fields_set__", set()):
+        updates["parent_id"] = payload.parent_id
 
     if not updates:
 

@@ -9,7 +9,7 @@ import {
 import type { CategoryItem } from "@/components/archive/types"
 
 type CategoryHierarchyProps = {
-  title: string
+  title?: string
   categories: CategoryItem[]
   activeParentId?: string
   activeCategoryId?: string
@@ -34,7 +34,7 @@ const CategorySkeleton = () => (
 )
 
 export default function CategoryHierarchy({
-  title,
+  title: _title,
   categories,
   activeParentId,
   activeCategoryId,
@@ -87,7 +87,6 @@ export default function CategoryHierarchy({
 
   return (
     <div className="space-y-3">
-      <div className="text-xs font-medium text-slate-400">{title}</div>
       <Accordion
         type="single"
         collapsible

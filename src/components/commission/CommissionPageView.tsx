@@ -51,7 +51,6 @@ interface CommissionPageViewProps {
   onCardClick?: (id: string) => void
   onClearAll: () => void
   onExport: () => void
-  onDownloadImages: () => void
   onParseBili: () => void
   onParsePromo: () => void
   onParseBenchmark: () => void
@@ -126,8 +125,6 @@ export default function CommissionPageView({
   onDelete,
   onCardClick,
   onClearAll,
-  onExport,
-  onDownloadImages,
   onParseBili,
   onParsePromo,
   onParseBenchmark,
@@ -163,35 +160,20 @@ export default function CommissionPageView({
             <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-500">
               {items.length}
             </span>
-            <div className="flex items-center gap-3 text-xs text-slate-400">
-              <button
-                className="text-rose-500 disabled:text-slate-300"
+            <div className="flex items-center gap-2">
+              <Button size="sm" onClick={onArchiveAll} disabled={items.length === 0}>
+                归档到选品库
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 type="button"
                 onClick={onClearAll}
                 disabled={items.length === 0}
               >
                 清空列表
-              </button>
-              <button
-                type="button"
-                onClick={onDownloadImages}
-                disabled={items.length === 0}
-              >
-                下载图片
-              </button>
-              <button type="button" onClick={onExport} disabled={items.length === 0}>
-                导出表格
-              </button>
+              </Button>
             </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button variant="outline" className="border-violet-200 text-violet-600">
-              批量导入
-            </Button>
-            <Button>新增商品</Button>
-            <Button variant="outline" onClick={onArchiveAll}>
-              归档
-            </Button>
           </div>
         </div>
 
