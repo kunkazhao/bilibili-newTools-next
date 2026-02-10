@@ -226,7 +226,14 @@ export default function ZhihuRadarPageContent() {
       (listStatus === "refreshing" && items.length > 0)
     if (!shouldLoadCounts) return
     hasDeferredCountLoadedRef.current = true
-    loadCounts()
+
+    const timer = window.setTimeout(() => {
+      void loadCounts()
+    }, 0)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
   }, [items.length, listStatus, loadCounts])
 
   useEffect(() => {

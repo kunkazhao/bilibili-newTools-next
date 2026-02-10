@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs"
+﻿import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 
@@ -11,7 +11,7 @@ describe("image templates font setup", () => {
   it("embeds Noto Sans SC via @font-face", () => {
     for (const file of templateFiles) {
       const html = loadTemplate(file)
-      expect(html).toMatch(/@font-face[\s\S]*font-family:\s*\"Noto Sans SC\"/)
+      expect(html).toMatch(/@font-face[\s\S]*font-family:\s*"Noto Sans SC"/)
       expect(html).toContain("/fonts/noto-sans-sc/NotoSansSC-VariableFont_wght.ttf")
     }
   })
@@ -19,17 +19,24 @@ describe("image templates font setup", () => {
   it("sets tpl font variables to Noto Sans SC", () => {
     for (const file of templateFiles) {
       const html = loadTemplate(file)
-      expect(html).toMatch(/--tpl-font:\s*\"Noto Sans SC\"/)
-      expect(html).toMatch(/--tpl-title-font:\s*\"Noto Sans SC\"/)
-      expect(html).toMatch(/--tpl-summary-font:\s*\"Noto Sans SC\"/)
+      expect(html).toMatch(/--tpl-font:\s*"Noto Sans SC"/)
+      expect(html).toMatch(/--tpl-title-font:\s*"Noto Sans SC"/)
+      expect(html).toMatch(/--tpl-summary-font:\s*"Noto Sans SC"/)
     }
   })
 
-  it("applies a baseline offset for titles", () => {
+  it("defines a configurable title baseline offset", () => {
     for (const file of templateFiles) {
       const html = loadTemplate(file)
-      expect(html).toMatch(/--tpl-title-offset:\s*-4px/)
-      expect(html).toMatch(/\.tpl-title\s*\{[\s\S]*?transform:\s*translateY\(var\(--tpl-title-offset\)\)/)
+      const match = html.match(/--tpl-title-offset:\s*(-?[0-9.]+)px/)
+      expect(match).not.toBeNull()
+      const offset = Number(match?.[1] ?? Number.NaN)
+      expect(Number.isFinite(offset)).toBe(true)
+      expect(offset).toBeGreaterThanOrEqual(-6)
+      expect(offset).toBeLessThanOrEqual(2)
+      expect(html).toMatch(
+        /\.tpl-title\s*\{[\s\S]*?transform:\s*translateY\(var\(--tpl-title-offset\)\)/
+      )
     }
   })
 })

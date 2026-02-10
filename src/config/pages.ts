@@ -1,17 +1,18 @@
-﻿import { createElement, type ReactElement } from "react"
-import ArchivePage from "@/pages/ArchivePage"
-import AutoCartPage from "@/pages/AutoCartPage"
-import BenchmarkPage from "@/pages/BenchmarkPage"
-import BlueLinkMapPage from "@/pages/BlueLinkMapPage"
-import CommentBlueLinkPage from "@/pages/CommentBlueLinkPage"
-import CommissionPage from "@/pages/CommissionPage"
-import DirectPlansPage from "@/pages/DirectPlansPage"
-import MyAccountPage from "@/pages/MyAccountPage"
-import RecognizePage from "@/pages/RecognizePage"
-import SchemesPage from "@/pages/SchemesPage"
-import ScriptPage from "@/pages/ScriptPage"
-import ZhihuRadarPage from "@/pages/ZhihuRadarPage"
+﻿import { createElement, lazy, type ReactElement } from "react"
 import { openSchemeDetailPage } from "@/utils/standaloneRoutes"
+
+const ArchivePage = lazy(() => import("@/pages/ArchivePage"))
+const AutoCartPage = lazy(() => import("@/pages/AutoCartPage"))
+const BenchmarkPage = lazy(() => import("@/pages/BenchmarkPage"))
+const BlueLinkMapPage = lazy(() => import("@/pages/BlueLinkMapPage"))
+const CommentBlueLinkPage = lazy(() => import("@/pages/CommentBlueLinkPage"))
+const CommissionPage = lazy(() => import("@/pages/CommissionPage"))
+const DirectPlansPage = lazy(() => import("@/pages/DirectPlansPage"))
+const MyAccountPage = lazy(() => import("@/pages/MyAccountPage"))
+const RecognizePage = lazy(() => import("@/pages/RecognizePage"))
+const SchemesPage = lazy(() => import("@/pages/SchemesPage"))
+const ScriptPage = lazy(() => import("@/pages/ScriptPage"))
+const ZhihuRadarPage = lazy(() => import("@/pages/ZhihuRadarPage"))
 
 export type PageGroup = "primary" | "utility" | "edge"
 

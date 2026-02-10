@@ -1,3 +1,4 @@
+import { memo } from "react"
 import CategoryManagerModal from "@/components/archive/CategoryManagerModal"
 import type { CategoryItem } from "@/components/archive/types"
 import ProgressDialog from "@/components/ProgressDialog"
@@ -149,6 +150,70 @@ const getGrowthClass = (value?: number) => {
   if (value > 0) return "text-emerald-600"
   return "text-slate-500"
 }
+
+interface ZhihuQuestionRowProps {
+  row: ZhihuQuestionItem
+  index: number
+  deletingId: string | null
+  onOpenTrend: (item: ZhihuQuestionItem) => void
+  onDeleteQuestion: (item: ZhihuQuestionItem) => void
+}
+
+const ZhihuQuestionRow = memo(function ZhihuQuestionRow({
+  row,
+  index,
+  deletingId,
+  onOpenTrend,
+  onDeleteQuestion,
+}: ZhihuQuestionRowProps) {
+  return (
+    <tr
+      className={`transition ${index % 2 === 0 ? "bg-white" : "bg-slate-50"} hover:bg-slate-100`}
+    >
+      <td className="px-4 py-3 text-slate-700">
+        <a
+          href={row.url}
+          target="_blank"
+          rel="noreferrer"
+          className="line-clamp-2 text-sm font-medium text-slate-900 hover:text-brand"
+        >
+          {row.title || "--"}
+        </a>
+      </td>
+      <td className="px-4 py-3 text-slate-600">{row.first_keyword || "???"}</td>
+      <td className="px-4 py-3 whitespace-nowrap text-slate-600">{formatDateTime(row.last_seen_at)}</td>
+      <td className="px-4 py-3 text-slate-700">{formatNumber(row.view_count_total)}</td>
+      <td className="px-4 py-3 text-slate-700">{formatNumber(row.answer_count_total)}</td>
+      <td className={`px-4 py-3 ${getGrowthClass(row.view_count_delta)}`}>
+        {formatGrowth(row.view_count_delta)}
+      </td>
+      <td className={`px-4 py-3 ${getGrowthClass(row.answer_count_delta)}`}>
+        {formatGrowth(row.answer_count_delta)}
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <button
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-brand/40 hover:text-brand"
+            type="button"
+            onClick={() => onOpenTrend(row)}
+            aria-label="????"
+          >
+            <TrendingUp className="h-4 w-4" />
+          </button>
+          <button
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-rose-200 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+            type="button"
+            onClick={() => onDeleteQuestion(row)}
+            aria-label="????"
+            disabled={deletingId === row.id}
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      </td>
+    </tr>
+  )
+})
 
 export default function ZhihuRadarPageView({
   keywords,
@@ -312,62 +377,14 @@ export default function ZhihuRadarPageView({
                       </tr>
                     ) : (
                       items.map((row, index) => (
-                        <tr
+                        <ZhihuQuestionRow
                           key={row.id}
-                          className={`transition ${
-                            index % 2 === 0 ? "bg-white" : "bg-slate-50"
-                          } hover:bg-slate-100`}
-                        >
-                          <td className="px-4 py-3 text-slate-700">
-                            <a
-                              href={row.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="line-clamp-2 text-sm font-medium text-slate-900 hover:text-brand"
-                            >
-                              {row.title || "--"}
-                            </a>
-                          </td>
-                          <td className="px-4 py-3 text-slate-600">
-                            {row.first_keyword || "未分类"}
-                          </td>
-                          <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
-                            {formatDateTime(row.last_seen_at)}
-                          </td>
-                          <td className="px-4 py-3 text-slate-700">
-                            {formatNumber(row.view_count_total)}
-                          </td>
-                          <td className="px-4 py-3 text-slate-700">
-                            {formatNumber(row.answer_count_total)}
-                          </td>
-                          <td className={`px-4 py-3 ${getGrowthClass(row.view_count_delta)}`}>
-                            {formatGrowth(row.view_count_delta)}
-                          </td>
-                          <td className={`px-4 py-3 ${getGrowthClass(row.answer_count_delta)}`}>
-                            {formatGrowth(row.answer_count_delta)}
-                          </td>
-                          <td className="px-4 py-3">
-  <div className="flex items-center gap-2">
-    <button
-      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-brand/40 hover:text-brand"
-      type="button"
-      onClick={() => onOpenTrend(row)}
-      aria-label="????"
-    >
-      <TrendingUp className="h-4 w-4" />
-    </button>
-    <button
-      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-rose-200 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
-      type="button"
-      onClick={() => onDeleteQuestion(row)}
-      aria-label="????"
-      disabled={deletingId === row.id}
-    >
-      <Trash2 className="h-4 w-4" />
-    </button>
-  </div>
-</td>
-                        </tr>
+                          row={row}
+                          index={index}
+                          deletingId={deletingId}
+                          onOpenTrend={onOpenTrend}
+                          onDeleteQuestion={onDeleteQuestion}
+                        />
                       ))
                     )}
                   </tbody>

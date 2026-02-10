@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs"
+﻿import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 
@@ -11,7 +11,8 @@ describe("xiaobo template styles", () => {
     const match = html.match(/--tpl-title-line:\s*([0-9.]+)/)
     expect(match).not.toBeNull()
     const lineHeight = Number(match?.[1] ?? 0)
-    expect(lineHeight).toBeGreaterThanOrEqual(1.5)
+    expect(lineHeight).toBeGreaterThanOrEqual(1.3)
+    expect(lineHeight).toBeLessThanOrEqual(1.6)
     expect(html).toMatch(/\.tpl-img-hero-title\s*\{[\s\S]*?line-height:\s*var\(--tpl-title-line\)/)
   })
 

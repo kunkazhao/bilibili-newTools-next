@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+﻿// @vitest-environment jsdom
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
@@ -26,7 +26,7 @@ describe("ImportProgressModal", () => {
 
     expect(screen.getByText("导入进度")).not.toBeNull()
     expect(screen.getByText("50%")).not.toBeNull()
-    expect(screen.getByText("10个商品 · 1个失败")).not.toBeNull()
+    expect(screen.getByText(/共\s*10\s*条\s*·\s*失败\s*1\s*条/)).not.toBeNull()
     expect(screen.getByRole("button", { name: "取消" })).not.toBeNull()
   })
 })

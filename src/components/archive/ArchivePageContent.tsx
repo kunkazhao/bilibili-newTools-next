@@ -385,7 +385,7 @@ const SCHEME_CACHE_KEY = "scheme_list_cache_v1"
 const SCHEME_CACHE_TTL = 5 * 60 * 1000
 
 const CATEGORY_CACHE_LIMIT = 20
-const CHUNK_SIZE = 50
+const CHUNK_SIZE = 24
 
 type CachePayload<T> = { timestamp: number; data: T }
 
@@ -2165,65 +2165,72 @@ export default function ArchivePage() {
     showToast("已取消导入", "info")
   }
 
-  const getMissingTips = (item: ArchiveItem) => {
-    const category = categories.find((entry) => entry.id === item.categoryId)
-    const preset = category?.specFields?.map((field) => field.key) ?? []
-    if (preset.length === 0) return ["未设置预设参数"]
-    return preset.filter((key) => !item.spec[key])
-  }
+  const categoryMap = useMemo(
+    () => new Map(categories.map((entry) => [entry.id, entry])),
+    [categories]
+  )
 
-  const itemsView = visibleItems.map((item) => {
-    const category = categories.find((entry) => entry.id === item.categoryId)
-    const categoryName = category?.name ?? "未分类"
-    const preset = category?.specFields?.map((field) => field.key) ?? []
-    const params = preset.map((key) => ({
-      key,
-      value: item.spec[key] ?? "",
-    }))
-    const jdPriceText = item.jdPrice ? String(item.jdPrice) : "--"
-    const jdCommissionText = item.jdCommission ? String(item.jdCommission) : "--"
-    const jdCommissionRateText = item.jdCommissionRate
-      ? `${item.jdCommissionRate.toFixed(2)}%`
-      : "--"
-    const jdSalesText = item.jdSales ? String(item.jdSales) : "--"
-    const tbPriceText = item.tbPrice ? String(item.tbPrice) : "--"
-    const tbCommissionText = item.tbCommission ? String(item.tbCommission) : "--"
-    const tbCommissionRateText = item.tbCommissionRate
-      ? `${item.tbCommissionRate.toFixed(2)}%`
-      : "--"
-    const tbSalesText = item.tbSales ? String(item.tbSales) : "--"
-    return {
-      ...item,
-      price: jdPriceText,
-      commission: jdCommissionText,
-      commissionRate: jdCommissionRateText,
-      jdPrice: jdPriceText,
-      jdCommission: jdCommissionText,
-      jdCommissionRate: jdCommissionRateText,
-      jdSales: jdSalesText,
-      tbPrice: tbPriceText,
-      tbCommission: tbCommissionText,
-      tbCommissionRate: tbCommissionRateText,
-      tbSales: tbSalesText,
-      sales30: jdSalesText,
-      comments: item.spec[META_KEYS.comments] || "--",
-      categoryName,
-      params,
-      missingTips: getMissingTips(item),
-      shopName: item.spec[META_KEYS.shopName] || "",
-      uid: item.uid || item.id,
-      source: getArchiveSourceDisplay({
-        sourceType: item.sourceType,
-        sourceRef: item.sourceRef,
-        spec: item.spec,
+  const itemsView = useMemo(
+    () =>
+      visibleItems.map((item) => {
+        const category = categoryMap.get(item.categoryId)
+        const categoryName = category?.name ?? "???"
+        const preset = category?.specFields?.map((field) => field.key) ?? []
+        const params = preset.map((key) => ({
+          key,
+          value: item.spec[key] ?? "",
+        }))
+
+        const missingTips =
+          preset.length === 0 ? ["???????"] : preset.filter((key) => !item.spec[key])
+
+        const jdPriceText = item.jdPrice ? String(item.jdPrice) : "--"
+        const jdCommissionText = item.jdCommission ? String(item.jdCommission) : "--"
+        const jdCommissionRateText = item.jdCommissionRate
+          ? `${item.jdCommissionRate.toFixed(2)}%`
+          : "--"
+        const jdSalesText = item.jdSales ? String(item.jdSales) : "--"
+        const tbPriceText = item.tbPrice ? String(item.tbPrice) : "--"
+        const tbCommissionText = item.tbCommission ? String(item.tbCommission) : "--"
+        const tbCommissionRateText = item.tbCommissionRate
+          ? `${item.tbCommissionRate.toFixed(2)}%`
+          : "--"
+        const tbSalesText = item.tbSales ? String(item.tbSales) : "--"
+
+        return {
+          ...item,
+          price: jdPriceText,
+          commission: jdCommissionText,
+          commissionRate: jdCommissionRateText,
+          jdPrice: jdPriceText,
+          jdCommission: jdCommissionText,
+          jdCommissionRate: jdCommissionRateText,
+          jdSales: jdSalesText,
+          tbPrice: tbPriceText,
+          tbCommission: tbCommissionText,
+          tbCommissionRate: tbCommissionRateText,
+          tbSales: tbSalesText,
+          sales30: jdSalesText,
+          comments: item.spec[META_KEYS.comments] || "--",
+          categoryName,
+          params,
+          missingTips,
+          shopName: item.spec[META_KEYS.shopName] || "",
+          uid: item.uid || item.id,
+          source: getArchiveSourceDisplay({
+            sourceType: item.sourceType,
+            sourceRef: item.sourceRef,
+            spec: item.spec,
+          }),
+          sourceLink: getArchiveSourceLink({
+            sourceType: item.sourceType,
+            sourceRef: item.sourceRef,
+            spec: item.spec,
+          }),
+        }
       }),
-      sourceLink: getArchiveSourceLink({
-        sourceType: item.sourceType,
-        sourceRef: item.sourceRef,
-        spec: item.spec,
-      }),
-    }
-  })
+    [categoryMap, visibleItems]
+  )
 
   return (
     <>

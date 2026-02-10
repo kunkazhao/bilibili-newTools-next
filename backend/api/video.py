@@ -1,13 +1,16 @@
+import logging
 from fastapi import APIRouter
 
 router = APIRouter()
 
 try:
-    import main as core
+    import core as core
 except Exception:
-    from backend import main as core
+    from backend import core as core
 
 globals().update({k: v for k, v in core.__dict__.items() if not k.startswith("_")})
+
+logger = logging.getLogger(__name__)
 
 @router.get("/api/rembg/init")
 
@@ -283,7 +286,7 @@ async def get_subtitle(
 
     if cached:
 
-        print(f"[字幕缓存] 命中 {video_id} P{page}")
+        logger.info(f"[字幕缓存] 命中 {video_id} P{page}")
 
         return {
 
@@ -475,7 +478,7 @@ async def get_subtitle(
 
     except Exception as e:
 
-        print(f"[字幕] yt-dlp 获取失败，尝试官方接口: {e}")
+        logger.info(f"[字幕] yt-dlp 获取失败，尝试官方接口: {e}")
 
         fallback_subtitle = await fetch_subtitle_from_official_api(final_url, bvid=bvid, page=page, avid=avid)
 

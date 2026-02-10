@@ -1,7 +1,7 @@
 ﻿// @vitest-environment jsdom
 import React from "react"
 import { describe, expect, it, vi } from "vitest"
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import SchemeDetailProductList from "./SchemeDetailProductList"
 
@@ -70,7 +70,7 @@ describe("SchemeDetailProductList", () => {
 
     const card = container.querySelector("[data-testid='scheme-detail-card']")
     if (!card) throw new Error("card not found")
-    const priceLabel = screen.getByText("价格")
+    const priceLabel = within(card as HTMLElement).getAllByText("\u4ef7\u683c")[0]
     const priceRow = priceLabel.closest("div")?.parentElement
     if (!priceRow) throw new Error("price row not found")
     const actionsRow = priceRow.nextElementSibling as HTMLElement | null

@@ -143,6 +143,8 @@ export default function BenchmarkPageView({
                       alt={entry.title || ""}
                       className="h-full w-full object-cover"
                       referrerPolicy="no-referrer"
+                      loading="lazy"
+                      decoding="async"
                     />
                     <span
                       className="absolute left-2 top-2 rounded-full px-2 py-1 text-xs font-semibold text-white"

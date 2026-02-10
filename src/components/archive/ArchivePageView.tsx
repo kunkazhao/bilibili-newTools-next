@@ -552,8 +552,8 @@ export default function ArchivePageView({
                     onDragStart={onDragStart}
                     onDrop={onDrop}
                     onAddToScheme={onAddToScheme}
-                    onCoverClick={onCoverClick ? () => onCoverClick(item.id) : undefined}
-                    onCardClick={onOpenLink ? () => onOpenLink(item.blueLink) : undefined}
+                    onCoverClick={onCoverClick}
+                    onCardClick={onOpenLink}
                     onFetchParams={onFetchParams}
                   />
                 </div>

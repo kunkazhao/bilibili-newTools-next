@@ -33,7 +33,7 @@ export default function DirectPlansPageView({
           <div>
             <h2 className="text-xl font-semibold text-slate-900">定向计划</h2>
             <p className="mt-1 text-sm text-slate-500">
-              记录平台、分类、品牌与佣金比例，支持拖拽排序。
+              ???????????????????????
             </p>
           </div>
           <PrimaryButton onClick={onAdd}>新增计划</PrimaryButton>

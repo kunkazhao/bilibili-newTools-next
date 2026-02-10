@@ -14,6 +14,27 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return
+
+          if (id.includes("xlsx")) {
+            return "vendor-xlsx"
+          }
+
+          if (id.includes("jszip")) {
+            return "vendor-jszip"
+          }
+
+          if (id.includes("html2canvas")) {
+            return "vendor-html2canvas"
+          }
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

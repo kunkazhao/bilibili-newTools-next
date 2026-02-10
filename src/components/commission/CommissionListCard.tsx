@@ -59,7 +59,13 @@ export default function CommissionListCard({
       <div className="flex gap-4">
         <div className="relative h-[120px] w-[120px] overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
           {item.image ? (
-            <img src={item.image} alt={item.title} className="h-full w-full object-cover" />
+            <img
+              src={item.image}
+              alt={item.title}
+              className="h-full w-full object-cover"
+              loading="lazy"
+              decoding="async"
+            />
           ) : null}
         </div>
 

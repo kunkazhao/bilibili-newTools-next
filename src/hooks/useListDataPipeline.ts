@@ -62,6 +62,7 @@ export function useListDataPipeline<TItem, TFilters, TResponse>(
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const requestIdRef = useRef(0)
   const itemsCountRef = useRef(0)
+  const itemsRef = useRef<TItem[]>([])
   const isMountedRef = useRef(true)
 
   const filterHash = useMemo(() => stableStringify(filters), [filters])
@@ -126,9 +127,10 @@ export function useListDataPipeline<TItem, TFilters, TResponse>(
     try {
       const response = await fetcherRef.current({ filters, offset: nextOffset, limit: pageSize })
       const mapped = mapResponseRef.current(response)
-      const merged = items.concat(mapped.items)
+      const merged = itemsRef.current.concat(mapped.items)
       if (!isMountedRef.current) return
       setItems(merged)
+      itemsRef.current = merged
       setHasMore(Boolean(mapped.pagination?.hasMore))
       setNextOffset(mapped.pagination?.nextOffset ?? merged.length)
       setListCache(storageKey, {
@@ -141,11 +143,12 @@ export function useListDataPipeline<TItem, TFilters, TResponse>(
         setIsLoadingMore(false)
       }
     }
-  }, [filters, hasMore, isLoadingMore, items, nextOffset, pageSize, storageKey])
+  }, [filters, hasMore, isLoadingMore, nextOffset, pageSize, storageKey])
 
   useEffect(() => {
     itemsCountRef.current = items.length
-  }, [items.length])
+    itemsRef.current = items
+  }, [items])
 
   useEffect(() => {
     setStatus("warmup")

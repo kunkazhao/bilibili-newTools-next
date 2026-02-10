@@ -1,3 +1,4 @@
+import { memo } from "react"
 import { Button } from "@/components/ui/button"
 import { InteractiveCard } from "@/components/ui/interactive-card"
 import { GripVertical, Pencil, Star, Trash2 } from "lucide-react"
@@ -38,8 +39,8 @@ interface ArchiveListCardProps {
   onDragStart: (id: string) => void
   onDrop: (id: string) => void
   onAddToScheme?: (id: string) => void
-  onCoverClick?: () => void
-  onCardClick?: () => void
+  onCoverClick?: (id: string) => void
+  onCardClick?: (link: string) => void
   onFetchParams?: (id: string) => void
 }
 
@@ -89,7 +90,7 @@ const formatAmount = (value: string) => {
   return `${value}${TEXT.yuan}`
 }
 
-export default function ArchiveListCard({
+function ArchiveListCardComponent({
   id,
   title,
   price,
@@ -172,7 +173,7 @@ export default function ArchiveListCard({
       data-testid="archive-card-body"
       onDragOver={(event) => event.preventDefault()}
       onDrop={() => onDrop(id)}
-      onClick={onCardClick}
+      onClick={onCardClick ? () => onCardClick(blueLink) : undefined}
     >
       <div className="flex gap-5">
         <div
@@ -180,7 +181,7 @@ export default function ArchiveListCard({
           data-testid="archive-card-cover"
           onClick={(event) => {
             event.stopPropagation()
-            onCoverClick?.()
+            onCoverClick?.(id)
           }}
         >
           {image ? (
@@ -275,7 +276,7 @@ export default function ArchiveListCard({
               data-testid="archive-metrics-jd"
             >
               <span
-                className="inline-flex h-[40px] w-[40px] min-h-[40px] min-w-[40px] flex-none self-start items-center justify-center rounded-lg bg-rose-500 text-[16px] font-semibold leading-none text-white text-center -translate-x-[6px]"
+                className="inline-flex h-[40px] w-[60px] min-h-[40px] min-w-[60px] flex-none self-start items-center justify-center rounded-lg bg-rose-500 text-[16px] font-semibold leading-none text-white text-center -translate-x-[6px]"
                 data-testid="archive-metrics-badge-jd"
               >
                 JD
@@ -292,7 +293,7 @@ export default function ArchiveListCard({
               data-testid="archive-metrics-tb"
             >
               <span
-                className="inline-flex h-[40px] w-[40px] min-h-[40px] min-w-[40px] flex-none self-start items-center justify-center rounded-lg bg-amber-500 text-[16px] font-semibold leading-none text-white text-center -translate-x-[6px]"
+                className="inline-flex h-[40px] w-[60px] min-h-[40px] min-w-[60px] flex-none self-start items-center justify-center rounded-lg bg-amber-500 text-[16px] font-semibold leading-none text-white text-center -translate-x-[6px]"
                 data-testid="archive-metrics-badge-tb"
               >
                 TB
@@ -354,3 +355,5 @@ export default function ArchiveListCard({
     </InteractiveCard>
   )
 }
+
+export default memo(ArchiveListCardComponent)

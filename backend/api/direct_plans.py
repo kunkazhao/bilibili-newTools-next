@@ -5,9 +5,9 @@ from typing import Optional, List, Dict, Any
 router = APIRouter()
 
 try:
-    import main as core
+    import core as core
 except Exception:
-    from backend import main as core
+    from backend import core as core
 
 globals().update({k: v for k, v in core.__dict__.items() if not k.startswith("_")})
 

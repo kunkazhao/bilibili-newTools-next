@@ -1,13 +1,16 @@
+import logging
 from fastapi import APIRouter
 
 router = APIRouter()
 
 try:
-    import main as core
+    import core as core
 except Exception:
-    from backend import main as core
+    from backend import core as core
 
 globals().update({k: v for k, v in core.__dict__.items() if not k.startswith("_")})
+
+logger = logging.getLogger(__name__)
 
 
 def _core_attr(name):
@@ -67,7 +70,7 @@ async def jd_product_proxy(request: dict):
 
 
 
-        print(f"[京东API] 查询商品: {keyword[:80]}...")
+        logger.info(f"[京东API] 查询商品: {keyword[:80]}...")
 
 
 
@@ -83,7 +86,7 @@ async def jd_product_proxy(request: dict):
 
                 data = await response.json()
 
-                print(f"[京东API] 响应code: {data.get('code')}, msg: {data.get('msg')}")
+                logger.info(f"[京东API] 响应code: {data.get('code')}, msg: {data.get('msg')}")
 
                 return JSONResponse(content=data)
 
@@ -95,7 +98,7 @@ async def jd_product_proxy(request: dict):
 
     except Exception as e:
 
-        print(f"[京东API] 错误: {e}")
+        logger.info(f"[京东API] 错误: {e}")
 
         raise HTTPException(status_code=500, detail=f"获取商品信息失败: {str(e)}")
 
@@ -145,7 +148,7 @@ async def jd_main_image(request: JdImageRequest):
 
             except Exception as mobile_error:
 
-                print(f"[JD] mobile fetch failed: {mobile_error}")
+                logger.info(f"[JD] mobile fetch failed: {mobile_error}")
 
         best_image = select_best_jd_image(images)
 
@@ -251,7 +254,7 @@ async def jd_resolve_url(request: dict):
         if "item.jd.com" in url:
             return {"resolvedUrl": url}
 
-        print(f"[jd-resolve] input: {url[:80]}...")
+        logger.info(f"[jd-resolve] input: {url[:80]}...")
 
         headers = build_bilibili_headers()
         async with aiohttp.ClientSession() as session:
@@ -300,7 +303,7 @@ async def jd_resolve_url(request: dict):
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as response:
                 resolved_url = str(response.url)
-                print(f"[jd-resolve] resolved: {resolved_url[:80]}...")
+                logger.info(f"[jd-resolve] resolved: {resolved_url[:80]}...")
 
                 if response.history:
                     for redirect in response.history:
@@ -351,7 +354,7 @@ async def jd_resolve_url(request: dict):
                 return {"resolvedUrl": resolved_url}
 
     except Exception as exc:
-        print(f"[jd-resolve] error: {exc}")
+        logger.info(f"[jd-resolve] error: {exc}")
         import traceback
 
         traceback.print_exc()

@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+ï»¿// @vitest-environment jsdom
 
 import { describe, expect, it, vi } from "vitest"
 import { render, waitFor } from "@testing-library/react"
@@ -59,8 +59,9 @@ describe("ArchivePageContent category switching", () => {
   it("keeps latest category items when requests resolve out of order", async () => {
     mockFetchCategories.mockResolvedValueOnce({
       categories: [
-        { id: "cat-a", name: "·ÖÀàA", sort_order: 0, spec_fields: [] },
-        { id: "cat-b", name: "·ÖÀàB", sort_order: 1, spec_fields: [] },
+        { id: "parent-1", name: "ä¸€çº§åˆ†ç±»", sort_order: 0, spec_fields: [], parent_id: null },
+        { id: "cat-a", name: "åˆ†ç±»A", sort_order: 0, spec_fields: [], parent_id: "parent-1" },
+        { id: "cat-b", name: "åˆ†ç±»B", sort_order: 1, spec_fields: [], parent_id: "parent-1" },
       ],
     })
     mockFetchCategoryCounts.mockResolvedValueOnce({ counts: {} })
@@ -107,7 +108,7 @@ describe("ArchivePageContent category switching", () => {
         {
           id: "item-b",
           category_id: "cat-b",
-          title: "ÉÌÆ·B",
+          title: "å•†å“B",
           price: 100,
           commission: 10,
           commission_rate: 10,

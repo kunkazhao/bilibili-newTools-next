@@ -165,6 +165,8 @@ export default function MyAccountPageView({
                       alt={video.title || ""}
                       className="h-full w-full object-cover"
                       referrerPolicy="no-referrer"
+                      loading="lazy"
+                      decoding="async"
                     />
                   </div>
 
