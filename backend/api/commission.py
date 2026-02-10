@@ -219,13 +219,13 @@ async def taobao_resolve(request: dict):
 
 @router.post("/api/taobao/product")
 async def taobao_product_info(request: dict):
-    """??????????????????"""
+    """根据淘宝商品 ID 获取商品详情与佣金信息。"""
     item_id = (request or {}).get("item_id") or ""
     open_iid = (request or {}).get("open_iid") or ""
     item_id = str(item_id).strip()
     open_iid = str(open_iid).strip()
     if not item_id and not open_iid:
-        raise HTTPException(status_code=400, detail="?? item_id ? open_iid ??")
+        raise HTTPException(status_code=400, detail="缺少 item_id 或 open_iid 参数")
     if not item_id and open_iid:
         item_id = open_iid
     return await taobao_item_details(item_id)

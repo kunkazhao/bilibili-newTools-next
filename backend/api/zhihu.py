@@ -66,7 +66,7 @@ async def create_zhihu_keyword(payload: ZhihuKeywordPayload):
     client = ensure_supabase()
     name = payload.name.strip()
     if not name:
-        raise HTTPException(status_code=400, detail="???????")
+        raise HTTPException(status_code=400, detail="关键词名称不能为空")
     body = {"name": name, "created_at": utc_now_iso(), "updated_at": utc_now_iso()}
     try:
         record = await client.insert("zhihu_keywords", body)
@@ -82,14 +82,14 @@ async def update_zhihu_keyword(keyword_id: str, payload: ZhihuKeywordUpdate):
     updates: Dict[str, Any] = {}
     if payload.name is not None:
         if not payload.name.strip():
-            raise HTTPException(status_code=400, detail="???????")
+            raise HTTPException(status_code=400, detail="关键词名称不能为空")
         updates["name"] = payload.name.strip()
     if not updates:
         return {"keyword": None}
     updates["updated_at"] = utc_now_iso()
     record = await client.update("zhihu_keywords", updates, {"id": f"eq.{keyword_id}"})
     if not record:
-        raise HTTPException(status_code=404, detail="??????")
+        raise HTTPException(status_code=404, detail="关键词不存在")
     invalidate_zhihu_keywords_map_cache()
     return {"keyword": record[0]}
 
@@ -98,7 +98,7 @@ async def delete_zhihu_keyword(keyword_id: str):
     client = ensure_supabase()
     existing = await client.select("zhihu_keywords", {"id": f"eq.{keyword_id}"})
     if not existing:
-        raise HTTPException(status_code=404, detail="??????")
+        raise HTTPException(status_code=404, detail="关键词不存在")
     await client.delete("zhihu_question_keywords", {"keyword_id": f"eq.{keyword_id}"})
     await client.delete("zhihu_keywords", {"id": f"eq.{keyword_id}"})
     await client.update("zhihu_questions", {"first_keyword_id": None}, {"first_keyword_id": f"eq.{keyword_id}"})
@@ -220,7 +220,7 @@ async def create_zhihu_question(payload: ZhihuQuestionCreatePayload):
 
     keyword_map = await fetch_zhihu_keywords_map(client)
     first_keyword_name = keyword_map.get(first_keyword_id) or str(
-        keyword_rows[0].get("name") or "???"
+        keyword_rows[0].get("name") or "未分类"
     )
 
     return {
@@ -334,7 +334,7 @@ async def list_zhihu_questions(keyword_id: Optional[str] = None, q: Optional[str
         items.append(
             {
                 **row,
-                "first_keyword": keyword_map.get(str(row.get("first_keyword_id")) or "", "???"),
+                "first_keyword": keyword_map.get(str(row.get("first_keyword_id")) or "", "未分类"),
                 "view_count_total": view_total,
                 "answer_count_total": answer_total,
                 "view_count_delta": view_delta,

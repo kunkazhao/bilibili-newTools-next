@@ -15,7 +15,7 @@ describe("archive export helpers", () => {
       spec: {
         _promo_link: "https://union-click.jd.com/jdc?e=abc",
         _source_link: "https://www.bilibili.com/video/BV1",
-        _shop_name: "������Ӫ�콢��",
+        _shop_name: "京东自营旗舰店",
       },
     }
 
@@ -40,13 +40,13 @@ describe("archive export helpers", () => {
       id: "item-3",
       uid: "UID-3",
       blueLink: "",
-      accountName: "�˺ŵ���",
+      accountName: "账号店铺",
       spec: {
-        shopName: "���õ���",
+        shopName: "备用店铺",
       },
     }
 
-    expect(resolveArchiveShopName(item)).toBe("���õ���")
+    expect(resolveArchiveShopName(item)).toBe("备用店铺")
   })
 
   it("formats price without decimals", () => {

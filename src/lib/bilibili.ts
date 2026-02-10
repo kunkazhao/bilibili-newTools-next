@@ -180,10 +180,15 @@ export const getPinnedComments = async (url: string): Promise<BilibiliPinnedResu
   const subReplies: Record<string, any>[] = []
 
   if (commentsData?.code === 0 && commentsData?.data) {
-    let topComment = commentsData.data.top
-    if (!topComment) {
-      topComment = commentsData.data.upper?.top
+    const topPayload = commentsData.data.top
+    let topComment = topPayload
+    if (topComment && !topComment.content?.message) {
+      topComment = topPayload?.upper || topPayload?.admin || null
     }
+    if (!topComment) {
+      topComment = commentsData.data.upper?.top || null
+    }
+
     if (topComment) {
       pinnedComments.push(topComment)
       try {
@@ -473,5 +478,5 @@ export const buildProductContent = (result: BilibiliPinnedResult | null) => {
   })
 
   const joined = lines.join("\n").trim()
-  return joined || "未获取到商品名称"
+  return joined || "鏈幏鍙栧埌鍟嗗搧鍚嶇О"
 }

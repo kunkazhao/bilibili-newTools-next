@@ -5,11 +5,12 @@ export default {
     extend: {
       fontFamily: {
         sans: [
-          "Manrope",
+          "Noto Sans SC",
           "Microsoft YaHei",
           "PingFang SC",
           "Hiragino Sans GB",
           "Noto Sans CJK SC",
+          "Manrope",
           "Segoe UI",
           "sans-serif",
         ],

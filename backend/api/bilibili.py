@@ -11,34 +11,30 @@ globals().update({k: v for k, v in core.__dict__.items() if not k.startswith("_"
 
 @router.get("/api/bilibili/proxy")
 async def bilibili_proxy(url: str):
-    """???? B? API??? CORS ???GET?"""
+    """代理请求 B 站 API，绕过浏览器 CORS 限制（GET）。"""
     return await handle_bilibili_proxy(url)
 
 @router.post("/api/bilibili/proxy")
 async def bilibili_proxy_post(payload: BilibiliProxyRequest):
-    """???? B? API??? CORS ???POST?"""
+    """代理请求 B 站 API，绕过浏览器 CORS 限制（POST）。"""
     return await handle_bilibili_proxy(payload.url)
 
 @router.get("/api/bilibili/resolve")
+async def bilibili_resolve(url: str):
+    """Resolve short links (b23/bili22/...) to canonical bilibili video URL."""
+    return await resolve_bilibili_url(url)
 
-def extract_page_number(url: str) -> int:
 
+def _extract_page_number(url: str) -> int:
     if not url:
-
         return 1
 
-    match = re.search(r'[?&]p=(\d+)', url, re.IGNORECASE)
-
+    match = re.search(r"[?&]p=(\d+)", url, re.IGNORECASE)
     if match:
-
         try:
-
             page = int(match.group(1))
-
             return page if page > 0 else 1
-
         except ValueError:
-
             return 1
 
     return 1

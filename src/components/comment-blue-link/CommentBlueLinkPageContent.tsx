@@ -372,13 +372,13 @@ export default function CommentBlueLinkPage() {
 
       if (!combo.source_link) {
 
-        return "????????"
+        return "请先填写来源链接"
 
       }
 
       if (productLoading[combo.id]) {
 
-        return "??????..."
+        return "正在提取商品内容..."
 
       }
 
@@ -438,13 +438,13 @@ export default function CommentBlueLinkPage() {
 
       if (mode === "product") {
 
-        showToast("????????????", "info")
+        showToast("商品内容为空，正在尝试提取", "info")
 
         void ensureProductContent(combo)
 
       } else {
 
-        showToast("???????", "info")
+        showToast("暂无可复制内容", "info")
 
       }
 
@@ -458,17 +458,17 @@ export default function CommentBlueLinkPage() {
 
       if (ok) {
 
-        showToast("???????", "success")
+        showToast("复制成功", "success")
 
       } else {
 
-        showToast("??????????", "error")
+        showToast("复制失败，请手动复制", "error")
 
       }
 
     } catch {
 
-      showToast("??????????", "error")
+      showToast("复制失败，请手动复制", "error")
 
     }
 

@@ -180,7 +180,7 @@ const ZhihuQuestionRow = memo(function ZhihuQuestionRow({
           {row.title || "--"}
         </a>
       </td>
-      <td className="px-4 py-3 text-slate-600">{row.first_keyword || "???"}</td>
+      <td className="px-4 py-3 text-slate-600">{row.first_keyword || "未分类"}</td>
       <td className="px-4 py-3 whitespace-nowrap text-slate-600">{formatDateTime(row.last_seen_at)}</td>
       <td className="px-4 py-3 text-slate-700">{formatNumber(row.view_count_total)}</td>
       <td className="px-4 py-3 text-slate-700">{formatNumber(row.answer_count_total)}</td>
@@ -196,7 +196,7 @@ const ZhihuQuestionRow = memo(function ZhihuQuestionRow({
             className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-brand/40 hover:text-brand"
             type="button"
             onClick={() => onOpenTrend(row)}
-            aria-label="????"
+            aria-label="查看趋势"
           >
             <TrendingUp className="h-4 w-4" />
           </button>
@@ -204,7 +204,7 @@ const ZhihuQuestionRow = memo(function ZhihuQuestionRow({
             className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-rose-200 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
             type="button"
             onClick={() => onDeleteQuestion(row)}
-            aria-label="????"
+            aria-label="删除问题"
             disabled={deletingId === row.id}
           >
             <Trash2 className="h-4 w-4" />

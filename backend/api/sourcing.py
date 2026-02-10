@@ -897,16 +897,16 @@ async def ai_confirm_sourcing_items(payload: AiConfirmRequest, request: Request)
         existing_item = existing_items[0]
         item_id = existing_item.get("id")
 
-        # ?? spec ????
+        # 构建 spec 更新
         spec: Dict[str, Any] = {}
 
-        # ???????
+        # 仅写入有值字段
         for field in spec_fields:
             value = item_data.get(field, "")
             if value:
                 spec[field] = value
 
-        # ???? spec ???
+        # 合并已有 spec 字段
         existing_spec = existing_item.get("spec") or {}
         merged_spec = {**existing_spec, **spec}
 
@@ -920,7 +920,7 @@ async def ai_confirm_sourcing_items(payload: AiConfirmRequest, request: Request)
         if review_text and not existing_remark:
             updates["remark"] = review_text
 
-        # ????
+        # 执行更新
         await client.update(
             "sourcing_items",
             updates,

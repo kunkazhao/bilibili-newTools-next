@@ -331,7 +331,7 @@ export default function ProductFormModal({
   const handleParseJd = async () => {
     const trimmed = values.promoLink.trim()
     if (!trimmed) {
-      setErrors((prev) => ({ ...prev, promoLink: "????" }))
+      setErrors((prev) => ({ ...prev, promoLink: "必填" }))
       return
     }
     try {
@@ -340,11 +340,11 @@ export default function ProductFormModal({
         throw new Error("invalid protocol")
       }
     } catch {
-      setErrors((prev) => ({ ...prev, promoLink: "?????" }))
+      setErrors((prev) => ({ ...prev, promoLink: "请输入有效链接" }))
       return
     }
     if (isTaobaoLink(trimmed)) {
-      showToast("???????JD????", "error")
+      showToast("当前是淘宝链接，请使用淘宝解析", "error")
       return
     }
     if (errors.promoLink) {
@@ -438,7 +438,7 @@ export default function ProductFormModal({
       const resolved = await resolveTaobaoLink(trimmed)
       const itemId = resolved.itemId || resolved.openIid
       if (!itemId) {
-        throw new Error("????????ID")
+        throw new Error("无法解析淘宝商品ID")
       }
       const product = await fetchTaobaoProduct(itemId, resolved.openIid)
       setValues((prev) => {

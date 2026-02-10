@@ -2564,13 +2564,13 @@ app.add_middleware(
 # ==================== B站 API 代理 ====================
 
 class BilibiliProxyRequest(BaseModel):
-    url: str = Field(..., description="B? API ??")
+    url: str = Field(..., description="B 站 API 地址")
 
 
 async def handle_bilibili_proxy(url: str):
-    """???? B? API??? CORS ??"""
+    """代理请求 B 站 API，绕过浏览器 CORS 限制。"""
     if not url or "bilibili.com" not in url:
-        raise HTTPException(status_code=400, detail="?????B? API")
+        raise HTTPException(status_code=400, detail="请提供有效的 B 站 API 地址")
 
     headers = build_bilibili_headers({"Accept": "application/json"})
 
@@ -2578,29 +2578,29 @@ async def handle_bilibili_proxy(url: str):
         try:
             async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
                 data = await response.json()
-                # ????????? safe_print ???????
-                logger.debug(f"[B???] URL: {url}")
-                logger.debug(f"[B???] ??code: {data.get('code')}")
+                # 调试日志走 logger，避免控制台编码问题
+                logger.debug(f"[B站代理] URL: {url}")
+                logger.debug(f"[B站代理] 响应 code: {data.get('code')}")
                 if 'data' in data:
                     d = data['data']
                     keys = list(d.keys()) if isinstance(d, dict) else type(d)
-                    logger.debug(f"[B???] data.keys: {keys}")
-                    # top ? upper ???? emoji??? repr ????
-                    logger.debug(f"[B???] data.top: {repr(d.get('top'))[:100]}")
-                    logger.debug(f"[B???] data.upper: {repr(d.get('upper'))[:100]}")
+                    logger.debug(f"[B站代理] data.keys: {keys}")
+                    # top/upper 可能包含 emoji，使用 repr 避免日志打印失败
+                    logger.debug(f"[B站代理] data.top: {repr(d.get('top'))[:100]}")
+                    logger.debug(f"[B站代理] data.upper: {repr(d.get('upper'))[:100]}")
 
-                # ??B?API??????????????????
+                # B 站 API 业务错误时不直接抛 4xx，前端统一按 code 处理
                 bili_code = data.get('code')
                 if bili_code and bili_code != 0:
-                    logger.debug(f"[B???] B?API?????: {bili_code}, message: {data.get('message', '????')}")
+                    logger.debug(f"[B站代理] B站API业务错误: {bili_code}, message: {data.get('message', '未知错误')}")
 
                 return JSONResponse(content=data)
         except Exception as e:
-            logger.debug(f"[B???] ??: {e}")
-            # ????????????????
+            logger.debug(f"[B站代理] 请求失败: {e}")
+            # 为兼容前端历史逻辑，网络异常时仍返回 200 + code=-1
             return JSONResponse(
                 status_code=200,
-                content={"code": -1, "message": f"??????: {str(e)}", "data": None}
+                content={"code": -1, "message": f"请求失败: {str(e)}", "data": None}
             )
 
 
@@ -2639,7 +2639,7 @@ def _taobao_timestamp() -> str:
 
 def build_taobao_signed_params(method: str, params: Dict[str, Any]) -> Dict[str, str]:
     if not TAOBAO_APP_KEY or not TAOBAO_APP_SECRET:
-        raise HTTPException(status_code=500, detail="??????? app_key/app_secret")
+        raise HTTPException(status_code=500, detail="缺少淘宝开放平台 app_key/app_secret")
     payload: Dict[str, Any] = {
         "app_key": TAOBAO_APP_KEY,
         "method": method,
@@ -5113,7 +5113,7 @@ except Exception:
 
 @app.get("/api/health")
 async def health_check():
-    """????"""
+    """服务健康检查。"""
 
     return {
         "status": "ok",

@@ -2174,7 +2174,7 @@ export default function ArchivePage() {
     () =>
       visibleItems.map((item) => {
         const category = categoryMap.get(item.categoryId)
-        const categoryName = category?.name ?? "???"
+        const categoryName = category?.name ?? "未分类"
         const preset = category?.specFields?.map((field) => field.key) ?? []
         const params = preset.map((key) => ({
           key,
@@ -2182,7 +2182,7 @@ export default function ArchivePage() {
         }))
 
         const missingTips =
-          preset.length === 0 ? ["???????"] : preset.filter((key) => !item.spec[key])
+          preset.length === 0 ? ["分类未配置参数字段"] : preset.filter((key) => !item.spec[key])
 
         const jdPriceText = item.jdPrice ? String(item.jdPrice) : "--"
         const jdCommissionText = item.jdCommission ? String(item.jdCommission) : "--"
