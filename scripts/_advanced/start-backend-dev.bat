@@ -8,7 +8,7 @@ echo ========================================
 echo Press Ctrl+C to stop
 echo.
 
-set "ROOT_DIR=%~dp0..\"
+set "ROOT_DIR=%~dp0..\..\"
 cd /d "%ROOT_DIR%"
 set BACKEND_HOST=0.0.0.0
 set BACKEND_PORT=8000

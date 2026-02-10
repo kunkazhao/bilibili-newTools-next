@@ -53,7 +53,7 @@ This document defines the UI rules for the new stack.
 - Prefer padding to create text “safe area”; line-height for Chinese titles should be >= 1.2.
 - Image naming must use merged items (with source data); fallback order: `title` → `uid` → `id` → `商品_序号`.
 - Export JSON must follow统一字段与格式（价格加“元”、京东链接需域名校验）。
-- See `docs/FRONTEND_ISSUES_AND_RULES.md` for details and checklist.
+- See `docs/standards/FRONTEND_ISSUES_AND_RULES.md` for details and checklist.
 
 ## Expansion Plan
 - Add: Tabs, Pagination, Badge, Tag, Tooltip, EmptyState, Confirm.

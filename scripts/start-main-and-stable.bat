@@ -9,7 +9,7 @@ if errorlevel 1 (
 
 timeout /t 1 /nobreak >nul
 
-call "%~dp0start-stable.bat"
+call "%~dp0_advanced\start-stable.bat"
 if errorlevel 1 (
   echo [ERROR] Failed to start stable version.
   exit /b 1

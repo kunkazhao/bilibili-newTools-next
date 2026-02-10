@@ -40,3 +40,8 @@ scheme-items.txt
 category_detail.json
 check_db.py
 start-backend.bat
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+

@@ -2,9 +2,10 @@
 setlocal
 chcp 65001 >nul
 
-set "SOURCE_DIR=%~dp0..\"
-set "STABLE_DIR=%SOURCE_DIR%..\bilibili-newTools-next-stable"
-set "FALLBACK_DIR=%SOURCE_DIR%"
+set "ROOT_DIR=%~dp0..\..\"
+set "SOURCE_DIR=%ROOT_DIR%"
+set "STABLE_DIR=%ROOT_DIR%..\bilibili-newTools-next-stable"
+set "FALLBACK_DIR=%ROOT_DIR%"
 set "FRONTEND_PORT=15173"
 set "BACKEND_PORT=18000"
 set "BACKEND_HOST=0.0.0.0"
