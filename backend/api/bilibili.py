@@ -1,4 +1,7 @@
-from fastapi import APIRouter
+import re
+
+import aiohttp
+from fastapi import APIRouter, HTTPException
 
 router = APIRouter()
 
@@ -7,7 +10,12 @@ try:
 except Exception:
     from backend import core as core
 
-globals().update({k: v for k, v in core.__dict__.items() if not k.startswith("_")})
+BilibiliProxyRequest = core.BilibiliProxyRequest
+build_bilibili_headers = core.build_bilibili_headers
+extract_video_identity = core.extract_video_identity
+handle_bilibili_proxy = core.handle_bilibili_proxy
+resolve_bilibili_url = core.resolve_bilibili_url
+
 
 @router.get("/api/bilibili/proxy")
 async def bilibili_proxy(url: str):

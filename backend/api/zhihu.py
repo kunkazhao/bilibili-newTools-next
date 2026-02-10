@@ -1,4 +1,7 @@
-from fastapi import APIRouter
+import asyncio
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, HTTPException
 
 router = APIRouter()
 
@@ -7,7 +10,19 @@ try:
 except Exception:
     from backend import core as core
 
-globals().update({k: v for k, v in core.__dict__.items() if not k.startswith("_")})
+SupabaseError = core.SupabaseError
+ZhihuKeywordPayload = core.ZhihuKeywordPayload
+ZhihuKeywordUpdate = core.ZhihuKeywordUpdate
+ZhihuQuestionCreatePayload = core.ZhihuQuestionCreatePayload
+ZhihuScrapeRunPayload = core.ZhihuScrapeRunPayload
+create_zhihu_job_state = core.create_zhihu_job_state
+extract_zhihu_question_id = core.extract_zhihu_question_id
+fetch_supabase_count = core.fetch_supabase_count
+get_zhihu_job_state = core.get_zhihu_job_state
+invalidate_zhihu_keywords_map_cache = core.invalidate_zhihu_keywords_map_cache
+strip_html_tags = core.strip_html_tags
+zhihu_scrape_job = core.zhihu_scrape_job
+
 
 
 def _core_attr(name):

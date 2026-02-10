@@ -9,9 +9,16 @@
 ## P1 - 进行中（后端解耦）
 
 - [x] 已按接口分组拆出路由文件到 `backend/api/*.py`。
-- [ ] 移除各路由模块对 `core` 的 `globals().update(...)` 依赖注入，改为显式导入/服务层调用。
+- [x] 移除各路由模块对 `core` 的 `globals().update(...)` 依赖注入，改为显式导入/服务层调用。
   - [x] `backend/api/direct_plans.py` 已改为显式依赖导入。
   - [x] `backend/api/benchmark.py` 已改为显式依赖导入。
   - [x] `backend/api/commission.py` 已改为显式依赖导入。
+  - [x] `backend/api/bilibili.py` 已改为显式依赖导入。
+  - [x] `backend/api/blue_link_map.py` 已改为显式依赖导入。
+  - [x] `backend/api/comment.py` 已改为显式依赖导入。
+  - [x] `backend/api/schemes.py` 已改为显式依赖导入。
+  - [x] `backend/api/sourcing.py` 已改为显式依赖导入。
+  - [x] `backend/api/video.py` 已改为显式依赖导入。
+  - [x] `backend/api/zhihu.py` 已改为显式依赖导入。
 - [ ] 将 `backend/core.py` 的业务逻辑继续下沉到 service / utils 层，降低单文件复杂度。
 - [ ] 解耦完成后补充回归测试并更新对应文档。

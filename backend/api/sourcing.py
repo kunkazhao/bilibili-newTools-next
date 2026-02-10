@@ -1,4 +1,10 @@
-from fastapi import APIRouter
+import asyncio
+import time
+import uuid
+from typing import Any, Dict, List, Optional
+
+import httpx
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 
 router = APIRouter()
 
@@ -7,7 +13,86 @@ try:
 except Exception:
     from backend import core as core
 
-globals().update({k: v for k, v in core.__dict__.items() if not k.startswith("_")})
+AiBatchStartRequest = core.AiBatchStartRequest
+AiConfirmRequest = core.AiConfirmRequest
+AiFillRequest = core.AiFillRequest
+SCHEME_SYNC_FIELDS = core.SCHEME_SYNC_FIELDS
+SUPABASE_SERVICE_ROLE_KEY = core.SUPABASE_SERVICE_ROLE_KEY
+SUPABASE_URL = core.SUPABASE_URL
+SourcingCategoryCreate = core.SourcingCategoryCreate
+SourcingCategoryUpdate = core.SourcingCategoryUpdate
+SourcingItemBatchCreate = core.SourcingItemBatchCreate
+SourcingItemCreate = core.SourcingItemCreate
+SourcingItemUpdate = core.SourcingItemUpdate
+SourcingItemsByIdsRequest = core.SourcingItemsByIdsRequest
+SupabaseError = core.SupabaseError
+_sanitize_tags = core._sanitize_tags
+ai_fill_product_params = core.ai_fill_product_params
+decimal_str = core.decimal_str
+delete_old_cover = core.delete_old_cover
+derive_uid_prefix = core.derive_uid_prefix
+ensure_supabase = core.ensure_supabase
+fetch_sourcing_categories = core.fetch_sourcing_categories
+fetch_sourcing_category_counts = core.fetch_sourcing_category_counts
+fetch_sourcing_items_page = core.fetch_sourcing_items_page
+merge_spec_payload = core.merge_spec_payload
+normalize_sourcing_category = core.normalize_sourcing_category
+normalize_sourcing_item = core.normalize_sourcing_item
+normalize_spec_fields = core.normalize_spec_fields
+normalize_spec_payload = core.normalize_spec_payload
+resolve_sourcing_ai_batch_items = core.resolve_sourcing_ai_batch_items
+run_sourcing_ai_batch_job = core.run_sourcing_ai_batch_job
+sync_scheme_item_cover = core.sync_scheme_item_cover
+sync_scheme_item_fields = core.sync_scheme_item_fields
+utc_now_iso = core.utc_now_iso
+
+
+def _update_sourcing_ai_job_state(job_id: str, **updates: Any) -> None:
+    with core.sourcing_ai_job_lock:
+        state = core.sourcing_ai_job_store.get(job_id)
+        if not state:
+            return
+        state.update(updates)
+        state["updated_at"] = utc_now_iso()
+        core.sourcing_ai_job_store[job_id] = dict(state)
+
+
+if not hasattr(core, "update_sourcing_ai_job_state"):
+    core.update_sourcing_ai_job_state = _update_sourcing_ai_job_state
+
+
+def create_sourcing_ai_job_state(total: int) -> Dict[str, Any]:
+    helper = getattr(core, "create_sourcing_ai_job_state", None)
+    if callable(helper):
+        return helper(total)
+
+    now = utc_now_iso()
+    state = {
+        "id": uuid.uuid4().hex,
+        "status": "queued",
+        "total": total,
+        "processed": 0,
+        "success": 0,
+        "failed": 0,
+        "failures": [],
+        "error": None,
+        "created_at": now,
+        "updated_at": now,
+    }
+    with core.sourcing_ai_job_lock:
+        core.sourcing_ai_job_store[state["id"]] = dict(state)
+    return dict(state)
+
+
+def get_sourcing_ai_job_state(job_id: str) -> Optional[Dict[str, Any]]:
+    helper = getattr(core, "get_sourcing_ai_job_state", None)
+    if callable(helper):
+        return helper(job_id)
+
+    with core.sourcing_ai_job_lock:
+        state = core.sourcing_ai_job_store.get(job_id)
+        return dict(state) if state else None
+
 
 @router.get("/api/sourcing/overview")
 

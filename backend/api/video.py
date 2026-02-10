@@ -1,5 +1,7 @@
 import logging
-from fastapi import APIRouter
+from typing import Any
+
+from fastapi import APIRouter, Form, HTTPException
 
 router = APIRouter()
 
@@ -8,7 +10,50 @@ try:
 except Exception:
     from backend import core as core
 
-globals().update({k: v for k, v in core.__dict__.items() if not k.startswith("_")})
+AutoModelForImageSegmentation = core.AutoModelForImageSegmentation
+DEEPSEEK_API_KEY = core.DEEPSEEK_API_KEY
+DEEPSEEK_MODEL = core.DEEPSEEK_MODEL
+RembgTqdm = core.RembgTqdm
+SUBTITLE_DIR = core.SUBTITLE_DIR
+VIDEO_DIR = core.VIDEO_DIR
+YTDLPLogger = core.YTDLPLogger
+aiofiles = core.aiofiles
+aiohttp = core.aiohttp
+asyncio = core.asyncio
+build_bilibili_headers = core.build_bilibili_headers
+deepseek_client = core.deepseek_client
+ensure_bilibili_cookie_file = core.ensure_bilibili_cookie_file
+ensure_rembg_model_info = core.ensure_rembg_model_info
+extract_video_identity = core.extract_video_identity
+fetch_subtitle_from_official_api = core.fetch_subtitle_from_official_api
+get_hf_endpoint = core.get_hf_endpoint
+json = core.json
+load_cached_subtitle = core.load_cached_subtitle
+os = core.os
+re = core.re
+rembg_allow_patterns = core.rembg_allow_patterns
+rembg_device = core.rembg_device
+rembg_download_lock = core.rembg_download_lock
+rembg_download_total_bytes = core.rembg_download_total_bytes
+rembg_downloaded_bytes = core.rembg_downloaded_bytes
+rembg_error = core.rembg_error
+rembg_loading = core.rembg_loading
+rembg_model_id = core.rembg_model_id
+rembg_model_info = core.rembg_model_info
+rembg_model_info_error = core.rembg_model_info_error
+rembg_progress = core.rembg_progress
+rembg_reset_download = core.rembg_reset_download
+rembg_session = core.rembg_session
+rembg_token_configured = core.rembg_token_configured
+rembg_transform = core.rembg_transform
+sanitize_filename = core.sanitize_filename
+save_subtitle_cache = core.save_subtitle_cache
+snapshot_download = core.snapshot_download
+torch = core.torch
+tqdm_auto = core.tqdm_auto
+transforms = core.transforms
+yt_dlp = core.yt_dlp
+
 
 logger = logging.getLogger(__name__)
 

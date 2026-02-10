@@ -1,4 +1,8 @@
-from fastapi import APIRouter
+import asyncio
+from typing import Any, Dict, List, Optional, Tuple
+
+import aiohttp
+from fastapi import APIRouter, HTTPException
 
 router = APIRouter()
 
@@ -7,7 +11,22 @@ try:
 except Exception:
     from backend import core as core
 
-globals().update({k: v for k, v in core.__dict__.items() if not k.startswith("_")})
+CommentAccountPayload = core.CommentAccountPayload
+CommentAccountUpdate = core.CommentAccountUpdate
+CommentComboCreate = core.CommentComboCreate
+CommentComboUpdate = core.CommentComboUpdate
+MyAccountSyncPayload = core.MyAccountSyncPayload
+SupabaseError = core.SupabaseError
+ensure_supabase = core.ensure_supabase
+extract_mid_from_homepage_link = core.extract_mid_from_homepage_link
+fetch_account_videos_from_bili = core.fetch_account_videos_from_bili
+fetch_comment_snapshot = core.fetch_comment_snapshot
+normalize_account_video = core.normalize_account_video
+normalize_comment_account = core.normalize_comment_account
+normalize_comment_combo = core.normalize_comment_combo
+sync_account_videos_for_account = core.sync_account_videos_for_account
+utc_now_iso = core.utc_now_iso
+
 
 @router.get("/api/comment/blue-links/state-v2")
 

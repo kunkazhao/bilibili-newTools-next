@@ -1,4 +1,6 @@
-from fastapi import APIRouter
+from typing import Any, Dict, List, Optional, Tuple
+
+from fastapi import APIRouter, HTTPException
 
 router = APIRouter()
 
@@ -7,7 +9,21 @@ try:
 except Exception:
     from backend import core as core
 
-globals().update({k: v for k, v in core.__dict__.items() if not k.startswith("_")})
+BlueLinkMapBatchPayload = core.BlueLinkMapBatchPayload
+BlueLinkMapCategoryCreate = core.BlueLinkMapCategoryCreate
+BlueLinkMapCategoryUpdate = core.BlueLinkMapCategoryUpdate
+BlueLinkMapClearPayload = core.BlueLinkMapClearPayload
+BlueLinkMapEntryUpdate = core.BlueLinkMapEntryUpdate
+CACHE_NS_BLUE_LINK_MAP = core.CACHE_NS_BLUE_LINK_MAP
+SupabaseError = core.SupabaseError
+cache = core.cache
+detect_blue_link_platform = core.detect_blue_link_platform
+fetch_blue_link_map_snapshot = core.fetch_blue_link_map_snapshot
+is_valid_blue_link_source_link = core.is_valid_blue_link_source_link
+normalize_blue_link_map_category = core.normalize_blue_link_map_category
+normalize_blue_link_map_entry = core.normalize_blue_link_map_entry
+normalize_blue_link_source_link = core.normalize_blue_link_source_link
+
 
 
 def _core_attr(name):

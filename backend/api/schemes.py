@@ -1,4 +1,6 @@
-from fastapi import APIRouter
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter()
 
@@ -7,7 +9,20 @@ try:
 except Exception:
     from backend import core as core
 
-globals().update({k: v for k, v in core.__dict__.items() if not k.startswith("_")})
+PROMPT_TEMPLATE_DEFAULTS = core.PROMPT_TEMPLATE_DEFAULTS
+PROMPT_TEMPLATE_LOCK = core.PROMPT_TEMPLATE_LOCK
+PROMPT_TEMPLATE_OVERRIDES = core.PROMPT_TEMPLATE_OVERRIDES
+PromptTemplateUpdate = core.PromptTemplateUpdate
+SchemeCreate = core.SchemeCreate
+SchemeUpdate = core.SchemeUpdate
+SupabaseError = core.SupabaseError
+ensure_supabase = core.ensure_supabase
+get_prompt_template_overrides = core.get_prompt_template_overrides
+load_local_image_templates = core.load_local_image_templates
+normalize_scheme = core.normalize_scheme
+save_prompt_template_overrides = core.save_prompt_template_overrides
+utc_now_iso = core.utc_now_iso
+
 
 @router.get("/api/schemes")
 
