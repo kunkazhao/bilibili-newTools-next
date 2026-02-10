@@ -1,4 +1,6 @@
-from fastapi import APIRouter
+from typing import Any, Dict
+
+from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter()
 
@@ -7,7 +9,30 @@ try:
 except Exception:
     from backend import core as core
 
-globals().update({k: v for k, v in core.__dict__.items() if not k.startswith("_")})
+BenchmarkCategoryPayload = core.BenchmarkCategoryPayload
+BenchmarkEntryPayload = core.BenchmarkEntryPayload
+BenchmarkEntryUpdate = core.BenchmarkEntryUpdate
+SupabaseError = core.SupabaseError
+
+
+def ensure_supabase():
+    return core.ensure_supabase()
+
+
+def utc_now_iso():
+    return core.utc_now_iso()
+
+
+def fetch_benchmark_snapshot(mode: str = "full"):
+    return core.fetch_benchmark_snapshot(mode)
+
+
+def normalize_benchmark_entry(row: Dict[str, Any]) -> Dict[str, Any]:
+    return core.normalize_benchmark_entry(row)
+
+
+def _normalize_pub_time(value: Any):
+    return core._normalize_pub_time(value)
 
 @router.get("/api/benchmark/state")
 

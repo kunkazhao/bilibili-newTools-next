@@ -1,5 +1,9 @@
 import logging
-from fastapi import APIRouter
+from typing import Any, Set
+
+import aiohttp
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 
 router = APIRouter()
 
@@ -8,13 +12,43 @@ try:
 except Exception:
     from backend import core as core
 
-globals().update({k: v for k, v in core.__dict__.items() if not k.startswith("_")})
-
 logger = logging.getLogger(__name__)
 
+JdImageRequest = core.JdImageRequest
+JD_SCENE_ID = core.JD_SCENE_ID
+JD_ELITE_ID = core.JD_ELITE_ID
 
-def _core_attr(name):
+
+def _core_attr(name: str):
     return getattr(core, name)
+
+
+def build_bilibili_headers(*args, **kwargs):
+    return _core_attr("build_bilibili_headers")(*args, **kwargs)
+
+
+def extract_jd_sku_from_url(*args, **kwargs):
+    return _core_attr("extract_jd_sku_from_url")(*args, **kwargs)
+
+
+def fetch_jd_page(*args, **kwargs):
+    return _core_attr("fetch_jd_page")(*args, **kwargs)
+
+
+def extract_jd_images_from_html(*args, **kwargs):
+    return _core_attr("extract_jd_images_from_html")(*args, **kwargs)
+
+
+def select_best_jd_image(*args, **kwargs):
+    return _core_attr("select_best_jd_image")(*args, **kwargs)
+
+
+def extract_taobao_item_id(*args, **kwargs):
+    return _core_attr("extract_taobao_item_id")(*args, **kwargs)
+
+
+def taobao_item_details(*args, **kwargs):
+    return _core_attr("taobao_item_details")(*args, **kwargs)
 
 
 def resolve_taobao_url(*args, **kwargs):
