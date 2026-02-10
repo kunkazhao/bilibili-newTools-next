@@ -1,13 +1,15 @@
 ﻿# Task List
 
-## P0 - Fix build errors first
+## P0 - 已完成
 
-- [ ] Fix `npm run build` TypeScript errors (root cause: `tsconfig.json` only includes `vite/client` types, tests under `src` pull in `node:fs/path` + `process`, and strict rules surface existing type issues). Suggested fix path:
-  - Add a build-only tsconfig to exclude `src/**/*.test.ts(x)` and `src/__tests__/**`, then change build to `tsc -p tsconfig.build.json && vite build`.
-  - Or install `@types/node` and include `"node"` in `types`, then clean up remaining strict errors.
-- [ ] 选品库页面：新增按钮点击无响应（按图复现，需先修 bug 再继续后端拆分）。
+- [x] 修复 `npm run build` 的 TypeScript 构建问题（当前已可稳定构建）。
+- [x] 修复选品库页面“新增按钮点击无响应”问题。
+- [x] 修复蓝链-置顶评论一键提取：补齐 `jump_url` 中的 `b23` 短链提取（含淘宝落地场景，按原短链显示）。
 
-## P1 - Backend refactor (after build is green)
+## P1 - 进行中（后端解耦）
 
-- [ ] Split backend routes into modules by API group (sourcing / schemes / comment / commission / zhihu / bilibili / video / benchmark / blue-link-map), keep `backend/main.py` as app init + router include only.
-
+- [x] 已按接口分组拆出路由文件到 `backend/api/*.py`。
+- [ ] 移除各路由模块对 `core` 的 `globals().update(...)` 依赖注入，改为显式导入/服务层调用。
+  - [x] `backend/api/direct_plans.py` 已改为显式依赖导入。
+- [ ] 将 `backend/core.py` 的业务逻辑继续下沉到 service / utils 层，降低单文件复杂度。
+- [ ] 解耦完成后补充回归测试并更新对应文档。

@@ -9,15 +9,16 @@ try:
 except Exception:
     from backend import core as core
 
-globals().update({k: v for k, v in core.__dict__.items() if not k.startswith("_")})
+# Explicitly import shared backend dependencies to avoid implicit globals injection.
+SupabaseError = core.SupabaseError
 
 
-def ensure_supabase(*args, **kwargs):
-    return core.ensure_supabase(*args, **kwargs)
+def ensure_supabase():
+    return core.ensure_supabase()
 
 
-def utc_now_iso(*args, **kwargs):
-    return core.utc_now_iso(*args, **kwargs)
+def utc_now_iso():
+    return core.utc_now_iso()
 
 
 class DirectPlanCreate(BaseModel):
