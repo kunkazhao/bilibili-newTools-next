@@ -381,6 +381,22 @@ export const buildComboContent = (result: BilibiliPinnedResult | null) => {
     return pieces
   }
 
+  const shortLinkPattern =
+    /^https?:\/\/(?:b23\.tv|bili22\.cn|bili33\.cn|bili2233\.cn)\/[^\s]+$/i
+
+  const extractJumpShortLinks = (comment: Record<string, any>) => {
+    const jumpUrl = comment?.content?.jump_url
+    if (!jumpUrl || typeof jumpUrl !== "object") {
+      return [] as string[]
+    }
+
+    const links = Object.keys(jumpUrl)
+      .map((url) => String(url || "").trim())
+      .filter((url) => shortLinkPattern.test(url))
+
+    return Array.from(new Set(links))
+  }
+
   const processComment = (comment: Record<string, any>) => {
     if (!comment) return
     const commentId =
@@ -398,8 +414,19 @@ export const buildComboContent = (result: BilibiliPinnedResult | null) => {
     lines.forEach((line) => {
       splitLine(line, allowedLinks).forEach((fragment) => fragments.push(fragment))
     })
-  }
 
+    const jumpShortLinks = extractJumpShortLinks(comment)
+    if (!jumpShortLinks.length) {
+      return
+    }
+
+    jumpShortLinks.forEach((link) => {
+      if (text.includes(link)) {
+        return
+      }
+      fragments.push(link)
+    })
+  }
   const pinned = Array.isArray(result.pinnedComments) ? result.pinnedComments : []
   pinned.forEach(processComment)
 

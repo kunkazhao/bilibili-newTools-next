@@ -121,3 +121,28 @@ describe("buildProductContent", () => {
     expect(buildProductContent(result)).toBe(FALLBACK_PRODUCT_TEXT)
   })
 })
+
+
+describe("buildComboContent", () => {
+  it("includes short links from jump_url even when message has no raw URL", () => {
+    const result = {
+      pinnedComments: [
+        {
+          content: {
+            message: "recommend this one",
+            jump_url: {
+              "https://b23.tv/mall-abc": {
+                title: "itemA",
+                pc_url:
+                  "https://detail.tmall.com/item.htm?id=100000000000",
+              },
+            },
+          },
+        },
+      ],
+      subReplies: [],
+    }
+
+    expect(buildComboContent(result)).toContain("https://b23.tv/mall-abc")
+  })
+})
