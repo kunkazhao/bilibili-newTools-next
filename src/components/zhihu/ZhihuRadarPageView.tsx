@@ -1,5 +1,4 @@
-import { memo } from "react"
-import CategoryManagerModal from "@/components/archive/CategoryManagerModal"
+import { Suspense, lazy, memo } from "react"
 import type { CategoryItem } from "@/components/archive/types"
 import ProgressDialog from "@/components/ProgressDialog"
 import Skeleton from "@/components/Skeleton"
@@ -21,6 +20,9 @@ import {
 } from "@/components/ui/select"
 import { Trash2, TrendingUp } from "lucide-react"
 import type { ZhihuQuestionItem, ZhihuQuestionStat } from "./zhihuApi"
+import { useProgressiveItems } from "@/hooks/useProgressiveItems"
+
+const CategoryManagerModal = lazy(() => import("@/components/archive/CategoryManagerModal"))
 
 interface TrendDialogState {
   open: boolean
@@ -245,6 +247,15 @@ export default function ZhihuRadarPageView({
   progressDialog,
 }: ZhihuRadarPageViewProps) {
   const showCategorySkeleton = isKeywordLoading && keywords.length === 0
+  const progressiveResetKey = `${activeKeywordId}|${searchValue}`
+  const {
+    visibleItems: renderedRows,
+    hasPending: isProgressiveRendering,
+  } = useProgressiveItems(items, {
+    initialCount: 40,
+    chunkSize: 40,
+    resetKey: progressiveResetKey,
+  })
   const showListSkeleton = listLoading && (!isUsingCache || items.length === 0)
   const loadMoreContent = hasMore ? (
     <div className="flex items-center justify-center border-t border-slate-100 px-4 py-3">
@@ -376,7 +387,7 @@ export default function ZhihuRadarPageView({
                         </td>
                       </tr>
                     ) : (
-                      items.map((row, index) => (
+                      renderedRows.map((row, index) => (
                         <ZhihuQuestionRow
                           key={row.id}
                           row={row}
@@ -389,6 +400,11 @@ export default function ZhihuRadarPageView({
                     )}
                   </tbody>
                 </table>
+                {isProgressiveRendering ? (
+                  <div className="border-t border-slate-100 px-4 py-2 text-xs text-slate-400">
+                    正在渲染剩余内容...
+                  </div>
+                ) : null}
                 {items.length > 0 ? loadMoreContent : null}
               </>
             )}
@@ -397,12 +413,14 @@ export default function ZhihuRadarPageView({
       </div>
 
       {isKeywordManagerOpen ? (
-        <CategoryManagerModal
-          isOpen={isKeywordManagerOpen}
-          categories={keywords}
-          onClose={onCloseKeywordManager}
-          onSave={onSaveKeywords}
-        />
+        <Suspense fallback={null}>
+          <CategoryManagerModal
+            isOpen={isKeywordManagerOpen}
+            categories={keywords}
+            onClose={onCloseKeywordManager}
+            onSave={onSaveKeywords}
+          />
+        </Suspense>
       ) : null}
 
       <Dialog open={updateDialog.open} onOpenChange={updateDialog.onOpenChange}>

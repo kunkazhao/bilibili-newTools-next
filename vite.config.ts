@@ -31,6 +31,22 @@ export default defineConfig({
           if (id.includes("html2canvas")) {
             return "vendor-html2canvas"
           }
+
+          if (id.includes("@radix-ui")) {
+            return "vendor-radix"
+          }
+
+          if (id.includes("lucide-react")) {
+            return "vendor-icons"
+          }
+
+          if (id.includes("sonner")) {
+            return "vendor-sonner"
+          }
+
+          if (id.includes("react-dom") || id.includes("react/jsx-runtime") || id.includes("/react/")) {
+            return "vendor-react"
+          }
         },
       },
     },

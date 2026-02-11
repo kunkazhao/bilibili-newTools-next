@@ -1,17 +1,14 @@
-﻿import { useEffect, useMemo, useState } from "react"
+﻿import { Suspense, lazy, useEffect, useMemo, useState } from "react"
 import { Settings } from "lucide-react"
 import Empty from "@/components/Empty"
 import PrimaryButton from "@/components/PrimaryButton"
 import ArchiveListCard from "@/components/archive/ArchiveListCard"
 import CategoryHierarchy from "@/components/archive/CategoryHierarchy"
-import CategoryManagerModal from "@/components/archive/CategoryManagerModal"
-import ImportProgressModal from "@/components/archive/ImportProgressModal"
-import PresetFieldsModal from "@/components/archive/PresetFieldsModal"
-import ProductFormModal from "@/components/archive/ProductFormModal"
 import Skeleton from "@/components/Skeleton"
 import type { CategoryItem, SpecField } from "@/components/archive/types"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { useProgressiveItems } from "@/hooks/useProgressiveItems"
 import {
   Select,
   SelectContent,
@@ -164,6 +161,11 @@ interface ArchivePageViewProps {
   onBatchFetchParams: () => void
   isAiBatchRunning?: boolean
 }
+
+const CategoryManagerModal = lazy(() => import("@/components/archive/CategoryManagerModal"))
+const ImportProgressModal = lazy(() => import("@/components/archive/ImportProgressModal"))
+const PresetFieldsModal = lazy(() => import("@/components/archive/PresetFieldsModal"))
+const ProductFormModal = lazy(() => import("@/components/archive/ProductFormModal"))
 
 const ListSkeleton = () => (
   <div className="space-y-4" data-testid="archive-list-skeleton">
@@ -336,6 +338,15 @@ export default function ArchivePageView({
     onPriceRangeChange([nextMin, nextMax])
   }
   const showCategorySkeleton = isCategoryLoading && categories.length === 0
+  const progressiveResetKey = `${resolvedActiveCategoryId}|${searchValue}|${sortValue}|${priceRange[0]}-${priceRange[1]}`
+  const {
+    visibleItems: renderedItems,
+    hasPending: isProgressiveRendering,
+  } = useProgressiveItems(items, {
+    initialCount: 24,
+    chunkSize: 24,
+    resetKey: progressiveResetKey,
+  })
   const showListSkeleton = isListLoading && (!isUsingCache || items.length === 0)
   const loadMoreContent = canLoadMore ? (
     <div
@@ -512,7 +523,7 @@ export default function ArchivePageView({
             />
                     ) : (
             <div data-testid="archive-list">
-              {items.map((item) => (
+              {renderedItems.map((item) => (
                 <div
                   key={item.id}
                   style={{
@@ -558,47 +569,58 @@ export default function ArchivePageView({
                   />
                 </div>
               ))}
+              {isProgressiveRendering ? (
+                <div className="px-1 pb-3 text-xs text-slate-400">正在渲染剩余内容...</div>
+              ) : null}
               {loadMoreContent}
             </div>
           )}
         </div>
       </div>
       {isCategoryManagerOpen ? (
-        <CategoryManagerModal
-          isOpen={isCategoryManagerOpen}
-          categories={categories}
-          onClose={onCloseCategoryManager}
-          onSave={onSaveCategories}
-        />
+        <Suspense fallback={null}>
+          <CategoryManagerModal
+            isOpen={isCategoryManagerOpen}
+            categories={categories}
+            onClose={onCloseCategoryManager}
+            onSave={onSaveCategories}
+          />
+        </Suspense>
       ) : null}
       {isPresetFieldsOpen ? (
-        <PresetFieldsModal
-          isOpen={isPresetFieldsOpen}
-          categories={categories}
-          selectedCategoryId={resolvedActiveCategoryId}
-          onClose={onClosePresetFields}
-          onSave={onSavePresetFields}
-        />
+        <Suspense fallback={null}>
+          <PresetFieldsModal
+            isOpen={isPresetFieldsOpen}
+            categories={categories}
+            selectedCategoryId={resolvedActiveCategoryId}
+            onClose={onClosePresetFields}
+            onSave={onSavePresetFields}
+          />
+        </Suspense>
       ) : null}
       {isProductFormOpen ? (
-        <ProductFormModal
-          isOpen={isProductFormOpen}
-          categories={childCategoryOptions}
-          presetFields={presetFields}
-          initialValues={productFormInitialValues}
-          defaultCategoryId={resolvedActiveCategoryId || ""}
-          autoOpenCoverPicker={autoOpenCoverPicker}
-          onClose={onCloseProductForm}
-          onSubmit={onSubmitProductForm}
-        />
+        <Suspense fallback={null}>
+          <ProductFormModal
+            isOpen={isProductFormOpen}
+            categories={childCategoryOptions}
+            presetFields={presetFields}
+            initialValues={productFormInitialValues}
+            defaultCategoryId={resolvedActiveCategoryId || ""}
+            autoOpenCoverPicker={autoOpenCoverPicker}
+            onClose={onCloseProductForm}
+            onSubmit={onSubmitProductForm}
+          />
+        </Suspense>
       ) : null}
       {isImportOpen ? (
-        <ImportProgressModal
-          isOpen={isImportOpen}
-          state={importProgressState}
-          onClose={onCloseImport}
-          onCancel={onCancelImport}
-        />
+        <Suspense fallback={null}>
+          <ImportProgressModal
+            isOpen={isImportOpen}
+            state={importProgressState}
+            onClose={onCloseImport}
+            onCancel={onCancelImport}
+          />
+        </Suspense>
       ) : null}
     </>
   )

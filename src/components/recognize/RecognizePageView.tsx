@@ -177,6 +177,8 @@ export default function RecognizePageView({
                             src={entry.image}
                             alt={entry.name}
                             className="h-full w-full object-cover"
+                            loading="lazy"
+                            decoding="async"
                           />
                         </button>
                       ) : (

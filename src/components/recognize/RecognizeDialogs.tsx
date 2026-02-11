@@ -167,7 +167,7 @@ export default function RecognizeDialogs({
             <div className="space-y-4">
               <div className="text-sm text-slate-600">{previewImage.title}</div>
               <div className="overflow-hidden rounded-xl border border-slate-200">
-                <img src={previewImage.src} alt={previewImage.title} className="w-full" />
+                <img src={previewImage.src} alt={previewImage.title} className="w-full" loading="lazy" decoding="async" />
               </div>
             </div>
           ) : null}

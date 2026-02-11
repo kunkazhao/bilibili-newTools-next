@@ -84,6 +84,7 @@ from pypinyin import lazy_pinyin, Style
 
 from pydantic import BaseModel, Field, validator
 from backend.services.cache import cache
+from backend.services import bilibili_account as bilibili_account_service
 
 
 
@@ -533,6 +534,12 @@ MIXIN_KEY_ENC_TAB = [
 ]
 
 WBI_FILTER_CHARS = set("!'()*")
+
+BILIBILI_SPACE_WEB_LOCATION = bilibili_account_service.BILIBILI_SPACE_WEB_LOCATION
+BILIBILI_DM_IMG_LIST = bilibili_account_service.BILIBILI_DM_IMG_LIST
+BILIBILI_DM_IMG_STR = bilibili_account_service.BILIBILI_DM_IMG_STR
+BILIBILI_DM_COVER_IMG_STR = bilibili_account_service.BILIBILI_DM_COVER_IMG_STR
+BILIBILI_DM_IMG_INTER = bilibili_account_service.BILIBILI_DM_IMG_INTER
 
 
 
@@ -2135,103 +2142,79 @@ def build_account_video_payload(
     }
 
 
+def build_bilibili_dm_img_inter() -> str:
+    return bilibili_account_service.build_bilibili_dm_img_inter()
+
+
+def build_bilibili_space_arc_search_params(
+    mid: str,
+    page: int,
+    page_size: int,
+    *,
+    dm_img_inter: Optional[str] = None,
+) -> Dict[str, str]:
+    return bilibili_account_service.build_bilibili_space_arc_search_params(
+        mid,
+        page,
+        page_size,
+        dm_img_inter=dm_img_inter,
+    )
+
+
+async def build_bilibili_runtime_cookie(
+    session: aiohttp.ClientSession,
+    headers: Dict[str, str],
+) -> Optional[str]:
+    return await bilibili_account_service.build_bilibili_runtime_cookie(
+        session,
+        headers,
+        bilibili_cookie=BILIBILI_COOKIE,
+    )
+
+
+async def fetch_bilibili_runtime_cookie_from_space_page(mid: str) -> Optional[str]:
+    return await bilibili_account_service.fetch_bilibili_runtime_cookie_from_space_page(mid)
+
+
+async def fetch_account_videos_from_space_page(
+    mid: str,
+    page: int = 1,
+    page_size: int = 20,
+) -> List[Dict[str, Any]]:
+    return await bilibili_account_service.fetch_account_videos_from_space_page(
+        mid,
+        page,
+        page_size,
+    )
+
+
 async def fetch_account_videos_from_bili(
     mid: str,
     page: int = 1,
     page_size: int = 20,
     session: Optional[aiohttp.ClientSession] = None,
 ) -> List[Dict[str, Any]]:
-    keys = await fetch_wbi_keys()
-    if not keys:
-        raise HTTPException(status_code=500, detail="无法获取 B 站 WBI 密钥")
-    url = "https://api.bilibili.com/x/space/wbi/arc/search"
-    params: Dict[str, str] = {
-        "mid": str(mid),
-        "pn": str(page),
-        "ps": str(page_size),
-        "order": "pubdate",
-    }
-    headers = build_bilibili_headers({"Referer": "https://www.bilibili.com/"})
-
-    async def request(current_session: aiohttp.ClientSession) -> List[Dict[str, Any]]:
-        async with current_session.get(
-            url,
-            headers=headers,
-            params=signed_params,
-            timeout=aiohttp.ClientTimeout(total=12),
-        ) as resp:
-            data = await resp.json()
-            if data.get("code") != 0:
-                message = data.get("message") or "获取账号视频失败"
-                raise RuntimeError(message)
-            return data.get("data", {}).get("list", {}).get("vlist", []) or []
-
-    for attempt in range(2):
-        signed_params = encode_wbi_params(params, keys.get("img_key", ""), keys.get("sub_key", ""))
-        try:
-            if session:
-                return await request(session)
-            async with aiohttp.ClientSession() as local_session:
-                return await request(local_session)
-        except Exception as e:
-            if attempt == 0:
-                keys = await fetch_wbi_keys(force=True)
-                continue
-            raise HTTPException(status_code=500, detail=f"获取账号视频失败: {e}")
-    return []
+    return await bilibili_account_service.fetch_account_videos_from_bili(
+        mid,
+        page=page,
+        page_size=page_size,
+        session=session,
+        fetch_wbi_keys_fn=fetch_wbi_keys,
+        encode_wbi_params_fn=encode_wbi_params,
+        build_bilibili_headers_fn=build_bilibili_headers,
+        bilibili_cookie=BILIBILI_COOKIE,
+    )
 
 
 async def fetch_account_video_stat(
     bvid: str,
     session: Optional[aiohttp.ClientSession] = None,
 ) -> Optional[Dict[str, Any]]:
-    if not bvid:
-        return None
-    trimmed = str(bvid).strip()
-    if not trimmed:
-        return None
-    headers = build_bilibili_headers({"Referer": "https://www.bilibili.com/"})
-    stat_url = "https://api.bilibili.com/x/web-interface/archive/stat"
-    view_url = "https://api.bilibili.com/x/web-interface/view"
-
-    async def fetch_data(url: str) -> Optional[Dict[str, Any]]:
-        for attempt in range(2):
-            try:
-                if session:
-                    async with session.get(
-                        url,
-                        headers=headers,
-                        params={"bvid": trimmed},
-                        timeout=aiohttp.ClientTimeout(total=10),
-                    ) as resp:
-                        data = await resp.json()
-                else:
-                    async with aiohttp.ClientSession() as local_session:
-                        async with local_session.get(
-                            url,
-                            headers=headers,
-                            params={"bvid": trimmed},
-                            timeout=aiohttp.ClientTimeout(total=10),
-                        ) as resp:
-                            data = await resp.json()
-                if data.get("code") != 0:
-                    return None
-                return data.get("data") or None
-            except Exception:
-                if attempt == 0:
-                    continue
-                return None
-        return None
-
-    stat_data = await fetch_data(stat_url)
-    if stat_data:
-        return stat_data
-    view_data = await fetch_data(view_url)
-    if isinstance(view_data, dict):
-        return view_data.get("stat") or None
-    return None
-
-
+    return await bilibili_account_service.fetch_account_video_stat(
+        bvid,
+        session=session,
+        build_bilibili_headers_fn=build_bilibili_headers,
+    )
 
 
 

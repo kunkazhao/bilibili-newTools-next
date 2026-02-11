@@ -31,7 +31,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import * as XLSX from "xlsx"
 import { apiRequest } from "@/lib/api"
 import { getUserErrorMessage } from "@/lib/errorMessages"
 import {
@@ -1357,7 +1356,7 @@ export default function ArchivePage() {
     }
   }
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (!filteredItems.length) {
       showToast("没有可导出的商品", "info")
       return
@@ -1443,6 +1442,7 @@ export default function ArchivePage() {
         })
       })
 
+      const XLSX = await import("xlsx")
       const workbook = XLSX.utils.book_new()
       const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows])
       worksheet["!cols"] = [
