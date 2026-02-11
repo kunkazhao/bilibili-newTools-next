@@ -2877,6 +2877,35 @@ async def resolve_bilibili_url(url: str):
 
 
 
+def extract_page_number(url: str) -> int:
+
+    if not url:
+
+        return 1
+
+
+
+    match = re.search(r"[?&]p=(\d+)", url, re.IGNORECASE)
+
+    if not match:
+
+        return 1
+
+
+
+    try:
+
+        page = int(match.group(1))
+
+    except (TypeError, ValueError):
+
+        return 1
+
+
+
+    return page if page > 0 else 1
+
+
 
 async def extract_video_identity(raw_url: str):
 
