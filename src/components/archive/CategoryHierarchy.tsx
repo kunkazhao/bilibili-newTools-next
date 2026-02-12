@@ -102,32 +102,41 @@ export default function CategoryHierarchy({
           const children = childrenByParent.get(parent.id) ?? []
           return (
             <AccordionItem key={parent.id} value={parent.id} className="border-none">
-              <AccordionTrigger>{parent.name}</AccordionTrigger>
+              <AccordionTrigger className="px-3 py-2 text-sm font-medium text-slate-700 data-[state=open]:bg-transparent data-[state=open]:text-slate-900">
+                {parent.name}
+              </AccordionTrigger>
               <AccordionContent>
                 <div className="space-y-2">
                   {children.length ? (
-                    children.map((child) => (
-                      <button
-                        key={child.id}
-                        className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm ${
-                          activeCategoryId === child.id
-                            ? "bg-slate-100 text-slate-900"
-                            : "text-slate-600 hover:bg-slate-50"
-                        }`}
-                        type="button"
-                        onClick={() => onCategorySelect(child.id)}
-                      >
-                        <span>{child.name}</span>
-                        {showChildCount ? (
-                          <span className="text-xs text-slate-400">
-                            {child.count ?? 0} 个选品
-                          </span>
-                        ) : null}
-                      </button>
-                    ))
+                    children.map((child) => {
+                      const isActive = activeCategoryId === child.id
+                      return (
+                        <button
+                          key={child.id}
+                          className={`flex w-full items-center gap-3 rounded-xl py-2 pr-3 text-sm ${
+                            isActive
+                              ? "bg-slate-100 text-slate-900"
+                              : "text-slate-600 hover:bg-slate-50"
+                          }`}
+                          type="button"
+                          onClick={() => onCategorySelect(child.id)}
+                        >
+                          <span className="min-w-0 flex-1 truncate pl-6 text-left">{child.name}</span>
+                          {showChildCount ? (
+                            <span
+                              className={`shrink-0 min-w-[3rem] text-right text-xs ${
+                                isActive ? "text-slate-600" : "text-slate-400"
+                              }`}
+                            >
+                              {child.count ?? 0}
+                            </span>
+                          ) : null}
+                        </button>
+                      )
+                    })
                   ) : (
                     <div className="rounded-xl border border-dashed border-slate-200 px-3 py-2 text-xs text-slate-400">
-                      暂无二级分类
+                      {"\u6682\u65e0\u4e8c\u7ea7\u5206\u7c7b"}
                     </div>
                   )}
                 </div>
