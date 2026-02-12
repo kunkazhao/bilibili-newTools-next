@@ -6,9 +6,12 @@ import BenchmarkPageView from "./BenchmarkPageView"
 const baseProps = {
   isLoading: false,
   categories: [],
+  parentCategories: [],
+  activeParentId: "",
+  activeCategoryId: "",
   entries: [],
-  filter: "all",
-  onFilterChange: vi.fn(),
+  onParentSelect: vi.fn(),
+  onCategorySelect: vi.fn(),
   onAddClick: vi.fn(),
   onManageCategories: vi.fn(),
   onOpenSubtitle: vi.fn(),
@@ -29,4 +32,22 @@ describe("BenchmarkPageView", () => {
     expect(card).not.toBeNull()
     expect(card?.className).toContain("card-interactive")
   })
+
+  it("shows duration badge on entry cover", () => {
+    render(
+      <BenchmarkPageView
+        {...baseProps}
+        entries={[
+          {
+            id: "e2",
+            title: "Duration Entry",
+            duration: 714,
+          },
+        ]}
+      />
+    )
+
+    expect(screen.getByText("11:54")).toBeTruthy()
+  })
+
 })

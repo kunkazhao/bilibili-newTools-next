@@ -292,11 +292,6 @@ class BlueLinkMapEntryUpdate(BaseModel):
     remark: Optional[str] = None
 
 
-class BenchmarkCategoryPayload(BaseModel):
-    name: str
-    color: Optional[str] = None
-
-
 class BenchmarkEntryPayload(BaseModel):
     category_id: str
     title: str
@@ -4715,17 +4710,24 @@ async def fetch_blue_link_map_snapshot(product_ids: Optional[List[str]] = None) 
 
 async def fetch_benchmark_snapshot(mode: str = "full") -> Dict[str, Any]:
 
-    client = ensure_supabase()
-
-    categories = await client.select("benchmark_categories", params={"order": "created_at.asc"})
+    categories = await fetch_sourcing_categories(include_counts=False)
 
     normalized_categories = [
 
-        {"id": cat.get("id"), "name": cat.get("name"), "color": cat.get("color"), "created_at": cat.get("created_at")}
+        {
+            "id": cat.get("id"),
+            "name": cat.get("name"),
+            "color": cat.get("color"),
+            "sort_order": cat.get("sort_order"),
+            "parent_id": cat.get("parent_id"),
+            "created_at": cat.get("created_at"),
+        }
 
         for cat in categories
 
     ]
+
+    client = ensure_supabase()
 
     if mode == "pick":
 
@@ -5081,6 +5083,7 @@ try:
         benchmark,
         blue_link_map,
         direct_plans,
+        benchmark_accounts,
     )
 except Exception:
     from api import (  # type: ignore
@@ -5094,6 +5097,7 @@ except Exception:
         benchmark,
         blue_link_map,
         direct_plans,
+        benchmark_accounts,
     )
 
 app.include_router(sourcing.router)
@@ -5106,6 +5110,7 @@ app.include_router(video.router)
 app.include_router(benchmark.router)
 app.include_router(blue_link_map.router)
 app.include_router(direct_plans.router)
+app.include_router(benchmark_accounts.router)
 
 try:
     from backend.api.blue_link_map import (

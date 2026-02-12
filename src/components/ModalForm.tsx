@@ -19,6 +19,7 @@ interface ModalFormProps {
   size?: "sm" | "md" | "lg" | "xl"
   closeOnOverlayClick?: boolean
   children?: ReactNode
+  description?: string
 }
 
 export default function ModalForm({
@@ -30,6 +31,7 @@ export default function ModalForm({
   size = "md",
   closeOnOverlayClick = true,
   children,
+  description,
 }: ModalFormProps) {
   const sizeClass = {
     sm: "sm:max-w-[520px]",
@@ -47,7 +49,9 @@ export default function ModalForm({
       >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>Form details.</DialogDescription>
+          <DialogDescription className={description ? undefined : "sr-only"}>
+            {description ?? title}
+          </DialogDescription>
         </DialogHeader>
         <form
           className="dialog-form flex min-h-0 flex-1 flex-col"

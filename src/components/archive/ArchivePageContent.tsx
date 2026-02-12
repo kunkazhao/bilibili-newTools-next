@@ -2227,6 +2227,8 @@ export default function ArchivePage() {
             sourceRef: item.sourceRef,
             spec: item.spec,
           }),
+          jdLink: String(item.blueLink || "").trim(),
+          tbLink: String(item.taobaoLink || item.spec[META_KEYS.taobaoPromoLink] || "").trim(),
         }
       }),
     [categoryMap, visibleItems]

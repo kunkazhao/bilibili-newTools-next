@@ -29,6 +29,47 @@ EncodeWbiParamsFn = Callable[[Dict[str, str], str, str], Dict[str, str]]
 BuildHeadersFn = Callable[[Optional[Dict[str, str]]], Dict[str, str]]
 
 
+RISK_ERROR_KEYWORDS = (
+    "\u8bf7\u6c42\u8fc7\u4e8e\u9891\u7e41",
+    "\u98ce\u63a7\u6821\u9a8c",
+    "v_voucher",
+    "\\u8bf7\\u6c42\\u8fc7\\u4e8e\\u9891\\u7e41",
+    "\\u98ce\\u63a7\\u6821\\u9a8c",
+    "risk control",
+    "too many requests",
+)
+
+
+RISK_ERROR_DECODED_KEYWORDS = (
+    "\u8bf7\u6c42\u8fc7\u4e8e\u9891\u7e41",
+    "\u98ce\u63a7\u6821\u9a8c",
+)
+
+
+def is_risk_error_message(message: str) -> bool:
+    text = str(message or "")
+    if not text:
+        return False
+
+    lowered = text.lower()
+    if any(keyword in text for keyword in RISK_ERROR_KEYWORDS[:5]):
+        return True
+    if any(keyword in lowered for keyword in RISK_ERROR_KEYWORDS[5:]):
+        return True
+
+    if "\\u" in text:
+        try:
+            decoded = text.encode("utf-8").decode("unicode_escape")
+        except Exception:
+            decoded = ""
+        if decoded and decoded != text and any(
+            token in decoded for token in RISK_ERROR_DECODED_KEYWORDS
+        ):
+            return True
+
+    return False
+
+
 def build_bilibili_dm_img_inter() -> str:
     seed = int(time.time() * 1000) + (uuid4().int % 997)
     width = 4200 + (seed % 800)
@@ -319,11 +360,7 @@ async def fetch_account_videos_from_bili(
         except Exception as exc:
             last_error = exc
             message = str(exc)
-            risk_error_detected = (
-                "\u8bf7\u6c42\u8fc7\u4e8e\u9891\u7e41" in message
-                or "\u98ce\u63a7\u6821\u9a8c" in message
-                or "v_voucher" in message
-            )
+            risk_error_detected = is_risk_error_message(message)
             keys = await fetch_wbi_keys_fn(force=True) or keys
             headers.pop("Cookie", None)
 

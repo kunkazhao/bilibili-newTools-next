@@ -2,7 +2,6 @@ import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import EditableListRow from "@/components/ui/editable-list-row"
 import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Dialog,
   DialogContent,
@@ -84,25 +83,25 @@ export default function MyAccountDialogs({
         </DialogHeader>
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex flex-1 items-center gap-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
               <Input
                 aria-label="Account name"
-                className="modal-list-field"
+                className="modal-list-field min-w-0"
                 placeholder="账号名称"
                 value={accountNameInput}
                 onChange={(event) => onAccountNameChange(event.target.value)}
               />
               <Input
                 aria-label="Homepage link"
-                className="modal-list-field"
+                className="modal-list-field min-w-0"
                 placeholder="个人主页链接（https://space.bilibili.com/xxx）"
                 value={accountLinkInput}
                 onChange={(event) => onAccountLinkChange(event.target.value)}
               />
-              <Button onClick={onAccountSubmit}>新增</Button>
+              <Button className="shrink-0" onClick={onAccountSubmit}>新增</Button>
             </div>
           </div>
-          <ScrollArea className="dialog-list" data-dialog-scroll="true">
+          <div className="dialog-list overflow-y-auto" data-dialog-scroll="true">
             <div className="space-y-2 pr-2">
               {accounts.map((account) => (
                 <EditableListRow
@@ -115,24 +114,24 @@ export default function MyAccountDialogs({
                   onConfirm={() => handleConfirmEdit(account)}
                   onCancel={handleCancelEdit}
                   viewContent={(
-                    <div className="flex items-center gap-2">
-                      <div className="modal-list-field flex-1">{account.name}</div>
-                      <div className="modal-list-field flex-1">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <div className="modal-list-field min-w-0 flex-1 truncate">{account.name}</div>
+                      <div className="modal-list-field min-w-0 flex-1 truncate">
                         {account.homepage_link ?? ""}
                       </div>
                     </div>
                   )}
                   editContent={(
-                    <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
                       <Input
                         aria-label="Account name"
-                        className="modal-list-field flex-1"
+                        className="modal-list-field min-w-0 flex-1"
                         value={editingAccountId === account.id ? editingAccountName : account.name}
                         onChange={(event) => setEditingAccountName(event.target.value)}
                       />
                       <Input
                         aria-label="Homepage link"
-                        className="modal-list-field flex-1"
+                        className="modal-list-field min-w-0 flex-1"
                         placeholder="个人主页链接"
                         value={editingAccountId === account.id ? editingAccountLink : account.homepage_link ?? ""}
                         onChange={(event) => setEditingAccountLink(event.target.value)}
@@ -142,7 +141,7 @@ export default function MyAccountDialogs({
                 />
               ))}
             </div>
-          </ScrollArea>
+          </div>
         </div>
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={() => onAccountOpenChange(false)}>

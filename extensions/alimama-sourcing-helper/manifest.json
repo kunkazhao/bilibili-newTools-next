@@ -1,0 +1,26 @@
+﻿{
+  "manifest_version": 3,
+  "name": "Alimama Sourcing Helper",
+  "description": "Capture product data from Alimama and write into sourcing items.",
+  "version": "0.1.0",
+  "permissions": ["storage", "tabs", "scripting"],
+  "host_permissions": [
+    "https://pub.alimama.com/*",
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Alimama Sourcing",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://pub.alimama.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

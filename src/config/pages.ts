@@ -4,6 +4,7 @@ import { openSchemeDetailPage } from "@/utils/standaloneRoutes"
 const ArchivePage = lazy(() => import("@/pages/ArchivePage"))
 const AutoCartPage = lazy(() => import("@/pages/AutoCartPage"))
 const BenchmarkPage = lazy(() => import("@/pages/BenchmarkPage"))
+const BenchmarkAccountPage = lazy(() => import("@/pages/BenchmarkAccountPage"))
 const BlueLinkMapPage = lazy(() => import("@/pages/BlueLinkMapPage"))
 const CommentBlueLinkPage = lazy(() => import("@/pages/CommentBlueLinkPage"))
 const CommissionPage = lazy(() => import("@/pages/CommissionPage"))
@@ -65,6 +66,12 @@ export const PAGES: PageConfig[] = [
     label: "定向计划",
     group: "utility",
     render: () => createElement(DirectPlansPage),
+  },
+  {
+    id: "benchmark-accounts",
+    label: "对标账号收集",
+    group: "utility",
+    render: () => createElement(BenchmarkAccountPage),
   },
   {
     id: "recognize",

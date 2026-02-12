@@ -26,6 +26,62 @@ vi.mock("@/lib/bilibili", async () => {
   }
 })
 
+
+
+const seedCommissionItems = (
+  items: Array<{
+    id: string
+    title: string
+  }>
+) => {
+  localStorage.setItem(
+    "commission_temp_items_v1",
+    JSON.stringify(
+      items.map((item) => ({
+        id: item.id,
+        title: item.title,
+        price: 99,
+        commissionRate: 10,
+        image: "",
+        shopName: "",
+        source: "",
+        sales30: 0,
+        comments: "",
+        isFocused: false,
+        spec: {},
+      }))
+    )
+  )
+}
+
+const seedCategoryCache = () => {
+  localStorage.setItem(
+    "sourcing_category_cache_v1",
+    JSON.stringify({
+      timestamp: Date.now(),
+      data: [
+        { id: "parent-digital", name: "Digital", sortOrder: 0, parentId: null },
+        { id: "child-mouse", name: "Mouse", sortOrder: 0, parentId: "parent-digital" },
+      ],
+    })
+  )
+}
+
+const getArchiveConfirmButton = () => {
+  const dialog = screen.getByRole("dialog")
+  const buttons = within(dialog).getAllByRole("button")
+  return buttons[buttons.length - 1]
+}
+
+const getArchiveAllButton = () => {
+  const searchInput = screen.getByLabelText("Search products")
+  const section = searchInput.closest("section")
+  if (!section) {
+    throw new Error("list section not found")
+  }
+  return within(section).getAllByRole("button")[0]
+}
+
 const getPromoParseButton = () => {
   const textarea = screen.getByLabelText("Link list")
   const card = textarea.closest("section")
@@ -183,4 +239,205 @@ describe("CommissionPageContent", () => {
       expect(screen.getByText("JD Item")).toBeTruthy()
     })
   })
+
+  it("adds a placeholder card for b23 links that resolve to taobao detail pages", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    const mockApi = vi.mocked(apiRequest)
+    vi.mocked(fetchCategories).mockResolvedValue({ categories: [] })
+
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null)
+
+    mockApi.mockImplementation((path: string) => {
+      if (path.startsWith("/api/bilibili/resolve")) {
+        return Promise.resolve({
+          resolvedUrl: "https://detail.tmall.com/item.htm?id=1000225673799&ali_trackid=test",
+        })
+      }
+      if (path === "/api/taobao/resolve") {
+        return Promise.resolve({
+          itemId: "",
+          openIid: "",
+          resolvedUrl: "https://detail.tmall.com/item.htm?id=1000225673799&ali_trackid=test",
+        })
+      }
+      return Promise.resolve({})
+    })
+
+    render(<CommissionPageContent />)
+
+    const textarea = screen.getByLabelText("Link list")
+    await user.type(textarea, "https://b23.tv/mall-jaXi3-7IMpn")
+
+    await user.click(getPromoParseButton())
+
+    await waitFor(() => {
+      expect(mockApi).toHaveBeenCalledWith(
+        expect.stringContaining("/api/bilibili/resolve?url=")
+      )
+    })
+
+    const cards = await screen.findAllByTestId("commission-card")
+    expect(cards).toHaveLength(1)
+
+    await user.click(cards[0])
+    expect(openSpy).toHaveBeenCalledWith(
+      "https://detail.tmall.com/item.htm?id=1000225673799&ali_trackid=test",
+      "_blank"
+    )
+
+    openSpy.mockRestore()
+  })
+
+
+  it("keeps b23 taobao card when taobao product API is unavailable", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    const mockApi = vi.mocked(apiRequest)
+    vi.mocked(fetchCategories).mockResolvedValue({ categories: [] })
+
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null)
+
+    mockApi.mockImplementation((path: string) => {
+      if (path.startsWith("/api/bilibili/resolve")) {
+        return Promise.resolve({
+          resolvedUrl: "https://detail.tmall.com/item.htm?id=1000225673799",
+        })
+      }
+      if (path === "/api/taobao/resolve") {
+        return Promise.resolve({
+          itemId: "1000225673799",
+          openIid: "",
+          resolvedUrl: "https://detail.tmall.com/item.htm?id=1000225673799",
+        })
+      }
+      if (path === "/api/taobao/product") {
+        return Promise.reject(new Error("permission denied"))
+      }
+      return Promise.resolve({})
+    })
+
+    render(<CommissionPageContent />)
+
+    const textarea = screen.getByLabelText("Link list")
+    await user.type(textarea, "https://b23.tv/mall-jaXi3-7IMpn")
+    await user.click(getPromoParseButton())
+
+    const cards = await screen.findAllByTestId("commission-card")
+    expect(cards).toHaveLength(1)
+    expect(mockApi).not.toHaveBeenCalledWith("/api/jd/product", expect.anything())
+
+    await user.click(cards[0])
+    expect(openSpy).toHaveBeenCalledWith(
+      "https://detail.tmall.com/item.htm?id=1000225673799",
+      "_blank"
+    )
+
+    openSpy.mockRestore()
+  })
+
+  it("shows parent and child category selectors in archive modal", async () => {
+    const user = userEvent.setup()
+    seedCategoryCache()
+    seedCommissionItems([{ id: "item-1", title: "Item A" }])
+
+    vi.mocked(fetchCategories).mockResolvedValue({ categories: [] })
+    vi.mocked(apiRequest).mockResolvedValue({ status: "ok" } as never)
+
+    render(<CommissionPageContent />)
+
+    const card = await screen.findByTestId("commission-card")
+    await user.click(within(card).getAllByRole("button")[1])
+
+    expect(screen.getByLabelText("Archive parent category")).toBeTruthy()
+    expect(screen.getByLabelText("Archive child category")).toBeTruthy()
+  })
+
+  it("archives single item to a second-level category when cache includes parent and child", async () => {
+    const user = userEvent.setup()
+    const mockApi = vi.mocked(apiRequest)
+    seedCategoryCache()
+    seedCommissionItems([{ id: "item-1", title: "Item A" }])
+
+    vi.mocked(fetchCategories).mockResolvedValue({ categories: [] })
+    mockApi.mockImplementation((path: string) => {
+      if (path === "/api/sourcing/items/batch") {
+        return Promise.resolve({ status: "ok" })
+      }
+      return Promise.resolve({})
+    })
+
+    render(<CommissionPageContent />)
+
+    const card = await screen.findByTestId("commission-card")
+    await user.click(within(card).getAllByRole("button")[1])
+
+    await user.click(getArchiveConfirmButton())
+
+    await waitFor(() => {
+      expect(mockApi).toHaveBeenCalledWith(
+        "/api/sourcing/items/batch",
+        expect.objectContaining({ method: "POST" })
+      )
+    })
+
+    const archiveCall = mockApi.mock.calls.find((call) => call[0] === "/api/sourcing/items/batch")
+    expect(archiveCall).toBeTruthy()
+    const requestBody = JSON.parse(String(archiveCall?.[1]?.body || "{}"))
+    expect(requestBody.category_id).toBe("child-mouse")
+    expect(requestBody.items).toHaveLength(1)
+  })
+
+  it("archives all filtered items to the same second-level category", async () => {
+    const user = userEvent.setup()
+    const mockApi = vi.mocked(apiRequest)
+    seedCategoryCache()
+    seedCommissionItems([
+      { id: "item-1", title: "Item A" },
+      { id: "item-2", title: "Item B" },
+    ])
+
+    const rafSpy = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback: FrameRequestCallback) => {
+        callback(performance.now())
+        return 1
+      })
+
+    vi.mocked(fetchCategories).mockResolvedValue({ categories: [] })
+    mockApi.mockImplementation((path: string) => {
+      if (path === "/api/sourcing/items/batch") {
+        return Promise.resolve({ status: "ok" })
+      }
+      return Promise.resolve({})
+    })
+
+    render(<CommissionPageContent />)
+
+    await screen.findByText("Item A")
+    await screen.findByText("Item B")
+
+    await user.click(getArchiveAllButton())
+
+    const confirmButton = getArchiveConfirmButton()
+    await waitFor(() => {
+      expect((confirmButton as HTMLButtonElement).disabled).toBe(false)
+    })
+    await user.click(confirmButton)
+
+    await waitFor(() => {
+      expect(mockApi).toHaveBeenCalledWith(
+        "/api/sourcing/items/batch",
+        expect.objectContaining({ method: "POST" })
+      )
+    })
+
+    const archiveCall = mockApi.mock.calls.find((call) => call[0] === "/api/sourcing/items/batch")
+    expect(archiveCall).toBeTruthy()
+    const requestBody = JSON.parse(String(archiveCall?.[1]?.body || "{}"))
+    expect(requestBody.category_id).toBe("child-mouse")
+    expect(requestBody.items).toHaveLength(2)
+
+    rafSpy.mockRestore()
+  })
+
+
 })

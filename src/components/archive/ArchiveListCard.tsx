@@ -18,10 +18,12 @@ interface ArchiveListCardProps {
   jdCommission?: string
   jdCommissionRate?: string
   jdSales?: string
+  jdLink?: string
   tbPrice?: string
   tbCommission?: string
   tbCommissionRate?: string
   tbSales?: string
+  tbLink?: string
   sales30: string
   comments: string
   image: string
@@ -42,6 +44,8 @@ interface ArchiveListCardProps {
   onCoverClick?: (id: string) => void
   onCardClick?: (link: string) => void
   onFetchParams?: (id: string) => void
+  onJdClick?: (link: string) => void
+  onTbClick?: (link: string) => void
 }
 
 const TEXT = {
@@ -100,10 +104,12 @@ function ArchiveListCardComponent({
   jdCommission,
   jdCommissionRate,
   jdSales,
+  jdLink,
   tbPrice,
   tbCommission,
   tbCommissionRate,
   tbSales,
+  tbLink,
   sales30,
   comments,
   image,
@@ -124,6 +130,8 @@ function ArchiveListCardComponent({
   onCoverClick,
   onCardClick,
   onFetchParams,
+  onJdClick,
+  onTbClick,
 }: ArchiveListCardProps) {
   const normalizedMissingTips = missingTips.map((tip) => decodeUnicodeEscapes(tip))
   const hasMissing = normalizedMissingTips.length > 0
@@ -155,6 +163,13 @@ function ArchiveListCardComponent({
     commissionRate: resolveMetric(tbCommissionRate),
     sales: resolveMetric(tbSales),
   }
+  const hasJdJump = Boolean(onJdClick && String(jdLink || "").trim())
+  const hasTbJump = Boolean(onTbClick && String(tbLink || "").trim())
+
+  const metricsBlockBaseClass =
+    "flex items-start gap-2 rounded-xl bg-[#fbfcfd] px-7 py-3 flex-1 min-w-[350px] transition-all cursor-pointer hover:bg-slate-50 hover:shadow-sm hover:ring-1 hover:ring-slate-200"
+  const jdMetricsBlockClass = metricsBlockBaseClass
+  const tbMetricsBlockClass = metricsBlockBaseClass
 
   const renderInlineMetric = (label: string, value: string, valueClass: string) => (
     <div className="flex flex-col items-start gap-3 whitespace-nowrap" data-testid="archive-metric-item">
@@ -173,7 +188,11 @@ function ArchiveListCardComponent({
       data-testid="archive-card-body"
       onDragOver={(event) => event.preventDefault()}
       onDrop={() => onDrop(id)}
-      onClick={onCardClick ? () => onCardClick(blueLink) : undefined}
+      onClick={() => {
+        if (!onCardClick) return
+        const linkCandidate = String(jdLink || blueLink || "").trim()
+        onCardClick(linkCandidate)
+      }}
     >
       <div className="flex gap-5">
         <div
@@ -272,8 +291,13 @@ function ArchiveListCardComponent({
             data-testid="archive-metrics-row"
           >
             <div
-              className="flex items-start gap-2 rounded-xl bg-[#fbfcfd] px-7 py-3 flex-1 min-w-[350px]"
+              className={jdMetricsBlockClass}
               data-testid="archive-metrics-jd"
+              onClick={(event) => {
+                event.stopPropagation()
+                if (!hasJdJump) return
+                onJdClick?.(String(jdLink || "").trim())
+              }}
             >
               <span
                 className="inline-flex h-[40px] w-[60px] min-h-[40px] min-w-[60px] flex-none self-start items-center justify-center rounded-lg bg-rose-500 text-[16px] font-semibold leading-none text-white text-center -translate-x-[6px]"
@@ -289,8 +313,13 @@ function ArchiveListCardComponent({
               </div>
             </div>
             <div
-              className="flex items-start gap-2 rounded-xl bg-[#fbfcfd] px-7 py-3 flex-1 min-w-[350px]"
+              className={tbMetricsBlockClass}
               data-testid="archive-metrics-tb"
+              onClick={(event) => {
+                event.stopPropagation()
+                if (!hasTbJump) return
+                onTbClick?.(String(tbLink || "").trim())
+              }}
             >
               <span
                 className="inline-flex h-[40px] w-[60px] min-h-[40px] min-w-[60px] flex-none self-start items-center justify-center rounded-lg bg-amber-500 text-[16px] font-semibold leading-none text-white text-center -translate-x-[6px]"

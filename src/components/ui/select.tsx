@@ -8,24 +8,89 @@ const Select = SelectPrimitive.Root
 const SelectGroup = SelectPrimitive.Group
 const SelectValue = SelectPrimitive.Value
 
+let hiddenSelectObserverStarted = false
+
+const patchHiddenSelectAccessibility = () => {
+  if (typeof document === "undefined") return
+
+  document
+    .querySelectorAll<HTMLSelectElement>('select[aria-hidden="true"]')
+    .forEach((hiddenSelect, index) => {
+      if (!hiddenSelect.id) {
+        hiddenSelect.id = `radix-hidden-select-${index + 1}`
+      }
+      if (!hiddenSelect.name) {
+        hiddenSelect.name = hiddenSelect.id
+      }
+      if (
+        !hiddenSelect.getAttribute("aria-label") &&
+        !hiddenSelect.getAttribute("aria-labelledby")
+      ) {
+        hiddenSelect.setAttribute("aria-label", "Select")
+      }
+    })
+}
+
+const startHiddenSelectObserver = () => {
+  if (hiddenSelectObserverStarted || typeof window === "undefined") return
+  hiddenSelectObserverStarted = true
+
+  patchHiddenSelectAccessibility()
+
+  const observer = new MutationObserver(() => {
+    patchHiddenSelectAccessibility()
+  })
+  observer.observe(document.body, { childList: true, subtree: true })
+}
+
 const SelectTrigger = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
->(({ className, children, ...props }, ref) => (
-  <SelectPrimitive.Trigger
-    ref={ref}
-    className={cn(
-      "flex h-10 w-full items-center justify-between rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:cursor-not-allowed disabled:opacity-50",
-      className
-    )}
-    {...props}
-  >
-    {children}
-    <SelectPrimitive.Icon asChild>
-      <ChevronDown className="h-4 w-4 text-slate-400" />
-    </SelectPrimitive.Icon>
-  </SelectPrimitive.Trigger>
-))
+>(
+  (
+    {
+      className,
+      children,
+      id,
+      name,
+      "aria-label": ariaLabel,
+      "aria-labelledby": ariaLabelledBy,
+      ...props
+    },
+    ref
+  ) => {
+    const fallbackId = React.useId()
+    const resolvedId = id ?? `select-${fallbackId}`
+    const resolvedName = name ?? resolvedId
+    const resolvedAriaLabel =
+      ariaLabel ?? (ariaLabelledBy ? undefined : "Select")
+
+    React.useLayoutEffect(() => {
+      startHiddenSelectObserver()
+      patchHiddenSelectAccessibility()
+    }, [])
+
+    return (
+      <SelectPrimitive.Trigger
+        ref={ref}
+        id={resolvedId}
+        name={resolvedName}
+        aria-label={resolvedAriaLabel}
+        aria-labelledby={ariaLabelledBy}
+        className={cn(
+          "flex h-10 w-full items-center justify-between rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:cursor-not-allowed disabled:opacity-50",
+          className
+        )}
+        {...props}
+      >
+        {children}
+        <SelectPrimitive.Icon asChild>
+          <ChevronDown className="h-4 w-4 text-slate-400" />
+        </SelectPrimitive.Icon>
+      </SelectPrimitive.Trigger>
+    )
+  }
+)
 SelectTrigger.displayName = SelectPrimitive.Trigger.displayName
 
 const SelectContent = React.forwardRef<

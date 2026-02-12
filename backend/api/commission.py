@@ -1,5 +1,8 @@
+import json
 import logging
+import re
 from typing import Any, Set
+from urllib.parse import parse_qs, urlparse
 
 import aiohttp
 from fastapi import APIRouter, HTTPException
@@ -57,6 +60,213 @@ def resolve_taobao_url(*args, **kwargs):
 
 def taobao_click_extract(*args, **kwargs):
     return _core_attr("taobao_click_extract")(*args, **kwargs)
+
+
+TAOBAO_TITLE_BLACKLIST = {
+    "\u5546\u54C1\u8BE6\u60C5",
+    "\u5B9D\u8D1D\u63CF\u8FF0",
+    "\u5356\u5BB6\u670D\u52A1",
+    "\u7269\u6D41\u670D\u52A1",
+    "\u4FDD\u969C\u670D\u52A1",
+    "\u5B9D\u8D1D\u8D28\u91CF",
+    "\u7269\u6D41\u901F\u5EA6",
+    "\u670D\u52A1\u4FDD\u969C",
+}
+
+
+def extract_taobao_sku_id_from_url(raw_url: str) -> str:
+    value = str(raw_url or "").strip()
+    if not value:
+        return ""
+
+    try:
+        query = parse_qs(urlparse(value).query)
+        for key in ("skuId", "skuid", "sku_id"):
+            candidates = query.get(key) or query.get(key.lower())
+            if candidates:
+                candidate = str(candidates[0] or "").strip()
+                if re.fullmatch(r"\d{8,}", candidate):
+                    return candidate
+    except Exception:
+        pass
+
+    match = re.search(r"(?:skuId|skuid|sku_id)[=/](\d{8,})", value, flags=re.IGNORECASE)
+    return match.group(1) if match else ""
+
+
+def _decode_js_string(raw: str) -> str:
+    value = str(raw or "")
+    if "\\u" in value:
+        try:
+            return bytes(value, "utf-8").decode("unicode_escape")
+        except Exception:
+            return value
+    return value
+
+
+def _normalize_price_text(raw: Any) -> str:
+    value = str(raw or "").strip().replace("\u00A5", "").replace("\u5143", "")
+    if not value:
+        return ""
+    match = re.search(r"(\d+(?:\.\d+)?)", value)
+    return match.group(1) if match else ""
+
+
+def _extract_json_object_by_key(raw_html: str, key: str) -> dict:
+    if not raw_html or not key:
+        return {}
+
+    needle = f'"{key}":{{'
+    idx = raw_html.find(needle)
+    if idx < 0:
+        return {}
+
+    start = idx + len(f'"{key}":')
+    depth = 0
+    end = None
+
+    for cursor, ch in enumerate(raw_html[start:], start=start):
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                end = cursor + 1
+                break
+
+    if not end:
+        return {}
+
+    try:
+        return json.loads(raw_html[start:end])
+    except Exception:
+        return {}
+
+
+def _extract_price_from_sku_obj(sku_obj: dict) -> str:
+    if not isinstance(sku_obj, dict):
+        return ""
+
+    for bucket in ("subPrice", "price"):
+        node = sku_obj.get(bucket)
+        if not isinstance(node, dict):
+            continue
+        price_text = _normalize_price_text(node.get("priceText") or node.get("priceMoney"))
+        if price_text:
+            return price_text
+
+    return ""
+
+
+def _iter_sku_keys(raw_html: str):
+    seen = set()
+    for match in re.finditer(r'"(\d{10,})":\{', raw_html or ""):
+        sku_key = match.group(1)
+        if sku_key in seen:
+            continue
+        seen.add(sku_key)
+        yield sku_key
+
+
+def _extract_title_from_html(raw_html: str) -> str:
+    if not raw_html:
+        return ""
+
+    title_candidates = []
+    pattern = r'"(?:itemName|title|skuName)"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"'
+    for raw in re.findall(pattern, raw_html, flags=re.IGNORECASE):
+        decoded = _decode_js_string(raw).strip()
+        if not decoded or decoded in TAOBAO_TITLE_BLACKLIST:
+            continue
+        title_candidates.append(decoded)
+
+    if title_candidates:
+        return sorted(title_candidates, key=len, reverse=True)[0]
+
+    title_match = re.search(r"<title>(.*?)</title>", raw_html, flags=re.IGNORECASE | re.DOTALL)
+    if not title_match:
+        return ""
+
+    title_text = title_match.group(1).strip()
+    return "" if title_text in TAOBAO_TITLE_BLACKLIST else title_text
+
+
+def parse_taobao_detail_html(raw_html: str, sku_id: str = "") -> dict:
+    html_text = str(raw_html or "")
+    if not html_text:
+        return {}
+
+    title = _extract_title_from_html(html_text)
+
+    price = ""
+    target_sku = str(sku_id or "").strip()
+    if target_sku:
+        price = _extract_price_from_sku_obj(_extract_json_object_by_key(html_text, target_sku))
+
+    if not price:
+        for candidate_sku in _iter_sku_keys(html_text):
+            price = _extract_price_from_sku_obj(_extract_json_object_by_key(html_text, candidate_sku))
+            if price:
+                break
+
+    payload = {}
+    if title:
+        payload["title"] = title
+    if price:
+        payload["price"] = price
+    return payload
+
+
+async def fetch_taobao_detail_fallback(source_url: str, item_id: str) -> dict:
+    source = str(source_url or "").strip()
+    pid = str(item_id or "").strip()
+
+    candidates = []
+    if source:
+        candidates.append(source)
+    if pid:
+        candidates.append(f"https://detail.tmall.com/item.htm?id={pid}")
+        candidates.append(f"https://item.taobao.com/item.htm?id={pid}")
+
+    if not candidates:
+        return {}
+
+    cookie = str(getattr(core, "TAOBAO_COOKIE", "") or "").strip()
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/132.0.0.0 Safari/537.36"
+        ),
+        "Accept-Language": "zh-CN,zh;q=0.9",
+        "Referer": "https://pub.alimama.com/",
+    }
+    if cookie:
+        headers["Cookie"] = cookie
+
+    seen = set()
+    timeout = aiohttp.ClientTimeout(total=20)
+    async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session:
+        for target in candidates:
+            url = str(target or "").strip()
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            try:
+                async with session.get(url, allow_redirects=True) as response:
+                    final_url = str(response.url)
+                    html_text = await response.text(errors="ignore")
+            except Exception:
+                continue
+
+            sku = extract_taobao_sku_id_from_url(source or final_url)
+            parsed = parse_taobao_detail_html(html_text, sku)
+            if final_url:
+                parsed["materialUrl"] = final_url
+            if parsed.get("title") or parsed.get("price"):
+                return parsed
+
+    return {}
 
 @router.post("/api/jd/product")
 
@@ -253,16 +463,63 @@ async def taobao_resolve(request: dict):
 
 @router.post("/api/taobao/product")
 async def taobao_product_info(request: dict):
-    """根据淘宝商品 ID 获取商品详情与佣金信息。"""
-    item_id = (request or {}).get("item_id") or ""
-    open_iid = (request or {}).get("open_iid") or ""
-    item_id = str(item_id).strip()
-    open_iid = str(open_iid).strip()
-    if not item_id and not open_iid:
-        raise HTTPException(status_code=400, detail="缺少 item_id 或 open_iid 参数")
+    """Fetch Taobao product details with HTML fallback when API data is unavailable."""
+    payload = request or {}
+    item_id = str(payload.get("item_id") or "").strip()
+    open_iid = str(payload.get("open_iid") or "").strip()
+    source_url = str(
+        payload.get("source_url")
+        or payload.get("url")
+        or payload.get("resolved_url")
+        or ""
+    ).strip()
+
     if not item_id and open_iid:
         item_id = open_iid
-    return await taobao_item_details(item_id)
+
+    if not item_id and source_url:
+        item_id = extract_taobao_item_id(source_url)
+
+    if not item_id and not source_url:
+        raise HTTPException(status_code=400, detail="missing item_id/open_iid/source_url")
+
+    detail_data: dict = {}
+    detail_error: Exception | None = None
+
+    if item_id:
+        try:
+            detail_data = await taobao_item_details(item_id)
+        except Exception as exc:
+            detail_error = exc
+            logger.warning("[taobao-product] tbk details failed, fallback to html parser")
+
+    needs_fallback = not str(detail_data.get("title") or "").strip() or not str(
+        detail_data.get("price") or ""
+    ).strip()
+
+    fallback_data = {}
+    if source_url and (needs_fallback or not detail_data):
+        fallback_data = await fetch_taobao_detail_fallback(source_url, item_id)
+
+    merged = dict(detail_data or {})
+    for key in ("title", "price", "materialUrl"):
+        value = fallback_data.get(key)
+        if value:
+            merged[key] = value
+
+    if item_id and not merged.get("itemId"):
+        merged["itemId"] = item_id
+    if source_url and not merged.get("materialUrl"):
+        merged["materialUrl"] = source_url
+
+    if merged.get("title") or merged.get("price"):
+        return merged
+
+    if detail_error:
+        raise HTTPException(status_code=502, detail=f"taobao product fetch failed: {detail_error}")
+
+    raise HTTPException(status_code=404, detail="failed to fetch taobao product info")
+
 
 @router.post("/api/jd/resolve")
 async def jd_resolve_url(request: dict):

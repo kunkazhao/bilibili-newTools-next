@@ -266,6 +266,7 @@ export default function ProductFormModal({
   const baseId = useId()
   const coverInputId = `${baseId}-cover`
   const categorySelectId = `${baseId}-category`
+  const categoryLabelId = `${baseId}-category-label`
   const initialValuesKey = useMemo(
     () => JSON.stringify({ initialValues: initialValues ?? {}, defaultCategoryId: defaultCategoryId ?? "" }),
     [initialValues, defaultCategoryId]
@@ -674,6 +675,9 @@ export default function ProductFormModal({
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <Label htmlFor={coverInputId} className="sr-only">
+                  Cover image
+                </Label>
                 <input
                   id={coverInputId} name="cover" aria-label="Cover image" ref={coverInputRef}
                   type="file"
@@ -713,12 +717,12 @@ export default function ProductFormModal({
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label>归属分类</Label>
+                <Label id={categoryLabelId}>归属分类</Label>
                 <Select
                   value={values.categoryId}
                   onValueChange={(value) => update("categoryId", value)}
                 >
-                  <SelectTrigger id={categorySelectId}>
+                  <SelectTrigger id={categorySelectId} aria-labelledby={categoryLabelId}>
                     <SelectValue placeholder="请选择" />
                   </SelectTrigger>
                   <SelectContent>
@@ -876,24 +880,35 @@ export default function ProductFormModal({
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <div className="mb-3 text-sm font-semibold text-slate-700">参数信息</div>
           <div className="grid gap-3 md:grid-cols-2">
-            {presetFields.map((field) => (
-              <div key={field.key} className="grid gap-2 md:grid-cols-2">
-                <Input aria-label="Parameter name" value={field.key} readOnly />
-                <Input
-                  aria-label="Parameter value" placeholder="参数值"
-                  value={values.params[field.key] ?? ""}
-                  onChange={(event) =>
-                    setValues((prev) => ({
-                      ...prev,
-                      params: {
-                        ...prev.params,
-                        [field.key]: event.target.value,
-                      },
-                    }))
-                  }
-                />
-              </div>
-            ))}
+            {presetFields.map((field, index) => {
+              const paramNameId = `${baseId}-param-name-${index}`
+              const paramValueId = `${baseId}-param-value-${index}`
+              return (
+                <div key={field.key} className="grid gap-2 md:grid-cols-2">
+                  <Label htmlFor={paramNameId} className="sr-only">
+                    Parameter name
+                  </Label>
+                  <Input id={paramNameId} aria-label="Parameter name" value={field.key} readOnly />
+                  <Label htmlFor={paramValueId} className="sr-only">
+                    Parameter value
+                  </Label>
+                  <Input
+                    id={paramValueId}
+                    aria-label="Parameter value" placeholder="参数值"
+                    value={values.params[field.key] ?? ""}
+                    onChange={(event) =>
+                      setValues((prev) => ({
+                        ...prev,
+                        params: {
+                          ...prev.params,
+                          [field.key]: event.target.value,
+                        },
+                      }))
+                    }
+                  />
+                </div>
+              )
+            })}
           </div>
         </div>
       </div>

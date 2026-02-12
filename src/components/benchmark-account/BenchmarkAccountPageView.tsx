@@ -10,7 +10,7 @@ import {
   normalizeCover,
 } from "@/components/benchmark/benchmarkUtils"
 import type { Account } from "@/types/account"
-import type { AccountVideo } from "./types"
+import type { AccountVideo } from "@/components/my-account/types"
 
 const SidebarSkeleton = () => (
   <div className="space-y-3">
@@ -44,7 +44,7 @@ const CardSkeletons = () => (
   </div>
 )
 
-interface MyAccountPageViewProps {
+interface BenchmarkAccountPageViewProps {
   loading: boolean
   syncing: boolean
   accounts: Account[]
@@ -52,11 +52,12 @@ interface MyAccountPageViewProps {
   videos: AccountVideo[]
   onAccountChange: (accountId: string) => void
   onOpenAccountManage: () => void
-  onSync: () => void
+  onSyncCurrent: () => void
+  onSyncAll: () => void
   onCopyVideo: (video: AccountVideo) => void
 }
 
-export default function MyAccountPageView({
+export default function BenchmarkAccountPageView({
   loading,
   syncing,
   accounts,
@@ -64,9 +65,10 @@ export default function MyAccountPageView({
   videos,
   onAccountChange,
   onOpenAccountManage,
-  onSync,
+  onSyncCurrent,
+  onSyncAll,
   onCopyVideo,
-}: MyAccountPageViewProps) {
+}: BenchmarkAccountPageViewProps) {
   if (loading && accounts.length === 0) {
     return (
       <div className="grid gap-8 lg:grid-cols-[260px_1fr]">
@@ -96,13 +98,13 @@ export default function MyAccountPageView({
     <div className="grid gap-8 lg:grid-cols-[260px_1fr]">
       <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card min-h-[calc(100vh-240px)]">
         <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold text-slate-900">我的账号</h3>
+          <h3 className="text-base font-semibold text-slate-900">{"\u5bf9\u6807\u8d26\u53f7"}</h3>
           <Button
             variant="ghost"
             size="icon"
             className="h-8 w-8 text-slate-500"
             onClick={onOpenAccountManage}
-            aria-label="账号管理"
+            aria-label={"\u8d26\u53f7\u7ba1\u7406"}
           >
             <Settings className="h-4 w-4" />
           </Button>
@@ -132,26 +134,44 @@ export default function MyAccountPageView({
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h3 className="text-lg font-semibold text-slate-900">账号视频</h3>
+              <h3 className="text-lg font-semibold text-slate-900">{"\u5bf9\u6807\u8d26\u53f7\u89c6\u9891"}</h3>
               <p className="mt-1 text-sm text-slate-500">
-                展示选中账号的最新视频内容，点击右上角同步全部账号。
+                {
+                  "\u5c55\u793a\u9009\u4e2d\u5bf9\u6807\u8d26\u53f7\u7684\u6700\u65b0\u89c6\u9891\u5185\u5bb9\uff0c\u652f\u6301\u4ec5\u66f4\u65b0\u5f53\u524d\u8d26\u53f7\uff0c\u6216\u4e00\u6b21\u66f4\u65b0\u5168\u90e8\u8d26\u53f7\uff08\u6bcf\u4e2a\u8d26\u53f7\u6700\u591a50\u6761\uff09\u3002"
+                }
               </p>
             </div>
-            <Button onClick={onSync} disabled={!accounts.length || syncing}>
-              {syncing ? "获取中..." : "获取最新视频"}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={onSyncCurrent}
+                disabled={!currentAccountId || syncing}
+              >
+                {"\u66f4\u65b0\u5f53\u524d\u8d26\u53f7\u89c6\u9891"}
+              </Button>
+              <Button onClick={onSyncAll} disabled={!accounts.length || syncing}>
+                {syncing
+                  ? "\u83b7\u53d6\u4e2d..."
+                  : "\u83b7\u53d6\u5168\u90e8\u8d26\u53f7\u89c6\u9891"}
+              </Button>
+            </div>
           </div>
         </div>
 
         {videos.length === 0 && !loading ? (
-          <Empty title="暂无视频" description="点击右上角“获取最新视频”同步全部账号。" />
+          <Empty
+            title={"\u6682\u65e0\u89c6\u9891"}
+            description={
+              "\u70b9\u51fb\u53f3\u4fa7\u6309\u94ae\u66f4\u65b0\u5f53\u524d\u8d26\u53f7\uff0c\u6216\u83b7\u53d6\u5168\u90e8\u5bf9\u6807\u8d26\u53f7\u89c6\u9891\u3002"
+            }
+          />
         ) : loading && videos.length === 0 ? (
           <CardSkeletons />
         ) : (
           <div className="space-y-4">
             {videos.map((video) => {
               const cover = normalizeCover(video.cover) || COVER_PLACEHOLDER
-              const author = video.author || "未知作者"
+              const author = video.author || "\u672a\u77e5\u4f5c\u8005"
               const durationLabel = formatDuration(video.duration)
               return (
                 <article
@@ -180,18 +200,18 @@ export default function MyAccountPageView({
 
                   <div className="min-w-0 flex-1">
                     <h4 className="text-sm font-semibold text-slate-900 line-clamp-2">
-                      {video.title || "未命名视频"}
+                      {video.title || "\u672a\u547d\u540d\u89c6\u9891"}
                     </h4>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                       <span>{author}</span>
-                      <span className="opacity-40">·</span>
+                      <span className="opacity-40">{"\u00b7"}</span>
                       <span>{formatDate(video.pub_time || null)}</span>
                       {video.bvid ? (
                         <>
-                          <span className="opacity-40">·</span>
+                          <span className="opacity-40">{"\u00b7"}</span>
                           <span>BV: {video.bvid}</span>
                         </>
-                       ) : null}
+                      ) : null}
                       <Button
                         variant="outline"
                         size="icon"
@@ -206,11 +226,11 @@ export default function MyAccountPageView({
                       </Button>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-4 text-xs text-slate-500">
-                      <span>播放 {formatNumber(video.stats?.view)}</span>
-                      <span>点赞 {formatNumber(video.stats?.like)}</span>
-                      <span>收藏 {formatNumber(video.stats?.favorite)}</span>
-                      <span>评论 {formatNumber(video.stats?.reply)}</span>
-                      <span>弹幕 {formatNumber(video.stats?.danmaku)}</span>
+                      <span>{"\u64ad\u653e"} {formatNumber(video.stats?.view)}</span>
+                      <span>{"\u70b9\u8d5e"} {formatNumber(video.stats?.like)}</span>
+                      <span>{"\u6536\u85cf"} {formatNumber(video.stats?.favorite)}</span>
+                      <span>{"\u8bc4\u8bba"} {formatNumber(video.stats?.reply)}</span>
+                      <span>{"\u5f39\u5e55"} {formatNumber(video.stats?.danmaku)}</span>
                     </div>
                   </div>
                 </article>

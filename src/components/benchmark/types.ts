@@ -2,6 +2,11 @@ export type BenchmarkCategory = {
   id: string
   name: string
   color?: string | null
+  sort_order?: number | null
+  parent_id?: string | null
+  sortOrder?: number | null
+  parentId?: string | null
+  count?: number
 }
 
 export type BenchmarkEntry = {

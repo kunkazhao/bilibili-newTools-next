@@ -56,6 +56,49 @@ describe("MyAccountPageView", () => {
     expect(screen.getByText("弹幕 456")).toBeTruthy()
   })
 
+
+  it("renders duration badge on video cover", () => {
+    render(
+      <MyAccountPageView
+        {...baseProps}
+        videos={[
+          {
+            id: "v3",
+            account_id: "a1",
+            bvid: "BV1DURATION",
+            title: "Video Duration",
+            duration: 714,
+            stats: { view: 1, like: 1, reply: 1, danmaku: 1 },
+          },
+        ]}
+      />
+    )
+    expect(screen.getByText("11:54")).toBeTruthy()
+  })
+
+
+  it("applies hover interaction style on video card", () => {
+    render(
+      <MyAccountPageView
+        {...baseProps}
+        videos={[
+          {
+            id: "v-hover",
+            account_id: "a1",
+            bvid: "BV1HOVER",
+            title: "Hover Card",
+          },
+        ]}
+      />
+    )
+
+    const card = screen.getByText("Hover Card").closest("article")
+    expect(card).not.toBeNull()
+    expect(card?.className).toContain("hover:-translate-y-0.5")
+    expect(card?.className).toContain("hover:shadow-md")
+    expect(card?.className).toContain("cursor-pointer")
+  })
+
   it("renders favorite stats when available", () => {
     render(
       <MyAccountPageView

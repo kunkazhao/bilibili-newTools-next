@@ -13,6 +13,8 @@ import CommissionArchiveModal from "@/components/commission/CommissionArchiveMod
 type ArchiveCategory = {
   id: string
   name: string
+  parentId?: string | null
+  parentName?: string
   sortOrder: number
 }
 

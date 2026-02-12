@@ -6,15 +6,35 @@ export interface InputProps
   extends React.InputHTMLAttributes<HTMLInputElement> {}
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, type, id, name, ...props }, ref) => {
+  (
+    {
+      className,
+      type,
+      id,
+      name,
+      placeholder,
+      "aria-label": ariaLabel,
+      "aria-labelledby": ariaLabelledBy,
+      ...props
+    },
+    ref
+  ) => {
     const fallbackId = React.useId()
     const resolvedId = id ?? `input-${fallbackId}`
     const resolvedName = name ?? resolvedId
+    const hasPlaceholder =
+      typeof placeholder === "string" && placeholder.trim().length > 0
+    const resolvedAriaLabel =
+      ariaLabel ?? (ariaLabelledBy ? undefined : hasPlaceholder ? placeholder : undefined)
+
     return (
       <input
         type={type}
         id={resolvedId}
         name={resolvedName}
+        placeholder={placeholder}
+        aria-label={resolvedAriaLabel}
+        aria-labelledby={ariaLabelledBy}
         className={cn(
           "flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 disabled:cursor-not-allowed disabled:opacity-50",
           className

@@ -404,6 +404,9 @@ async def delete_sourcing_category(category_id: str):
 
     await client.delete("sourcing_items", {"category_id": f"eq.{category_id}"})
 
+    # Benchmark videos now share sourcing categories; deleting category should also clear linked benchmark entries.
+    await client.delete("benchmark_entries", {"category_id": f"eq.{category_id}"})
+
     await client.delete("sourcing_categories", {"id": f"eq.{category_id}"})
 
     return {"status": "ok"}

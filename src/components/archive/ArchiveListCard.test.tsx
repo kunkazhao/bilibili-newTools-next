@@ -213,6 +213,139 @@ describe("ArchiveListCard", () => {
     expect(onCardClick).toHaveBeenCalled()
   })
 
+  it("calls onJdClick and applies hover style when JD block is clicked", () => {
+    const onJdClick = vi.fn()
+
+    render(
+      <ArchiveListCard
+        id="1"
+        title="item"
+        price="100"
+        commission="10"
+        commissionRate="10%"
+        jdPrice="100"
+        jdCommission="10"
+        jdCommissionRate="10%"
+        jdSales="50"
+        jdLink="https://item.jd.com/100.html"
+        sales30="50"
+        comments="--"
+        image="https://example.com/cover.jpg"
+        shopName="shop"
+        uid="uid"
+        source="source"
+        blueLink=""
+        params={[]}
+        remark=""
+        missingTips={[]}
+        isFocused={false}
+        onToggleFocus={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onDragStart={vi.fn()}
+        onDrop={vi.fn()}
+        onJdClick={onJdClick}
+      />
+    )
+
+    const jdBlock = screen.getByTestId("archive-metrics-jd")
+    expect(jdBlock.className).toContain("cursor-pointer")
+    expect(jdBlock.className).toContain("hover:bg-slate-50")
+
+    fireEvent.click(jdBlock)
+    expect(onJdClick).toHaveBeenCalledWith("https://item.jd.com/100.html")
+  })
+
+  it("calls onTbClick and applies hover style when TB block is clicked", () => {
+    const onTbClick = vi.fn()
+
+    render(
+      <ArchiveListCard
+        id="1"
+        title="item"
+        price="100"
+        commission="10"
+        commissionRate="10%"
+        tbPrice="200"
+        tbCommission="40"
+        tbCommissionRate="20%"
+        tbSales="30"
+        tbLink="https://detail.tmall.com/item.htm?id=200"
+        sales30="50"
+        comments="--"
+        image="https://example.com/cover.jpg"
+        shopName="shop"
+        uid="uid"
+        source="source"
+        blueLink=""
+        params={[]}
+        remark=""
+        missingTips={[]}
+        isFocused={false}
+        onToggleFocus={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onDragStart={vi.fn()}
+        onDrop={vi.fn()}
+        onTbClick={onTbClick}
+      />
+    )
+
+    const tbBlock = screen.getByTestId("archive-metrics-tb")
+    expect(tbBlock.className).toContain("cursor-pointer")
+    expect(tbBlock.className).toContain("hover:bg-slate-50")
+
+    fireEvent.click(tbBlock)
+    expect(onTbClick).toHaveBeenCalledWith("https://detail.tmall.com/item.htm?id=200")
+  })
+
+  it("does not jump when clicking non JD/TB areas", () => {
+    const onJdClick = vi.fn()
+    const onTbClick = vi.fn()
+
+    render(
+      <ArchiveListCard
+        id="1"
+        title="item"
+        price="100"
+        commission="10"
+        commissionRate="10%"
+        jdPrice="100"
+        jdCommission="10"
+        jdCommissionRate="10%"
+        jdSales="50"
+        tbPrice="200"
+        tbCommission="40"
+        tbCommissionRate="20%"
+        tbSales="30"
+        jdLink="https://item.jd.com/100.html"
+        tbLink="https://detail.tmall.com/item.htm?id=200"
+        sales30="50"
+        comments="--"
+        image="https://example.com/cover.jpg"
+        shopName="shop"
+        uid="uid"
+        source="source"
+        blueLink=""
+        params={[]}
+        remark=""
+        missingTips={[]}
+        isFocused={false}
+        onToggleFocus={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onDragStart={vi.fn()}
+        onDrop={vi.fn()}
+        onJdClick={onJdClick}
+        onTbClick={onTbClick}
+      />
+    )
+
+    fireEvent.click(screen.getByTestId("archive-meta-row"))
+    expect(onJdClick).not.toHaveBeenCalled()
+    expect(onTbClick).not.toHaveBeenCalled()
+  })
+
   it("shows pointer cursor on clickable card and cover", () => {
     const { container } = render(
       <ArchiveListCard

@@ -73,7 +73,18 @@ const BILI_RETRYABLE_CODES = new Set([
 interface ArchiveCategory {
   id: string
   name: string
+  parentId: string | null
+  parentName: string
   sortOrder: number
+  parentSortOrder: number
+}
+
+interface CategoryCacheItem {
+  id: string
+  name: string
+  sortOrder: number
+  parentId: string | null
+  hasParentField: boolean
 }
 
 interface BenchmarkCategory {
@@ -126,6 +137,81 @@ const isFresh = (cache: CachePayload<unknown> | null, ttl: number) => {
   return Date.now() - cache.timestamp < ttl
 }
 
+const normalizeCategoryCacheItem = (value: unknown): CategoryCacheItem | null => {
+  if (!value || typeof value !== "object") return null
+  const raw = value as Record<string, unknown>
+  const id = typeof raw.id === "string" ? raw.id.trim() : ""
+  const name = typeof raw.name === "string" ? raw.name.trim() : ""
+  if (!id || !name) return null
+
+  const sortValue = raw.sortOrder ?? raw.sort_order ?? 0
+  const parsedSortOrder = Number(sortValue)
+  const hasParentField =
+    Object.prototype.hasOwnProperty.call(raw, "parentId") ||
+    Object.prototype.hasOwnProperty.call(raw, "parent_id")
+  const parentValue = raw.parentId ?? raw.parent_id ?? null
+  const parentId =
+    typeof parentValue === "string" && parentValue.trim().length > 0
+      ? parentValue.trim()
+      : null
+
+  return {
+    id,
+    name,
+    sortOrder: Number.isFinite(parsedSortOrder) ? parsedSortOrder : 0,
+    parentId,
+    hasParentField,
+  }
+}
+
+const normalizeCategoryCache = (value: unknown): CategoryCacheItem[] => {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => normalizeCategoryCacheItem(item))
+    .filter((item): item is CategoryCacheItem => Boolean(item))
+}
+
+const buildArchiveCategories = (categories: CategoryCacheItem[]): ArchiveCategory[] => {
+  if (!categories.length) return []
+
+  const hasHierarchyData = categories.some((category) => category.hasParentField)
+  const parentMap = new Map<string, CategoryCacheItem>()
+  categories.forEach((category) => {
+    if (!category.parentId) {
+      parentMap.set(category.id, category)
+    }
+  })
+
+  const leafCategories = hasHierarchyData
+    ? categories.filter((category) => Boolean(category.parentId))
+    : categories
+
+  return leafCategories
+    .map((category) => {
+      const parent = category.parentId ? parentMap.get(category.parentId) : null
+      return {
+        id: category.id,
+        name: category.name,
+        parentId: category.parentId,
+        parentName: parent?.name ?? "",
+        sortOrder: category.sortOrder,
+        parentSortOrder: parent?.sortOrder ?? Number.MAX_SAFE_INTEGER,
+      }
+    })
+    .sort((a, b) => {
+      if (a.parentSortOrder !== b.parentSortOrder) {
+        return a.parentSortOrder - b.parentSortOrder
+      }
+      if (a.parentName !== b.parentName) {
+        return a.parentName.localeCompare(b.parentName, "zh-CN")
+      }
+      if (a.sortOrder !== b.sortOrder) {
+        return a.sortOrder - b.sortOrder
+      }
+      return a.name.localeCompare(b.name, "zh-CN")
+    })
+}
+
 const getLocalItems = () => {
   try {
     const raw = localStorage.getItem(TEMP_STORAGE_KEY)
@@ -150,6 +236,9 @@ const API_BASE = import.meta.env.VITE_API_BASE?.replace(/\/$/, "") ?? ""
 
 const isBiliLink = (link: string) =>
   /bilibili\.com|b23\.tv|^BV[a-zA-Z0-9]+$|^av\d+$/i.test(link)
+
+const isBiliShortLink = (link: string) =>
+  /(?:b23\.tv|bili22\.cn|bili33\.cn|bili2233\.cn)/i.test(link)
 
 const isItemArchived = (item: CommissionItem) => {
   const value = item.spec?.[META_KEYS.archived]
@@ -296,8 +385,20 @@ const resolveJdUrl = async (url: string) => {
   }
 }
 
+const resolveBiliShortLink = async (url: string) => {
+  if (!url || !isBiliShortLink(url)) return url
+  try {
+    const data = await apiRequest<{ resolvedUrl?: string }>(
+      `/api/bilibili/resolve?url=${encodeURIComponent(url)}`
+    )
+    return String(data?.resolvedUrl || url).trim() || url
+  } catch {
+    return url
+  }
+}
+
 const resolveTaobaoLink = async (url: string) => {
-  const data = await apiRequest<{ itemId?: string; openIid?: string }>(
+  const data = await apiRequest<{ itemId?: string; openIid?: string; resolvedUrl?: string }>(
     "/api/taobao/resolve",
     {
       method: "POST",
@@ -307,6 +408,7 @@ const resolveTaobaoLink = async (url: string) => {
   return {
     itemId: data.itemId || "",
     openIid: data.openIid || "",
+    resolvedUrl: data.resolvedUrl || "",
   }
 }
 
@@ -342,12 +444,13 @@ const fetchJdProduct = async (keyword: string, originalLink: string) => {
   }
 }
 
-const fetchTaobaoProduct = async (itemId: string, openIid?: string) => {
+const fetchTaobaoProduct = async (itemId: string, openIid?: string, sourceUrl?: string) => {
   const data = await apiRequest<Record<string, any>>("/api/taobao/product", {
     method: "POST",
     body: JSON.stringify({
       item_id: itemId || undefined,
       open_iid: openIid || undefined,
+      source_url: sourceUrl || undefined,
     }),
   })
   return {
@@ -384,24 +487,47 @@ const formatPercent = (value: number) => {
 }
 
 const fetchCommissionProduct = async (link: string) => {
-  if (isTaobaoLink(link)) {
-    const resolved = await resolveTaobaoLink(link)
+  const resolvedInput = await resolveBiliShortLink(link)
+  const parsedLink = ensureHttp(resolvedInput || link)
+
+  if (isTaobaoLink(parsedLink)) {
+    const resolved = await resolveTaobaoLink(parsedLink)
+    const landingUrl = ensureHttp(resolved.resolvedUrl || parsedLink || link)
+    const buildTaobaoPlaceholder = () => ({
+      title: "\u6DD8\u5B9D\u5546\u54C1\uFF08\u5F85\u8865\u5168\uFF09",
+      price: 0,
+      commissionRate: 0,
+      image: "",
+      shopName: "",
+      sales30Days: 0,
+      comments: 0,
+      materialUrl: landingUrl,
+      standardUrl: landingUrl,
+      originalLink: link,
+    })
+
     const itemId = resolved.itemId || resolved.openIid
     if (!itemId) {
-      throw new Error("未能解析淘宝商品ID")
+      return buildTaobaoPlaceholder()
     }
-    const product = await fetchTaobaoProduct(itemId, resolved.openIid)
-    const materialUrl = product.materialUrl || link
-    return {
-      ...product,
-      materialUrl,
-      standardUrl: materialUrl,
-      originalLink: link,
+
+    try {
+      const product = await fetchTaobaoProduct(itemId, resolved.openIid, parsedLink || link)
+      const materialUrl = product.materialUrl || landingUrl || parsedLink
+      return {
+        ...product,
+        materialUrl,
+        standardUrl: materialUrl,
+        originalLink: link,
+      }
+    } catch {
+      return buildTaobaoPlaceholder()
     }
   }
-  const keyword = extractJdKeyword(link)
-  const product = await fetchJdProduct(keyword, link)
-  const materialUrl = product.materialUrl || link
+
+  const keyword = extractJdKeyword(parsedLink)
+  const product = await fetchJdProduct(keyword, parsedLink)
+  const materialUrl = product.materialUrl || parsedLink || link
   const standardUrl = materialUrl.includes("item.jd.com")
     ? materialUrl
     : await resolveJdUrl(materialUrl)
@@ -412,6 +538,7 @@ const fetchCommissionProduct = async (link: string) => {
     originalLink: link,
   }
 }
+
 
 export default function CommissionPage() {
   const { showToast } = useToast()
@@ -458,29 +585,40 @@ export default function CommissionPage() {
   }, [])
 
   const loadCategories = useCallback(async () => {
-    const cache = getCache<ArchiveCategory[]>(CATEGORY_CACHE_KEY)
-    const cached = getCacheData(cache) ?? []
-    if (cached.length) {
-      setCategories(cached)
+    const cache = getCache<unknown>(CATEGORY_CACHE_KEY)
+    const cachedRaw = getCacheData(cache)
+    const cachedCategories = normalizeCategoryCache(cachedRaw)
+    const cachedArchiveCategories = buildArchiveCategories(cachedCategories)
+    if (cachedArchiveCategories.length) {
+      setCategories(cachedArchiveCategories)
     }
-    if (isFresh(cache, CATEGORY_CACHE_TTL)) {
+
+    const hasHierarchyMetadata = cachedCategories.some((category) => category.hasParentField)
+    const shouldReuseFreshCache =
+      isFresh(cache, CATEGORY_CACHE_TTL) && hasHierarchyMetadata && cachedArchiveCategories.length > 0
+
+    if (shouldReuseFreshCache) {
       setIsCategoryLoading(false)
       return
     }
-    if (!cached.length) {
+
+    if (!cachedArchiveCategories.length) {
       setIsCategoryLoading(true)
     }
+
     try {
       const response = await fetchCategories({ includeCounts: false })
-      const normalized = (response.categories ?? [])
-        .filter((category) => category.parent_id)
-        .map((category) => ({
-          id: category.id,
-          name: category.name,
-          sortOrder: category.sort_order ?? 0,
-        }))
+      const cachePayload = (response.categories ?? []).map((category) => ({
+        id: category.id,
+        name: category.name,
+        sortOrder: category.sort_order ?? 0,
+        parentId: category.parent_id ?? null,
+        count: category.item_count ?? 0,
+        specFields: category.spec_fields ?? [],
+      }))
+      const normalized = buildArchiveCategories(normalizeCategoryCache(cachePayload))
       setCategories(normalized)
-      setCache(CATEGORY_CACHE_KEY, normalized)
+      setCache(CATEGORY_CACHE_KEY, cachePayload)
     } catch {
       // ignore
     } finally {
@@ -878,9 +1016,13 @@ export default function CommissionPage() {
         summary.totalLinks += uniqueLinks.length
         const jdLinks = uniqueLinks.filter((item) => isJdLink(item))
         const taobaoLinks = uniqueLinks.filter((item) => isTaobaoLink(item))
+        const shortLinks = uniqueLinks.filter((item) => isBiliShortLink(item))
         summary.jdLinks += jdLinks.length
         summary.taobaoLinks += taobaoLinks.length
-        enqueueProductLinks([...jdLinks, ...taobaoLinks], { sourceLink: link, sourceAuthor })
+        enqueueProductLinks([...jdLinks, ...taobaoLinks, ...shortLinks], {
+          sourceLink: link,
+          sourceAuthor,
+        })
       } catch (error) {
         summary.failedLinks.push({ link, reason: getUserErrorMessage(error, "解析视频失败") })
       }
@@ -906,7 +1048,8 @@ export default function CommissionPage() {
     const lines = parseLines(inputValue)
     const jdLinks = lines.filter((line) => isJdLink(line))
     const taobaoLinks = lines.filter((line) => isTaobaoLink(line))
-    const uniqueLinks = Array.from(new Set([...jdLinks, ...taobaoLinks]))
+    const shortLinks = lines.filter((line) => isBiliShortLink(line))
+    const uniqueLinks = Array.from(new Set([...jdLinks, ...taobaoLinks, ...shortLinks]))
     if (!uniqueLinks.length) {
       showToast("请粘贴有效的推广链接", "error")
       return
@@ -1123,10 +1266,7 @@ export default function CommissionPage() {
     [updateLocalItems]
   )
 
-  const sortedCategories = useMemo(
-    () => categories.slice().sort((a, b) => a.sortOrder - b.sortOrder),
-    [categories]
-  )
+  const sortedCategories = useMemo(() => categories, [categories])
 
   const filteredBenchmarkVideos = useMemo(() => {
     if (benchmarkFilter === "all") return benchmarkVideos

@@ -44,6 +44,8 @@ interface ArchiveItemView {
   uid: string
   source: string
   sourceLink?: string
+  jdLink?: string
+  tbLink?: string
   params: ParamEntry[]
   remark: string
   missingTips: string[]
@@ -551,8 +553,9 @@ export default function ArchivePageView({
                     shopName={item.shopName}
                     uid={item.uid}
                     source={item.source}
-                    sourceLink={item.sourceLink}
                     blueLink={item.blueLink}
+                    jdLink={item.jdLink}
+                    tbLink={item.tbLink}
                     params={item.params}
                     remark={item.remark}
                     missingTips={item.missingTips}
@@ -564,8 +567,9 @@ export default function ArchivePageView({
                     onDrop={onDrop}
                     onAddToScheme={onAddToScheme}
                     onCoverClick={onCoverClick}
-                    onCardClick={onOpenLink}
                     onFetchParams={onFetchParams}
+                    onJdClick={onOpenLink}
+                    onTbClick={onOpenLink}
                   />
                 </div>
               ))}

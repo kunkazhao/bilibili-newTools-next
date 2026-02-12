@@ -14,8 +14,17 @@ describe("EditableListRow", () => {
       />
     )
 
-    expect(screen.getByLabelText("Edit item")).toBeTruthy()
-    expect(screen.getByLabelText("Delete item")).toBeTruthy()
+    const row = screen.getByText("Item").closest(".modal-list-row")
+    expect(row).toBeTruthy()
+    expect(row?.className || "").toContain("min-w-0")
+
+    const editButton = screen.getByLabelText("Edit item")
+    const deleteButton = screen.getByLabelText("Delete item")
+
+    expect(editButton).toBeTruthy()
+    expect(deleteButton).toBeTruthy()
+    expect(editButton.className).toContain("shrink-0")
+    expect(deleteButton.className).toContain("shrink-0")
   })
 
   it("renders confirm and cancel actions in edit mode", () => {
@@ -29,7 +38,12 @@ describe("EditableListRow", () => {
       />
     )
 
-    expect(screen.getByLabelText("Confirm edit")).toBeTruthy()
-    expect(screen.getByLabelText("Cancel edit")).toBeTruthy()
+    const confirmButton = screen.getByLabelText("Confirm edit")
+    const cancelButton = screen.getByLabelText("Cancel edit")
+
+    expect(confirmButton).toBeTruthy()
+    expect(cancelButton).toBeTruthy()
+    expect(confirmButton.className).toContain("shrink-0")
+    expect(cancelButton.className).toContain("shrink-0")
   })
 })

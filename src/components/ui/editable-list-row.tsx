@@ -50,14 +50,14 @@ export default function EditableListRow({
 
   return (
     <div
-      className={cn("modal-list-row", className)}
+      className={cn("modal-list-row w-full min-w-0", className)}
       onDragOver={draggable ? handleDragOver : undefined}
       onDrop={draggable ? onDrop : undefined}
       onClick={onRowClick}
     >
       {draggable ? (
         <span
-          className="drag-handle"
+          className="drag-handle shrink-0"
           role="img"
           aria-label={dragHandleAriaLabel}
           draggable
@@ -67,7 +67,7 @@ export default function EditableListRow({
           <GripVertical className="h-4 w-4" aria-hidden="true" />
         </span>
       ) : null}
-      <div className="flex-1">{editing ? editContent : viewContent}</div>
+      <div className="min-w-0 flex-1">{editing ? editContent : viewContent}</div>
       {editing ? (
         <>
           {onConfirm ? (
@@ -76,6 +76,7 @@ export default function EditableListRow({
               variant="outline"
               size="icon"
               aria-label={confirmAriaLabel}
+              className="shrink-0"
               onClick={(event) => {
                 event.stopPropagation()
                 onConfirm()
@@ -90,6 +91,7 @@ export default function EditableListRow({
               variant="outline"
               size="icon"
               aria-label={cancelAriaLabel}
+              className="shrink-0"
               onClick={(event) => {
                 event.stopPropagation()
                 onCancel()
@@ -107,6 +109,7 @@ export default function EditableListRow({
               variant="outline"
               size="icon"
               aria-label={editAriaLabel}
+              className="shrink-0"
               onClick={(event) => {
                 event.stopPropagation()
                 onEdit()
@@ -120,7 +123,7 @@ export default function EditableListRow({
               type="button"
               variant="outline"
               size="icon"
-              className="dialog-action-delete"
+              className="dialog-action-delete shrink-0"
               aria-label={deleteAriaLabel}
               onClick={(event) => {
                 event.stopPropagation()

@@ -1,0 +1,71 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>阿里妈妈写入选品库</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="app">
+      <h1>阿里妈妈 -> 选品库</h1>
+
+      <section class="panel">
+        <div class="row spread">
+          <strong>页面抓取</strong>
+          <button id="extractBtn" class="btn primary">抓取当前页</button>
+        </div>
+        <p id="statusText" class="hint">请在阿里妈妈商品详情页点击抓取。</p>
+        <div id="extractFields" class="fields hidden">
+          <label><span>商品标题</span><input id="titleInput" type="text" /></label>
+          <label><span>价格（tb_price）</span><input id="priceInput" type="number" step="0.01" /></label>
+          <label><span>佣金（tb_commission，自动计算）</span><input id="commissionInput" type="number" step="0.01" readonly /></label>
+          <label><span>佣金比例（tb_commission_rate）</span><input id="rateInput" type="number" step="0.01" /></label>
+          <label><span>月销量（tb_sales）</span><input id="salesInput" type="number" step="1" /></label>
+          <label><span>淘宝推广链接（spec._tb_promo_link）</span><input id="promoLinkInput" type="text" /></label>
+          <label><span>淘宝商品链接（taobao_link，可空）</span><input id="taobaoLinkInput" type="text" /></label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <strong>写入方式</strong>
+        <div class="mode-group">
+          <label><input type="radio" name="writeMode" value="update" /> 更新已有商品</label>
+          <label><input type="radio" name="writeMode" value="create" checked /> 新增到已有分类</label>
+        </div>
+
+        <div id="updatePanel" class="mode-section hidden">
+          <div class="row">
+            <input id="itemSearchInput" type="text" placeholder="输入关键词搜索商品" />
+            <button id="searchItemBtn" class="btn secondary">搜索</button>
+          </div>
+          <select id="itemSelect" size="6" class="hidden"></select>
+          <p id="updateHint" class="hint hidden">手动选择要更新的商品。</p>
+        </div>
+
+        <div id="createPanel" class="mode-section">
+          <div class="category-split">
+            <div class="category-column">
+              <p class="category-title">一级分类</p>
+              <select id="parentCategorySelect" size="8"></select>
+            </div>
+            <div class="category-column">
+              <p class="category-title">二级分类</p>
+              <select id="categorySelect" size="8"></select>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="row">
+          <button id="previewBtn" class="btn primary">生成预览</button>
+          <button id="submitBtn" class="btn danger" disabled>确认写入</button>
+        </div>
+        <div id="previewList" class="preview-list hidden"></div>
+      </section>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -1,24 +1,12 @@
 // @vitest-environment jsdom
-import { beforeAll, describe, expect, it } from "vitest"
-import { render, screen, within } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
+import { describe, expect, it, vi } from "vitest"
+import { render, screen } from "@testing-library/react"
 import BenchmarkDialogs from "./BenchmarkDialogs"
 
-const noop = () => {}
+const noop = vi.fn()
 
 describe("BenchmarkDialogs", () => {
-  beforeAll(() => {
-    class ResizeObserver {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    }
-
-    globalThis.ResizeObserver = ResizeObserver
-  })
-
-  it("enters edit mode for category rows", async () => {
-    const user = userEvent.setup()
+  it("renders delete confirm dialog when entry exists", () => {
     render(
       <BenchmarkDialogs
         subtitleDialog={{
@@ -54,33 +42,15 @@ describe("BenchmarkDialogs", () => {
           onNoteChange: noop,
           onSubmit: noop,
         }}
-        categoryDialog={{
-          open: true,
-          input: "",
-          submitting: false,
-          updatingId: "",
-          categories: [{ id: "cat-1", name: "分类A" }],
-          onOpenChange: noop,
-          onInputChange: noop,
-          onSubmit: noop,
-          onUpdateName: noop,
-          onRequestDelete: noop,
-        }}
         confirmDialogs={{
-          entry: null,
-          category: null,
+          entry: { id: "entry-1", title: "A" },
           onEntryCancel: noop,
-          onCategoryCancel: noop,
           onEntryConfirm: noop,
-          onCategoryConfirm: noop,
         }}
       />
     )
 
-    const dialog = screen.getAllByRole("dialog").slice(-1)[0]
-    const scope = within(dialog)
-    await user.click(scope.getByLabelText("Edit benchmark category"))
-    expect(scope.getByLabelText("Confirm edit")).toBeTruthy()
-    expect(scope.getByLabelText("Cancel edit")).toBeTruthy()
+    expect(screen.getByText("删除对标视频")).toBeTruthy()
+    expect(screen.getByText("确认删除")).toBeTruthy()
   })
 })
