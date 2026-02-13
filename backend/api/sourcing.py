@@ -1085,6 +1085,22 @@ async def patch_sourcing_item(item_id: str, payload: SourcingItemUpdate, request
 
         updates["taobao_link"] = payload.taobao_link or None
 
+    if payload.category_id is not None:
+
+        category_id = payload.category_id.strip()
+
+        if not category_id:
+
+            raise HTTPException(status_code=400, detail="category_id cannot be empty")
+
+        category = await client.select("sourcing_categories", {"id": f"eq.{category_id}"})
+
+        if not category:
+
+            raise HTTPException(status_code=404, detail="category not found")
+
+        updates["category_id"] = category_id
+
     if payload.price is not None:
 
         updates["price"] = decimal_str(payload.price)
