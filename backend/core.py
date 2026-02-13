@@ -68,8 +68,12 @@ import yt_dlp
 from pypinyin import lazy_pinyin, Style
 
 from pydantic import BaseModel, Field, validator
-from backend.services.cache import cache
-from backend.services import bilibili_account as bilibili_account_service
+try:
+    from backend.services.cache import cache
+    from backend.services import bilibili_account as bilibili_account_service
+except Exception:
+    from services.cache import cache  # type: ignore
+    from services import bilibili_account as bilibili_account_service  # type: ignore
 
 # 加载环境变量
 
