@@ -290,6 +290,7 @@ async def fetch_account_videos_from_bili(
     encode_wbi_params_fn: EncodeWbiParamsFn,
     build_bilibili_headers_fn: BuildHeadersFn,
     bilibili_cookie: str,
+    playwright_enabled: bool = True,
 ) -> List[Dict[str, Any]]:
     keys = await fetch_wbi_keys_fn()
     if not keys:
@@ -369,7 +370,7 @@ async def fetch_account_videos_from_bili(
                     await asyncio.sleep(min(0.25 * (attempt + 1), 1.0))
                 continue
 
-    if risk_error_detected and not bilibili_cookie:
+    if risk_error_detected and not bilibili_cookie and playwright_enabled:
         browser_cookie = await fetch_bilibili_runtime_cookie_from_space_page(mid)
         if browser_cookie:
             headers["Cookie"] = browser_cookie
@@ -385,10 +386,16 @@ async def fetch_account_videos_from_bili(
                     if retry == 0:
                         await asyncio.sleep(0.3)
 
-    if risk_error_detected:
+    if risk_error_detected and playwright_enabled:
         fallback_items = await fetch_account_videos_from_space_page(mid, page, page_size)
         if fallback_items:
             return fallback_items
+
+    if risk_error_detected and not playwright_enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="Playwright features are disabled by PLAYWRIGHT_ENABLED",
+        )
 
     error_text = str(last_error) if last_error else "Unknown error"
     raise HTTPException(status_code=500, detail=f"Failed to fetch account videos: {error_text}")

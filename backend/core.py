@@ -6,8 +6,6 @@ FastAPI + Python
 
 """
 
-
-
 import asyncio
 
 import base64
@@ -40,8 +38,6 @@ from urllib.parse import urlencode, urlparse, parse_qs, quote, unquote
 
 from zoneinfo import ZoneInfo
 
-
-
 import aiohttp
 import httpx
 
@@ -69,38 +65,22 @@ from PIL import Image, ImageFilter, ImageOps
 
 import yt_dlp
 
-import torch
-from torchvision import transforms
-from transformers import AutoModelForImageSegmentation
-try:
-    from huggingface_hub import HfApi, snapshot_download
-    from tqdm.auto import tqdm as tqdm_auto
-except Exception:
-    HfApi = None
-    snapshot_download = None
-    tqdm_auto = None
-
 from pypinyin import lazy_pinyin, Style
 
 from pydantic import BaseModel, Field, validator
 from backend.services.cache import cache
 from backend.services import bilibili_account as bilibili_account_service
 
-
-
 # 加载环境变量
 
 load_dotenv()
 
-
 logger = logging.getLogger(__name__)
-
 
 # ==================== Request Models ====================
 
 class SourcingItemsByIdsRequest(BaseModel):
     ids: Optional[List[str]] = None
-
 
 class SourcingCategoryCreate(BaseModel):
     name: str
@@ -109,14 +89,12 @@ class SourcingCategoryCreate(BaseModel):
     sort_order: Optional[int] = None
     parent_id: Optional[str] = None
 
-
 class SourcingCategoryUpdate(BaseModel):
     name: Optional[str] = None
     color: Optional[str] = None
     spec_fields: Optional[List[Dict[str, Any]]] = None
     sort_order: Optional[int] = None
     parent_id: Optional[str] = None
-
 
 class SourcingItemBase(BaseModel):
     title: Optional[str] = None
@@ -140,24 +118,20 @@ class SourcingItemBase(BaseModel):
     spec: Optional[Dict[str, Any]] = None
     tags: Optional[List[str]] = None
 
-
 class SourcingItemCreate(SourcingItemBase):
     category_id: str
     title: str
 
-
 class SourcingItemBatchEntry(SourcingItemBase):
     title: str
-
 
 class SourcingItemBatchCreate(BaseModel):
     category_id: str
     items: List[SourcingItemBatchEntry]
 
-
 class SourcingItemUpdate(SourcingItemBase):
     title: Optional[str] = None
-
+    category_id: Optional[str] = None
 
 class AiFillRequest(BaseModel):
     category_id: str
@@ -165,11 +139,9 @@ class AiFillRequest(BaseModel):
     product_names: Optional[List[str]] = None
     model: Optional[str] = None
 
-
 class AiConfirmRequest(BaseModel):
     category_id: str
     items: List[Dict[str, Any]]
-
 
 class AiBatchStartRequest(BaseModel):
     category_id: Optional[str] = None
@@ -180,12 +152,10 @@ class AiBatchStartRequest(BaseModel):
     sort: Optional[str] = None
     model: Optional[str] = None
 
-
 class SchemeGenerateRequest(BaseModel):
     type: str
     prompt: Optional[str] = ""
     items: List[Dict[str, Any]] = Field(default_factory=list)
-
 
 class SchemeCreate(BaseModel):
     name: str
@@ -194,7 +164,6 @@ class SchemeCreate(BaseModel):
     remark: Optional[str] = None
     items: List[Dict[str, Any]] = Field(default_factory=list)
 
-
 class SchemeUpdate(BaseModel):
     name: Optional[str] = None
     category_id: Optional[str] = None
@@ -202,41 +171,32 @@ class SchemeUpdate(BaseModel):
     remark: Optional[str] = None
     items: Optional[List[Dict[str, Any]]] = None
 
-
 class PromptTemplateUpdate(BaseModel):
     content: Optional[str] = None
-
 
 class CommentAccountPayload(BaseModel):
     name: str
     homepage_link: Optional[str] = None
 
-
 class CommentAccountUpdate(BaseModel):
     name: Optional[str] = None
     homepage_link: Optional[str] = None
 
-
 class MyAccountSyncPayload(BaseModel):
     account_id: str
-
 
 class ZhihuKeywordPayload(BaseModel):
     name: str
 
-
 class ZhihuKeywordUpdate(BaseModel):
     name: Optional[str] = None
-
 
 class ZhihuScrapeRunPayload(BaseModel):
     keyword_id: Optional[str] = None
 
-
 class ZhihuQuestionCreatePayload(BaseModel):
     question_url: str
     keyword_id: str
-
 
 class CommentComboCreate(BaseModel):
     account_id: str
@@ -246,7 +206,6 @@ class CommentComboCreate(BaseModel):
     source_link: Optional[str] = None
     source_type: Optional[str] = None
 
-
 class CommentComboUpdate(BaseModel):
     name: Optional[str] = None
     content: Optional[str] = None
@@ -254,17 +213,14 @@ class CommentComboUpdate(BaseModel):
     source_link: Optional[str] = None
     source_type: Optional[str] = None
 
-
 class BlueLinkMapCategoryCreate(BaseModel):
     account_id: str
     name: str
     color: Optional[str] = None
 
-
 class BlueLinkMapCategoryUpdate(BaseModel):
     name: Optional[str] = None
     color: Optional[str] = None
-
 
 class BlueLinkMapEntryPayload(BaseModel):
     account_id: str
@@ -274,15 +230,12 @@ class BlueLinkMapEntryPayload(BaseModel):
     source_link: Optional[str] = None
     remark: Optional[str] = None
 
-
 class BlueLinkMapBatchPayload(BaseModel):
     entries: List[BlueLinkMapEntryPayload]
-
 
 class BlueLinkMapClearPayload(BaseModel):
     account_id: Optional[str] = None
     category_id: Optional[str] = None
-
 
 class BlueLinkMapEntryUpdate(BaseModel):
     category_id: Optional[str] = None
@@ -290,7 +243,6 @@ class BlueLinkMapEntryUpdate(BaseModel):
     product_id: Optional[str] = None
     sku_id: Optional[str] = None
     remark: Optional[str] = None
-
 
 class BenchmarkEntryPayload(BaseModel):
     category_id: str
@@ -307,7 +259,6 @@ class BenchmarkEntryPayload(BaseModel):
     payload: Optional[Dict[str, Any]] = None
     page: Optional[int] = None
 
-
 class BenchmarkEntryUpdate(BaseModel):
     title: Optional[str] = None
     link: Optional[str] = None
@@ -321,12 +272,6 @@ class BenchmarkEntryUpdate(BaseModel):
     stats: Optional[Dict[str, Any]] = None
     payload: Optional[Dict[str, Any]] = None
     page: Optional[int] = None
-
-
-def get_hf_endpoint() -> Optional[str]:
-    return os.getenv("HF_ENDPOINT") or os.getenv("HF_HUB_ENDPOINT")
-
-
 
 # 代理绕过配置：确保访问 B 站时不走系统代理
 
@@ -344,8 +289,6 @@ os.environ['NO_PROXY'] = merged_no_proxy
 
 os.environ['no_proxy'] = merged_no_proxy
 
-
-
 # 创建必要的目录
 
 BASE_DIR = Path(__file__).parent.parent
@@ -354,6 +297,26 @@ LOCAL_IMAGE_TEMPLATE_DIR = BASE_DIR / "templates" / "image-templates"
 IS_VERCEL = bool(os.getenv("VERCEL")) or bool(os.getenv("VERCEL_ENV"))
 
 
+def env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
+def env_csv(name: str) -> list[str]:
+    raw = os.getenv(name, "")
+    if not raw:
+        return []
+    return [item.strip().rstrip("/") for item in raw.split(",") if item.strip()]
+
+
+PLAYWRIGHT_ENABLED = env_bool("PLAYWRIGHT_ENABLED", default=not IS_VERCEL)
 
 # 简易内存缓存（用于首屏接口加速，短 TTL）
 
@@ -369,8 +332,6 @@ CACHE_NS_SOURCING_ITEMS = "sourcing_items"
 
 SOURCING_ITEMS_CACHE_LIMIT = 32
 
-
-
 if IS_VERCEL:
 
     # Vercel Serverless 文件系统只允许写入 /tmp，命名空间下以免冲突
@@ -380,8 +341,6 @@ if IS_VERCEL:
 else:
 
     STORAGE_ROOT = BASE_DIR / "downloads"
-
-
 
 DOWNLOAD_DIR = STORAGE_ROOT
 
@@ -395,13 +354,9 @@ COOKIE_FILE = COOKIE_DIR / "bilibili_cookies.txt"
 
 SUBTITLE_CACHE_VERSION = 2
 
-
-
 for dir_path in [DOWNLOAD_DIR, VIDEO_DIR, SUBTITLE_DIR, COOKIE_DIR]:
 
     dir_path.mkdir(parents=True, exist_ok=True)
-
-
 
 # API 密钥
 
@@ -420,13 +375,9 @@ JD_ELITE_ID = os.getenv("JD_ELITE_ID")
 
 JD_COOKIE = os.getenv("JD_COOKIE", "")
 
-
-
 # B站 Cookie
 
 BILIBILI_COOKIE = os.getenv("BILIBILI_COOKIE", "")
-
-
 
 # 淘宝 Cookie
 
@@ -444,15 +395,11 @@ ZHIHU_UA = os.getenv(
 )
 ZHIHU_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
-
-
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
-
-
 
 FEISHU_APP_ID = os.getenv("FEISHU_APP_ID")
 
@@ -460,13 +407,9 @@ FEISHU_APP_SECRET = os.getenv("FEISHU_APP_SECRET")
 
 FEISHU_API_BASE = "https://open.feishu.cn/open-apis"
 
-
-
 feishu_http_client: Optional[httpx.AsyncClient] = None
 
 feishu_token_cache = {"token": None, "expires_at": 0.0}
-
-
 
 # 初始化 DeepSeek 客户端（允许无密钥启动）
 
@@ -483,34 +426,7 @@ if DEEPSEEK_API_KEY:
     )
 
 
-
-# 初始化 RMBG 模型（延迟加载）
-
-rembg_session = None
-
-rembg_loading = False
-
-rembg_progress = 0
-
-rembg_error: Optional[str] = None
-
-rembg_device: Optional[str] = None
-
-rembg_transform: Optional[transforms.Compose] = None
-
-rembg_to_pil = transforms.ToPILImage()
-rembg_model_id = "briaai/RMBG-2.0"
-rembg_model_info: Dict[str, Any] = {"name": "BRIA RMBG-2.0", "size_mb": None}
-rembg_model_info_error: Optional[str] = None
-rembg_weight_filename: Optional[str] = None
-rembg_allow_patterns: Optional[List[str]] = None
-rembg_download_total_bytes: Optional[int] = None
-rembg_downloaded_bytes = 0
-rembg_download_lock = threading.Lock()
-
 cookie_file_initialized = False
-
-
 
 WBI_KEY_CACHE: Dict[str, str] = {}
 
@@ -536,11 +452,7 @@ BILIBILI_DM_IMG_STR = bilibili_account_service.BILIBILI_DM_IMG_STR
 BILIBILI_DM_COVER_IMG_STR = bilibili_account_service.BILIBILI_DM_COVER_IMG_STR
 BILIBILI_DM_IMG_INTER = bilibili_account_service.BILIBILI_DM_IMG_INTER
 
-
-
 app = FastAPI(title="B站电商创作工作台 API")
-
-
 
 PROMPT_TEMPLATE_DEFAULTS = {
 
@@ -558,7 +470,6 @@ PROMPT_TEMPLATE_STORE_PATH = DOWNLOAD_DIR / "prompt-templates.json"
 PROMPT_TEMPLATE_OVERRIDES: Dict[str, str] = {}
 PROMPT_TEMPLATE_LOCK = threading.Lock()
 
-
 def load_prompt_template_overrides() -> None:
     if not PROMPT_TEMPLATE_STORE_PATH.exists():
         return
@@ -573,13 +484,11 @@ def load_prompt_template_overrides() -> None:
     except Exception:
         return
 
-
 def save_prompt_template_overrides() -> None:
     payload = json.dumps(PROMPT_TEMPLATE_OVERRIDES, ensure_ascii=False, indent=2)
     tmp_path = PROMPT_TEMPLATE_STORE_PATH.with_suffix(".tmp")
     tmp_path.write_text(payload, encoding="utf-8")
     tmp_path.replace(PROMPT_TEMPLATE_STORE_PATH)
-
 
 def get_prompt_template_overrides(keys: Optional[List[str]] = None) -> Dict[str, str]:
     with PROMPT_TEMPLATE_LOCK:
@@ -587,12 +496,9 @@ def get_prompt_template_overrides(keys: Optional[List[str]] = None) -> Dict[str,
             return dict(PROMPT_TEMPLATE_OVERRIDES)
         return {key: PROMPT_TEMPLATE_OVERRIDES[key] for key in keys if key in PROMPT_TEMPLATE_OVERRIDES}
 
-
 load_prompt_template_overrides()
 
-
 IMAGE_TEMPLATE_DEFAULT_CATEGORY = "默认模板"
-
 
 def extract_template_title(html: str) -> Optional[str]:
     match = re.search(r"<title[^>]*>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
@@ -600,7 +506,6 @@ def extract_template_title(html: str) -> Optional[str]:
         return None
     title = re.sub(r"\s+", " ", match.group(1)).strip()
     return title or None
-
 
 def load_local_image_templates() -> List[Dict[str, Any]]:
     templates: List[Dict[str, Any]] = []
@@ -621,10 +526,6 @@ def load_local_image_templates() -> List[Dict[str, Any]]:
         )
     return templates
 
-
-
-
-
 supabase_client: Optional["SupabaseClient"] = None
 
 zhihu_scheduler: Optional[AsyncIOScheduler] = None
@@ -636,9 +537,6 @@ zhihu_job_lock = threading.Lock()
 sourcing_ai_job_store: Dict[str, Dict[str, Any]] = {}
 sourcing_ai_job_lock = threading.Lock()
 
-
-
-
 class SupabaseError(Exception):
 
     def __init__(self, status_code: int, message: str):
@@ -648,10 +546,6 @@ class SupabaseError(Exception):
         self.status_code = status_code
 
         self.message = message
-
-
-
-
 
 class SupabaseClient:
 
@@ -671,13 +565,9 @@ class SupabaseClient:
 
         self._client = httpx.AsyncClient(timeout=30.0)
 
-
-
     async def close(self) -> None:
 
         await self._client.aclose()
-
-
 
     async def request(
 
@@ -741,8 +631,6 @@ class SupabaseClient:
 
             raise SupabaseError(0, f"Supabase network error: {exc}") from exc
 
-
-
         if response.status_code >= 400:
 
             try:
@@ -763,8 +651,6 @@ class SupabaseClient:
 
             raise SupabaseError(response.status_code, str(message))
 
-
-
         if response.status_code == 204 or not response.content:
 
             return None
@@ -777,8 +663,6 @@ class SupabaseClient:
 
             return None
 
-
-
     async def select(self, table: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
 
         query = dict(params or {})
@@ -788,8 +672,6 @@ class SupabaseClient:
         result = await self.request("GET", table, params=query)
 
         return result or []
-
-
 
     async def count(self, table: str, params: Optional[Dict[str, Any]] = None) -> int:
 
@@ -863,8 +745,6 @@ class SupabaseClient:
 
         return int(payload or 0)
 
-
-
     async def insert(self, table: str, payload: Any) -> List[Dict[str, Any]]:
 
         return await self.request(
@@ -880,8 +760,6 @@ class SupabaseClient:
             prefer="return=representation"
 
         ) or []
-
-
 
     async def upsert(
 
@@ -917,8 +795,6 @@ class SupabaseClient:
 
         ) or []
 
-
-
     async def update(self, table: str, payload: Dict[str, Any], filters: Dict[str, Any]) -> List[Dict[str, Any]]:
 
         query = dict(filters or {})
@@ -939,13 +815,9 @@ class SupabaseClient:
 
         ) or []
 
-
-
     async def delete(self, table: str, filters: Dict[str, Any]) -> None:
 
         await self.request("DELETE", table, params=filters)
-
-
 
     async def rpc(self, function_name: str, params: Optional[Dict[str, Any]] = None) -> Any:
 
@@ -961,10 +833,6 @@ class SupabaseClient:
 
         )
 
-
-
-
-
 def ensure_supabase() -> SupabaseClient:
 
     if not supabase_client:
@@ -973,22 +841,15 @@ def ensure_supabase() -> SupabaseClient:
 
     return supabase_client
 
-
-
-
-
 def utc_now_iso() -> str:
 
     return datetime.now(timezone.utc).isoformat()
 
-
 def shanghai_today() -> date:
     return datetime.now(tz=ZHIHU_TIMEZONE).date()
 
-
 def invalidate_zhihu_keywords_map_cache() -> None:
     cache.invalidate(CACHE_NS_ZHIHU_KEYWORDS)
-
 
 async def fetch_zhihu_keywords_map(client: SupabaseClient, force: bool = False) -> Dict[str, str]:
     cached = cache.get(CACHE_NS_ZHIHU_KEYWORDS, ttl=ZHIHU_KEYWORDS_MAP_CACHE_TTL_SECONDS)
@@ -999,7 +860,6 @@ async def fetch_zhihu_keywords_map(client: SupabaseClient, force: bool = False) 
     cache.set(CACHE_NS_ZHIHU_KEYWORDS, data=payload)
     return payload
 
-
 async def fetch_supabase_count(client: Any, table: str, params: Optional[Dict[str, Any]] = None) -> int:
     query = dict(params or {})
     query.pop("limit", None)
@@ -1009,7 +869,6 @@ async def fetch_supabase_count(client: Any, table: str, params: Optional[Dict[st
     query["select"] = "id"
     rows = await client.select(table, query)
     return len(rows)
-
 
 def parse_cookie_header(cookie_value: str, domain: str) -> List[Dict[str, Any]]:
     items: List[Dict[str, Any]] = []
@@ -1026,12 +885,10 @@ def parse_cookie_header(cookie_value: str, domain: str) -> List[Dict[str, Any]]:
         items.append({"name": name, "value": value, "domain": domain, "path": "/"})
     return items
 
-
 def strip_html_tags(value: str) -> str:
     if not value:
         return ""
     return re.sub(r"<[^>]+>", "", value)
-
 
 def extract_zhihu_questions(items: List[Dict[str, Any]], limit: int = 200) -> List[Dict[str, str]]:
     results: List[Dict[str, str]] = []
@@ -1052,7 +909,6 @@ def extract_zhihu_questions(items: List[Dict[str, Any]], limit: int = 200) -> Li
         if len(results) >= limit:
             break
     return results
-
 
 def extract_zhihu_question_id(raw_value: str) -> str:
     value = str(raw_value or "").strip()
@@ -1079,7 +935,6 @@ def extract_zhihu_question_id(raw_value: str) -> str:
 
     return ""
 
-
 def create_zhihu_job_state(total: int, keyword_id: Optional[str]) -> Dict[str, Any]:
     job_id = str(uuid4())
     now = utc_now_iso()
@@ -1099,7 +954,6 @@ def create_zhihu_job_state(total: int, keyword_id: Optional[str]) -> Dict[str, A
         zhihu_job_store[job_id] = state
     return state
 
-
 def update_zhihu_job_state(job_id: str, **updates: Any) -> None:
     with zhihu_job_lock:
         state = zhihu_job_store.get(job_id)
@@ -1108,18 +962,15 @@ def update_zhihu_job_state(job_id: str, **updates: Any) -> None:
         state.update(updates)
         state["updated_at"] = utc_now_iso()
 
-
 def get_zhihu_job_state(job_id: str) -> Optional[Dict[str, Any]]:
     with zhihu_job_lock:
         state = zhihu_job_store.get(job_id)
         return dict(state) if state else None
 
-
 def chunk_list(values: List[str], size: int) -> List[List[str]]:
     if size <= 0:
         return [values]
     return [values[i : i + size] for i in range(0, len(values), size)]
-
 
 async def fetch_existing_question_ids(
     client: "SupabaseClient", keyword_id: Optional[str]
@@ -1132,7 +983,6 @@ async def fetch_existing_question_ids(
         return [row.get("question_id") for row in rows if row.get("question_id")]
     rows = await client.select("zhihu_questions", {"select": "id"})
     return [row.get("id") for row in rows if row.get("id")]
-
 
 async def fetch_existing_questions_map(
     client: "SupabaseClient", question_ids: List[str]
@@ -1155,15 +1005,15 @@ async def fetch_existing_questions_map(
             existing[qid] = row
     return existing
 
-
 async def ensure_zhihu_browser():
     global zhihu_playwright, zhihu_browser
+    if not PLAYWRIGHT_ENABLED:
+        raise RuntimeError("Playwright is disabled by PLAYWRIGHT_ENABLED")
     if zhihu_browser:
         return zhihu_browser
     zhihu_playwright = await async_playwright().start()
     zhihu_browser = await zhihu_playwright.chromium.launch(headless=True)
     return zhihu_browser
-
 
 async def close_zhihu_browser():
     global zhihu_playwright, zhihu_browser
@@ -1173,7 +1023,6 @@ async def close_zhihu_browser():
     if zhihu_playwright:
         await zhihu_playwright.stop()
         zhihu_playwright = None
-
 
 async def collect_search_payloads(
     page: Any,
@@ -1218,7 +1067,6 @@ async def collect_search_payloads(
             continue
     return results
 
-
 def get_zhihu_search_headers() -> Dict[str, str]:
     raw = os.getenv("ZHIHU_SEARCH_HEADERS", "").strip()
     if not raw:
@@ -1236,7 +1084,6 @@ def get_zhihu_search_headers() -> Dict[str, str]:
     if ZHIHU_UA and "user-agent" not in lower_keys:
         headers["User-Agent"] = ZHIHU_UA
     return headers
-
 
 async def fetch_search_results_via_api(
     keyword: str,
@@ -1280,7 +1127,6 @@ async def fetch_search_results_via_api(
                 continue
     return results
 
-
 async def fetch_question_stats_via_api(
     question_id: str,
     headers: Dict[str, str],
@@ -1301,7 +1147,6 @@ async def fetch_question_stats_via_api(
         if isinstance(payload, dict):
             return payload
     return None
-
 
 async def fetch_search_results_for_keyword(
     keyword: str,
@@ -1334,7 +1179,6 @@ async def fetch_search_results_for_keyword(
         await context.close()
     return results
 
-
 async def fetch_question_stats(
     question_id: str,
     response_fetcher: Optional[Callable[[], Awaitable[Dict[str, Any]]]] = None,
@@ -1363,7 +1207,6 @@ async def fetch_question_stats(
         return None
     finally:
         await context.close()
-
 
 async def zhihu_scrape_job(
     client: Optional["SupabaseClient"] = None,
@@ -1529,7 +1372,6 @@ async def zhihu_scrape_job(
             update_zhihu_job_state(job_id, status="error", error=str(exc))
         raise
 
-
 def init_zhihu_scheduler() -> None:
     global zhihu_scheduler
     if zhihu_scheduler:
@@ -1537,10 +1379,6 @@ def init_zhihu_scheduler() -> None:
     zhihu_scheduler = AsyncIOScheduler(timezone=ZHIHU_TIMEZONE)
     zhihu_scheduler.add_job(zhihu_scrape_job, CronTrigger(hour=5, minute=0))
     zhihu_scheduler.start()
-
-
-
-
 
 def decimal_to_float(value: Any) -> Optional[float]:
 
@@ -1560,10 +1398,6 @@ def decimal_to_float(value: Any) -> Optional[float]:
 
         return None
 
-
-
-
-
 def decimal_str(value: Optional[Any]) -> Optional[str]:
 
     if value is None or value == "":
@@ -1579,10 +1413,6 @@ def decimal_str(value: Optional[Any]) -> Optional[str]:
         return None
 
     return format(dec.normalize(), "f")
-
-
-
-
 
 def normalize_spec_payload(spec: Optional[Dict[str, Any]]) -> Dict[str, str]:
 
@@ -1612,7 +1442,6 @@ def normalize_spec_payload(spec: Optional[Dict[str, Any]]) -> Dict[str, str]:
 
     return normalized
 
-
 def merge_spec_payload(payload_spec: Any, raw_spec: Any) -> Optional[Dict[str, Any]]:
 
     spec: Optional[Dict[str, Any]] = None
@@ -1641,9 +1470,6 @@ def merge_spec_payload(payload_spec: Any, raw_spec: Any) -> Optional[Dict[str, A
             spec.pop(alt_key, None)
 
     return spec
-
-
-
 
 def derive_uid_prefix(name: Optional[str]) -> str:
 
@@ -1677,10 +1503,6 @@ def derive_uid_prefix(name: Optional[str]) -> str:
 
     return "SP"
 
-
-
-
-
 @app.on_event("startup")
 
 async def init_supabase_client() -> None:
@@ -1698,10 +1520,6 @@ async def init_supabase_client() -> None:
         logger.info("[Supabase] 未配置，相关模块将退化为本地模式")
 
     init_zhihu_scheduler()
-
-
-
-
 
 @app.on_event("shutdown")
 
@@ -1722,10 +1540,6 @@ async def shutdown_supabase_client() -> None:
     if zhihu_scheduler:
         zhihu_scheduler.shutdown(wait=False)
     await close_zhihu_browser()
-
-
-
-
 
 def build_bilibili_headers(extra: Optional[dict] = None) -> dict:
 
@@ -1771,7 +1585,6 @@ def build_bilibili_headers(extra: Optional[dict] = None) -> dict:
 
     return headers
 
-
 def extract_mid_from_homepage_link(link: Optional[str]) -> str:
     if not link:
         return ""
@@ -1784,7 +1597,6 @@ def extract_mid_from_homepage_link(link: Optional[str]) -> str:
     if match:
         return match.group(1)
     return ""
-
 
 def parse_bili_count(value: Any) -> Optional[int]:
     if value is None:
@@ -1806,7 +1618,6 @@ def parse_bili_count(value: Any) -> Optional[int]:
     except ValueError:
         return None
 
-
 def pick_first_value(*values: Any) -> Any:
     for value in values:
         if value is None:
@@ -1815,7 +1626,6 @@ def pick_first_value(*values: Any) -> Any:
             continue
         return value
     return None
-
 
 def parse_duration_to_seconds(value: Any) -> Optional[int]:
     if value is None:
@@ -1843,10 +1653,6 @@ def parse_duration_to_seconds(value: Any) -> Optional[int]:
         return numbers[0] * 60 + numbers[1]
     return numbers[0]
 
-
-
-
-
 def _extract_wbi_key(url: str) -> str:
 
     if not url:
@@ -1856,10 +1662,6 @@ def _extract_wbi_key(url: str) -> str:
     filename = url.split('/')[-1]
 
     return filename.split('.')[0]
-
-
-
-
 
 async def fetch_wbi_keys(force: bool = False) -> Optional[Dict[str, str]]:
 
@@ -1872,8 +1674,6 @@ async def fetch_wbi_keys(force: bool = False) -> Optional[Dict[str, str]]:
     if not force and WBI_KEY_CACHE and now - WBI_KEY_TIMESTAMP < 3600:
 
         return WBI_KEY_CACHE
-
-
 
     headers = build_bilibili_headers({"Referer": "https://www.bilibili.com/"})
 
@@ -1911,17 +1711,11 @@ async def fetch_wbi_keys(force: bool = False) -> Optional[Dict[str, str]]:
 
         logger.info(f"[WBI] 获取密钥失败: {e}")
 
-
-
     if not force and WBI_KEY_CACHE:
 
         return WBI_KEY_CACHE
 
     return None
-
-
-
-
 
 def build_mixin_key(img_key: str, sub_key: str) -> str:
 
@@ -1932,10 +1726,6 @@ def build_mixin_key(img_key: str, sub_key: str) -> str:
         return ""
 
     return ''.join(source[i] for i in MIXIN_KEY_ENC_TAB if i < len(source))[:32]
-
-
-
-
 
 def encode_wbi_params(params: Dict[str, str], img_key: str, sub_key: str) -> Dict[str, str]:
 
@@ -1969,10 +1759,6 @@ def encode_wbi_params(params: Dict[str, str], img_key: str, sub_key: str) -> Dic
 
     return sorted_items
 
-
-
-
-
 async def fetch_wbi_subtitle_list(
 
     headers: Dict[str, str],
@@ -1990,8 +1776,6 @@ async def fetch_wbi_subtitle_list(
     if not keys:
 
         return []
-
-
 
     params: Dict[str, str] = {
 
@@ -2014,8 +1798,6 @@ async def fetch_wbi_subtitle_list(
     elif bvid:
 
         params["bvid"] = bvid
-
-
 
     for attempt in range(2):
 
@@ -2059,7 +1841,6 @@ async def fetch_wbi_subtitle_list(
 
     return []
 
-
 def build_bilibili_video_link(bvid: Optional[str]) -> str:
     if not bvid:
         return ""
@@ -2069,7 +1850,6 @@ def build_bilibili_video_link(bvid: Optional[str]) -> str:
     if trimmed.lower().startswith("bv"):
         return f"https://www.bilibili.com/video/{trimmed}"
     return f"https://www.bilibili.com/video/BV{trimmed}"
-
 
 def build_account_video_payload(
     account_id: str,
@@ -2136,10 +1916,8 @@ def build_account_video_payload(
         "updated_at": utc_now_iso(),
     }
 
-
 def build_bilibili_dm_img_inter() -> str:
     return bilibili_account_service.build_bilibili_dm_img_inter()
-
 
 def build_bilibili_space_arc_search_params(
     mid: str,
@@ -2155,7 +1933,6 @@ def build_bilibili_space_arc_search_params(
         dm_img_inter=dm_img_inter,
     )
 
-
 async def build_bilibili_runtime_cookie(
     session: aiohttp.ClientSession,
     headers: Dict[str, str],
@@ -2164,12 +1941,11 @@ async def build_bilibili_runtime_cookie(
         session,
         headers,
         bilibili_cookie=BILIBILI_COOKIE,
+        playwright_enabled=PLAYWRIGHT_ENABLED,
     )
-
 
 async def fetch_bilibili_runtime_cookie_from_space_page(mid: str) -> Optional[str]:
     return await bilibili_account_service.fetch_bilibili_runtime_cookie_from_space_page(mid)
-
 
 async def fetch_account_videos_from_space_page(
     mid: str,
@@ -2181,7 +1957,6 @@ async def fetch_account_videos_from_space_page(
         page,
         page_size,
     )
-
 
 async def fetch_account_videos_from_bili(
     mid: str,
@@ -2200,7 +1975,6 @@ async def fetch_account_videos_from_bili(
         bilibili_cookie=BILIBILI_COOKIE,
     )
 
-
 async def fetch_account_video_stat(
     bvid: str,
     session: Optional[aiohttp.ClientSession] = None,
@@ -2210,8 +1984,6 @@ async def fetch_account_video_stat(
         session=session,
         build_bilibili_headers_fn=build_bilibili_headers,
     )
-
-
 
 def ensure_bilibili_cookie_file() -> Optional[str]:
 
@@ -2267,17 +2039,9 @@ def ensure_bilibili_cookie_file() -> Optional[str]:
 
         return None
 
-
-
-
-
 JD_SKU_REGEX = re.compile(r'(?:(?:sku=|/)(\d{6,}))(?:\.html)?', re.IGNORECASE)
 
 JD_IMG_REGEX = re.compile(r'(?:(?:https?:)?//img\d+\.360buyimg\.com/[A-Za-z0-9/_\-.!]+)', re.IGNORECASE)
-
-
-
-
 
 def extract_jd_sku_from_url(url: str) -> Optional[str]:
 
@@ -2298,10 +2062,6 @@ def extract_jd_sku_from_url(url: str) -> Optional[str]:
         return match.group(1)
 
     return None
-
-
-
-
 
 def normalize_jd_image_url(url: str) -> str:
 
@@ -2334,10 +2094,6 @@ def normalize_jd_image_url(url: str) -> str:
         cleaned = cleaned.replace('/ads/', '/n0/')
 
     return cleaned
-
-
-
-
 
 def extract_jd_images_from_html(html: str) -> List[str]:
 
@@ -2401,10 +2157,6 @@ def extract_jd_images_from_html(html: str) -> List[str]:
 
     return normalized
 
-
-
-
-
 def select_best_jd_image(images: List[str]) -> Optional[str]:
 
     if not images:
@@ -2422,10 +2174,6 @@ def select_best_jd_image(images: List[str]) -> Optional[str]:
                 return img
 
     return images[0]
-
-
-
-
 
 async def fetch_jd_page(url: str) -> str:
 
@@ -2473,77 +2221,58 @@ async def fetch_jd_page(url: str) -> str:
 
             return await resp.text()
 
-
-
 # CORS 配置
-
 frontend_port = os.getenv("FRONTEND_PORT")
-
-extra_origins = []
-
+default_origins = [
+    "http://127.0.0.1:8080",
+    "http://localhost:8080",
+    "http://127.0.0.1:8081",
+    "http://localhost:8081",
+    "http://127.0.0.1:8082",
+    "http://localhost:8082",
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
+    "http://127.0.0.1:8001",
+    "http://localhost:8001",
+    "http://127.0.0.1:8002",
+    "http://localhost:8002",
+]
 if frontend_port:
+    default_origins.extend(
+        [
+            f"http://127.0.0.1:{frontend_port}",
+            f"http://localhost:{frontend_port}",
+        ]
+    )
 
-    extra_origins = [
+configured_origins = env_csv("CORS_ALLOW_ORIGINS")
+if "*" in configured_origins:
+    logger.warning(
+        "Ignoring '*' in CORS_ALLOW_ORIGINS because allow_credentials=True; use explicit origins instead"
+    )
+    configured_origins = [origin for origin in configured_origins if origin != "*"]
 
-        f"http://127.0.0.1:{frontend_port}",
-
-        f"http://localhost:{frontend_port}",
-
-    ]
-
-
+cors_allow_origins: list[str] = []
+seen_origins: set[str] = set()
+for origin in [*default_origins, *configured_origins]:
+    normalized = origin.rstrip("/")
+    if not normalized or normalized in seen_origins:
+        continue
+    seen_origins.add(normalized)
+    cors_allow_origins.append(normalized)
 
 app.add_middleware(
-
     CORSMiddleware,
-
-    allow_origins=[
-
-        "http://127.0.0.1:8080",
-
-        "http://localhost:8080",
-
-        "http://127.0.0.1:8081",
-
-        "http://localhost:8081",
-
-        "http://127.0.0.1:8082",
-
-        "http://localhost:8082",
-
-        "http://127.0.0.1:8000",
-
-        "http://localhost:8000",
-
-        "http://127.0.0.1:8001",
-
-        "http://localhost:8001",
-
-        "http://127.0.0.1:8002",
-
-        "http://localhost:8002",
-
-        *extra_origins,
-
-    ],
-
+    allow_origins=cors_allow_origins,
     allow_credentials=True,
-
     allow_methods=["*"],
-
     allow_headers=["*"],
-
 )
-
-
-
-
 
 # ==================== B站 API 代理 ====================
 
 class BilibiliProxyRequest(BaseModel):
     url: str = Field(..., description="B 站 API 地址")
-
 
 async def handle_bilibili_proxy(url: str):
     """代理请求 B 站 API，绕过浏览器 CORS 限制。"""
@@ -2581,39 +2310,16 @@ async def handle_bilibili_proxy(url: str):
                 content={"code": -1, "message": f"请求失败: {str(e)}", "data": None}
             )
 
-
-
-
-
 # ==================== 京东商品 API 代理 ====================
-
-
-
-
-
-
-
 
 class JdImageRequest(BaseModel):
 
     url: str = Field(..., description="京东商品链接")
 
-
-
-
-
-
-
-
-
-
-
 TAOBAO_API_BASE = "https://eco.taobao.com/router/rest"
-
 
 def _taobao_timestamp() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
 
 def build_taobao_signed_params(method: str, params: Dict[str, Any]) -> Dict[str, str]:
     if not TAOBAO_APP_KEY or not TAOBAO_APP_SECRET:
@@ -2638,7 +2344,6 @@ def build_taobao_signed_params(method: str, params: Dict[str, Any]) -> Dict[str,
     payload["sign"] = hashlib.md5(sign_base.encode("utf-8")).hexdigest().upper()
     return {k: str(v) for k, v in payload.items()}
 
-
 def normalize_taobao_commission_rate(value: Any) -> str:
     if value is None or value == "":
         return ""
@@ -2652,7 +2357,6 @@ def normalize_taobao_commission_rate(value: Any) -> str:
     formatted = f"{percent:.2f}".rstrip("0").rstrip(".")
     return f"{formatted}%"
 
-
 async def taobao_api_request(method: str, params: Dict[str, Any]) -> Dict[str, Any]:
     payload = build_taobao_signed_params(method, params)
     async with aiohttp.ClientSession() as session:
@@ -2663,7 +2367,6 @@ async def taobao_api_request(method: str, params: Dict[str, Any]) -> Dict[str, A
         ) as response:
             data = await response.json(content_type=None)
             return data if isinstance(data, dict) else {}
-
 
 async def taobao_click_extract(url: str) -> Dict[str, Any]:
     params: Dict[str, Any] = {"click_url": url}
@@ -2677,7 +2380,6 @@ async def taobao_click_extract(url: str) -> Dict[str, Any]:
         "openIid": result.get("open_iid") or "",
         "sourceLink": url,
     }
-
 
 def extract_taobao_item_id(raw_text: str) -> str:
     if not raw_text:
@@ -2712,7 +2414,6 @@ def extract_taobao_item_id(raw_text: str) -> str:
             return value
     return ""
 
-
 def extract_taobao_tar_target(raw_url: str) -> str:
     parsed = urlparse(str(raw_url or "").strip())
     if not parsed.query:
@@ -2728,7 +2429,6 @@ def extract_taobao_tar_target(raw_url: str) -> str:
         return unquote(tar_value)
     except Exception:
         return tar_value
-
 
 async def resolve_taobao_url(url: str) -> Tuple[str, str]:
     target = str(url or "").strip()
@@ -2780,7 +2480,6 @@ async def resolve_taobao_url(url: str) -> Tuple[str, str]:
     except Exception:
         return target, ""
 
-
 async def taobao_item_details(item_id: str) -> Dict[str, Any]:
     params: Dict[str, Any] = {"item_id": item_id}
     data = await taobao_api_request("taobao.tbk.item.details.upgrade.get", params)
@@ -2800,19 +2499,6 @@ async def taobao_item_details(item_id: str) -> Dict[str, Any]:
         "materialUrl": item.get("item_url") or item.get("url") or "",
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 async def resolve_bilibili_url(url: str):
 
     """解析 b23.tv / bilibili 短链接，返回最终 URL 及视频 ID"""
@@ -2821,13 +2507,9 @@ async def resolve_bilibili_url(url: str):
 
         raise HTTPException(status_code=400, detail="缺少 url 参数")
 
-
-
     if not any(domain in url for domain in ["b23.tv", "bilibili.com"]):
 
         raise HTTPException(status_code=400, detail="只支持解析 b23.tv 或 bilibili.com 链接")
-
-
 
     try:
 
@@ -2839,8 +2521,6 @@ async def resolve_bilibili_url(url: str):
 
                 logger.debug(f"[B站解析] 最终URL: {final_url}")
 
-
-
         bvid_match = re.search(r'BV([a-zA-Z0-9]+)', final_url)
 
         av_match = re.search(r'av(\d+)', final_url, re.IGNORECASE)
@@ -2848,8 +2528,6 @@ async def resolve_bilibili_url(url: str):
         bvid = f"BV{bvid_match.group(1)}" if bvid_match else None
 
         avid = f"av{av_match.group(1)}" if av_match else None
-
-
 
         return {
 
@@ -2869,24 +2547,17 @@ async def resolve_bilibili_url(url: str):
 
         raise HTTPException(status_code=500, detail=f"解析短链接失败: {str(e)}")
 
-
-
-
 def extract_page_number(url: str) -> int:
 
     if not url:
 
         return 1
 
-
-
     match = re.search(r"[?&]p=(\d+)", url, re.IGNORECASE)
 
     if not match:
 
         return 1
-
-
 
     try:
 
@@ -2896,11 +2567,7 @@ def extract_page_number(url: str) -> int:
 
         return 1
 
-
-
     return page if page > 0 else 1
-
-
 
 async def extract_video_identity(raw_url: str):
 
@@ -2910,15 +2577,11 @@ async def extract_video_identity(raw_url: str):
 
         raise HTTPException(status_code=400, detail="缺少 url 参数")
 
-
-
     trimmed = raw_url.strip()
 
     page = extract_page_number(trimmed)
 
     trimmed_no_query = re.sub(r'\?.*$', '', trimmed)
-
-
 
     if re.match(r'^BV[0-9A-Za-z]+$', trimmed, re.IGNORECASE):
 
@@ -2932,8 +2595,6 @@ async def extract_video_identity(raw_url: str):
 
         return final_url, bvid, None, page
 
-
-
     if re.match(r'^av\d+$', trimmed, re.IGNORECASE):
 
         avid = trimmed_no_query.lower()
@@ -2942,15 +2603,11 @@ async def extract_video_identity(raw_url: str):
 
         return final_url, None, avid, page
 
-
-
     # 非直接 BV/av，尝试解析 URL
 
     if not trimmed.startswith('http'):
 
         trimmed = f'https://www.bilibili.com/video/{trimmed}'
-
-
 
     result = await resolve_bilibili_url(trimmed)
 
@@ -2961,10 +2618,6 @@ async def extract_video_identity(raw_url: str):
     page = extract_page_number(final_url) or page
 
     return final_url, result.get('bvid'), result.get('avid'), page
-
-
-
-
 
 async def fetch_subtitle_from_official_api(
 
@@ -2994,19 +2647,13 @@ async def fetch_subtitle_from_official_api(
 
         return None
 
-
-
     if not bvid and not avid:
 
         return None
 
     page = max(1, page or 1)
 
-
-
     headers = build_bilibili_headers({"Referer": url})
-
-
 
     try:
 
@@ -3054,19 +2701,13 @@ async def fetch_subtitle_from_official_api(
 
                         cid = target.get("cid")
 
-
-
             if not cid:
 
                 return None
 
-
-
             normalized_aid = video_aid or (re.sub(r'[^0-9]', '', avid) if avid else None)
 
             subtitles = await fetch_wbi_subtitle_list(headers, bvid, normalized_aid, cid)
-
-
 
             if not subtitles:
 
@@ -3090,13 +2731,9 @@ async def fetch_subtitle_from_official_api(
 
                     subtitles = subtitle_info.get("subtitles", []) or []
 
-
-
             if not subtitles:
 
                 return None
-
-
 
             preferred = ['zh-Hans', 'zh', 'zh-CN', 'zh-Hant', 'ai-zh', 'ai-zh-hans', 'ai-zh-cn']
 
@@ -3114,8 +2751,6 @@ async def fetch_subtitle_from_official_api(
 
                 target = subtitles[0]
 
-
-
             subtitle_url = target.get('subtitle_url')
 
             if not subtitle_url:
@@ -3125,8 +2760,6 @@ async def fetch_subtitle_from_official_api(
             if subtitle_url.startswith('//'):
 
                 subtitle_url = 'https:' + subtitle_url
-
-
 
             async with aiohttp.ClientSession() as dl_session:
 
@@ -3144,18 +2777,7 @@ async def fetch_subtitle_from_official_api(
 
         return None
 
-
-
-
-
-
-
-
-
-
 # ==================== 工具函数 ====================
-
-
 
 def sanitize_filename(filename: str) -> str:
 
@@ -3163,19 +2785,11 @@ def sanitize_filename(filename: str) -> str:
 
     return re.sub(r'[<>:"/\\|?*]', '_', filename)
 
-
-
-
-
 def subtitle_cache_path(video_id: str, page: int) -> Path:
 
     safe_base = sanitize_filename(f"{video_id}_p{page}")
 
     return SUBTITLE_DIR / f"{safe_base}.cache.json"
-
-
-
-
 
 def load_cached_subtitle(video_id: str, page: int):
 
@@ -3199,10 +2813,6 @@ def load_cached_subtitle(video_id: str, page: int):
 
     return None
 
-
-
-
-
 def save_subtitle_cache(video_id: str, page: int, data: dict):
 
     path = subtitle_cache_path(video_id, page)
@@ -3225,98 +2835,7 @@ def save_subtitle_cache(video_id: str, page: int, data: dict):
 
         logger.info(f"[字幕缓存] 写入失败: {e}")
 
-
-
-
-
 # ==================== 模型加载 ====================
-
-def rembg_token_configured() -> bool:
-    return bool(os.getenv("HUGGINGFACE_HUB_TOKEN") or os.getenv("HF_TOKEN"))
-
-
-def rembg_reset_download():
-    global rembg_downloaded_bytes
-    with rembg_download_lock:
-        rembg_downloaded_bytes = 0
-
-
-def rembg_add_downloaded(delta: int):
-    global rembg_downloaded_bytes, rembg_progress
-    if not delta:
-        return
-    with rembg_download_lock:
-        rembg_downloaded_bytes += int(max(0, delta))
-        total = rembg_download_total_bytes or 0
-        if total > 0:
-            rembg_progress = min(99, int(rembg_downloaded_bytes / total * 100))
-
-
-if tqdm_auto:
-    class RembgTqdm(tqdm_auto):
-        def update(self, n=1):
-            super().update(n)
-            rembg_add_downloaded(n)
-else:
-    RembgTqdm = None
-
-
-def ensure_rembg_model_info():
-    global rembg_model_info, rembg_model_info_error, rembg_weight_filename, rembg_allow_patterns, rembg_download_total_bytes
-    if rembg_model_info.get("size_mb") is not None or rembg_model_info_error:
-        return
-    if HfApi is None:
-        rembg_model_info_error = "huggingface_hub not available"
-        return
-    try:
-        token = os.getenv("HUGGINGFACE_HUB_TOKEN") or os.getenv("HF_TOKEN")
-        hf_endpoint = get_hf_endpoint()
-        if hf_endpoint:
-            os.environ["HF_ENDPOINT"] = hf_endpoint
-        api = HfApi(token=token, endpoint=hf_endpoint)
-        info = api.model_info(rembg_model_id, files_metadata=True)
-        weight_filename = None
-        weight_size = None
-        for target_name in ("model.safetensors", "pytorch_model.bin"):
-            for sibling in info.siblings:
-                if sibling.rfilename == target_name and getattr(sibling, "size", None):
-                    weight_filename = target_name
-                    weight_size = sibling.size
-                    break
-            if weight_filename:
-                break
-        if weight_size is None:
-            weight_size = sum((s.size or 0) for s in info.siblings)
-        rembg_weight_filename = weight_filename or "model.safetensors"
-        rembg_allow_patterns = [
-            rembg_weight_filename,
-            "config.json",
-            "preprocessor_config.json",
-            "birefnet.py",
-            "BiRefNet_config.py"
-        ]
-        if weight_size:
-            rembg_model_info["size_bytes"] = int(weight_size)
-            rembg_model_info["size_mb"] = int((weight_size + 1024 * 1024 - 1) // (1024 * 1024))
-            rembg_download_total_bytes = int(weight_size)
-    except Exception as exc:
-        rembg_model_info_error = str(exc)
-
-
-
-
-
-
-
-
-
-
-
-
-
-# ==================== 视频下载 ====================
-
-
 
 class YTDLPLogger:
 
@@ -3325,8 +2844,6 @@ class YTDLPLogger:
         self.progress = 0
 
         self.status = "准备中"
-
-
 
     def debug(self, msg):
 
@@ -3338,47 +2855,21 @@ class YTDLPLogger:
 
                 self.progress = float(match.group(1))
 
-
-
     def info(self, msg):
 
         self.status = msg
-
-
 
     def warning(self, msg):
 
         pass
 
-
-
     def error(self, msg):
 
         self.status = f"错误: {msg}"
 
-
-
-
-
-
-
-
-
-
 # ==================== 字幕提取 ====================
 
-
-
-
-
-
-
-
 # ==================== DeepSeek 语义分段 ====================
-
-
-
-
 
 async def ai_fill_product_params(
     category_name: str,
@@ -3597,7 +3088,6 @@ async def ai_fill_product_params(
                 del item[key]
 
     return result
-
 
 async def fetch_sourcing_items_by_id_list(client: "SupabaseClient", ids: List[str]) -> List[Dict[str, Any]]:
     if not ids:
@@ -3847,10 +3337,6 @@ def normalize_comment_account(row: Dict[str, Any]) -> Dict[str, Any]:
 
     }
 
-
-
-
-
 def normalize_comment_combo(row: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
@@ -3858,7 +3344,6 @@ def normalize_comment_combo(row: Dict[str, Any]) -> Dict[str, Any]:
         "id": row.get("id"),
 
         "account_id": row.get("account_id"),
-
 
         "name": row.get("name"),
 
@@ -3875,7 +3360,6 @@ def normalize_comment_combo(row: Dict[str, Any]) -> Dict[str, Any]:
         "updated_at": row.get("updated_at"),
 
     }
-
 
 def normalize_account_video(row: Dict[str, Any]) -> Dict[str, Any]:
     payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
@@ -3903,10 +3387,6 @@ def normalize_account_video(row: Dict[str, Any]) -> Dict[str, Any]:
         "updated_at": row.get("updated_at"),
     }
 
-
-
-
-
 def normalize_blue_link_map_category(row: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
@@ -3924,10 +3404,6 @@ def normalize_blue_link_map_category(row: Dict[str, Any]) -> Dict[str, Any]:
         "updated_at": row.get("updated_at"),
 
     }
-
-
-
-
 
 def normalize_blue_link_map_entry(row: Dict[str, Any]) -> Dict[str, Any]:
 
@@ -3952,10 +3428,6 @@ def normalize_blue_link_map_entry(row: Dict[str, Any]) -> Dict[str, Any]:
 
     }
 
-
-
-
-
 def normalize_blue_link_source_link(source_link: Optional[str]) -> str:
 
     text = str(source_link or "")
@@ -3963,11 +3435,6 @@ def normalize_blue_link_source_link(source_link: Optional[str]) -> str:
     text = re.sub(r"[\u200b-\u200d\u2060\ufeff\u00a0\u2800]", "", text)
 
     return text.strip()
-
-
-
-
-
 
 def is_valid_blue_link_source_link(source_link: str) -> bool:
 
@@ -3981,11 +3448,6 @@ def is_valid_blue_link_source_link(source_link: str) -> bool:
 
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
-
-
-
-
-
 def detect_blue_link_platform(source_link: Optional[str]) -> str:
 
     link = normalize_blue_link_source_link(source_link).lower()
@@ -3995,10 +3457,6 @@ def detect_blue_link_platform(source_link: Optional[str]) -> str:
         return "tb"
 
     return "jd"
-
-
-
-
 
 def normalize_benchmark_entry(row: Dict[str, Any]) -> Dict[str, Any]:
 
@@ -4048,10 +3506,6 @@ def normalize_benchmark_entry(row: Dict[str, Any]) -> Dict[str, Any]:
 
     }
 
-
-
-
-
 def normalize_scheme(row: Dict[str, Any]) -> Dict[str, Any]:
 
     items = row.get("items")
@@ -4080,33 +3534,6 @@ def normalize_scheme(row: Dict[str, Any]) -> Dict[str, Any]:
 
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def _sanitize_tags(value: Optional[List[Any]]) -> List[str]:
 
     if not value:
@@ -4114,9 +3541,6 @@ def _sanitize_tags(value: Optional[List[Any]]) -> List[str]:
         return []
 
     return [str(item).strip() for item in value if str(item).strip()]
-
-
-
 
 def normalize_sourcing_item(row: Dict[str, Any]) -> Dict[str, Any]:
 
@@ -4212,7 +3636,6 @@ def normalize_sourcing_item(row: Dict[str, Any]) -> Dict[str, Any]:
 
     }
 
-
 async def sync_scheme_item_cover(
     client,
     item_id: str,
@@ -4258,7 +3681,6 @@ async def sync_scheme_item_cover(
 
     return updated
 
-
 SCHEME_SYNC_FIELDS = (
     "title",
     "link",
@@ -4278,7 +3700,6 @@ SCHEME_SYNC_FIELDS = (
     "spec",
     "uid",
 )
-
 
 async def sync_scheme_item_fields(
     client,
@@ -4333,7 +3754,6 @@ async def sync_scheme_item_fields(
 
     return updated
 
-
 def normalize_spec_fields(spec_fields: Any) -> List[Dict[str, str]]:
     if not isinstance(spec_fields, list):
         return []
@@ -4358,7 +3778,6 @@ def normalize_spec_fields(spec_fields: Any) -> List[Dict[str, str]]:
         normalized.append(result)
     return normalized
 
-
 def normalize_sourcing_category(row: Dict[str, Any], spec_fields: Optional[List[Any]] = None, count: Optional[int] = 0) -> Dict[str, Any]:
     if spec_fields is None:
         spec_fields = row.get("spec_fields")
@@ -4378,9 +3797,6 @@ def normalize_sourcing_category(row: Dict[str, Any], spec_fields: Optional[List[
         "updated_at": row.get("updated_at"),
 
     }
-
-
-
 
 SOURCING_LIST_FIELDS = ",".join([
 
@@ -4434,10 +3850,6 @@ SOURCING_LIST_FIELDS = ",".join([
 
 ])
 
-
-
-
-
 async def fetch_sourcing_categories(include_counts: bool = True) -> List[Dict[str, Any]]:
 
     client = ensure_supabase()
@@ -4487,7 +3899,6 @@ async def fetch_sourcing_categories(include_counts: bool = True) -> List[Dict[st
 
     return normalized
 
-
 async def fetch_sourcing_category_counts(force: bool = False) -> Dict[str, Any]:
     cached = cache.get(CACHE_NS_SOURCING_CATEGORY_COUNT, ttl=SOURCING_CATEGORY_COUNT_TTL_SECONDS)
     if not force and cached is not None:
@@ -4509,10 +3920,6 @@ async def fetch_sourcing_category_counts(force: bool = False) -> Dict[str, Any]:
     payload = {"counts": counts}
     cache.set(CACHE_NS_SOURCING_CATEGORY_COUNT, data=payload)
     return payload
-
-
-
-
 
 async def fetch_sourcing_items_page(
 
@@ -4610,10 +4017,6 @@ async def fetch_sourcing_items_page(
 
     return payload
 
-
-
-
-
 async def fetch_sourcing_snapshot() -> Dict[str, Any]:
 
     client = ensure_supabase()
@@ -4624,16 +4027,11 @@ async def fetch_sourcing_snapshot() -> Dict[str, Any]:
 
     return {"categories": categories, "items": items_page["items"]}
 
-
-
-
-
 async def fetch_comment_snapshot() -> Dict[str, Any]:
 
     client = ensure_supabase()
 
     accounts = await client.select("comment_accounts", params={"order": "created_at.asc"})
-
 
     combos = await client.select("comment_combos", params={"order": "updated_at.desc"})
 
@@ -4641,14 +4039,9 @@ async def fetch_comment_snapshot() -> Dict[str, Any]:
 
         "accounts": [normalize_comment_account(item) for item in accounts],
 
-
         "combos": [normalize_comment_combo(item) for item in combos],
 
     }
-
-
-
-
 
 async def fetch_blue_link_map_snapshot(product_ids: Optional[List[str]] = None) -> Dict[str, Any]:
 
@@ -4704,10 +4097,6 @@ async def fetch_blue_link_map_snapshot(product_ids: Optional[List[str]] = None) 
 
     return payload
 
-
-
-
-
 async def fetch_benchmark_snapshot(mode: str = "full") -> Dict[str, Any]:
 
     categories = await fetch_sourcing_categories(include_counts=False)
@@ -4757,78 +4146,6 @@ async def fetch_benchmark_snapshot(mode: str = "full") -> Dict[str, Any]:
 
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 async def delete_old_cover(cover_url: str):
     """从 Supabase Storage 删除旧的封面图"""
 
@@ -4867,44 +4184,7 @@ async def delete_old_cover(cover_url: str):
 
         logger.info(f"删除旧封面失败: {exc}")
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ACCOUNT_VIDEO_STAT_CONCURRENCY = 6
-
-
-
 
 async def sync_account_videos_for_account(
     client: SupabaseClient,
@@ -4956,103 +4236,6 @@ async def sync_account_videos_for_account(
 
     return added, updated, total_videos
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def _normalize_pub_time(value: Optional[Any]) -> Optional[str]:
 
     if value is None:
@@ -5068,8 +4251,6 @@ def _normalize_pub_time(value: Optional[Any]) -> Optional[str]:
         return value
 
     return None
-
-
 
 try:
     from backend.api import (
@@ -5127,7 +4308,6 @@ except Exception:
     from api.commission import taobao_resolve  # type: ignore
     from api.zhihu import create_zhihu_question, list_zhihu_questions  # type: ignore
 
-
 @app.get("/api/health")
 async def health_check():
     """服务健康检查。"""
@@ -5137,6 +4317,5 @@ async def health_check():
         "services": {
             "deepseek": bool(DEEPSEEK_API_KEY),
             "dashscope": bool(DASHSCOPE_API_KEY),
-            "rembg": rembg_session is not None,
         },
     }
