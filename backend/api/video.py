@@ -10,10 +10,8 @@ try:
 except Exception:
     from backend import core as core
 
-AutoModelForImageSegmentation = core.AutoModelForImageSegmentation
 DEEPSEEK_API_KEY = core.DEEPSEEK_API_KEY
 DEEPSEEK_MODEL = core.DEEPSEEK_MODEL
-RembgTqdm = core.RembgTqdm
 SUBTITLE_DIR = core.SUBTITLE_DIR
 VIDEO_DIR = core.VIDEO_DIR
 YTDLPLogger = core.YTDLPLogger
@@ -23,175 +21,17 @@ asyncio = core.asyncio
 build_bilibili_headers = core.build_bilibili_headers
 deepseek_client = core.deepseek_client
 ensure_bilibili_cookie_file = core.ensure_bilibili_cookie_file
-ensure_rembg_model_info = core.ensure_rembg_model_info
 extract_video_identity = core.extract_video_identity
 fetch_subtitle_from_official_api = core.fetch_subtitle_from_official_api
-get_hf_endpoint = core.get_hf_endpoint
 json = core.json
 load_cached_subtitle = core.load_cached_subtitle
 os = core.os
 re = core.re
-rembg_allow_patterns = core.rembg_allow_patterns
-rembg_device = core.rembg_device
-rembg_download_lock = core.rembg_download_lock
-rembg_download_total_bytes = core.rembg_download_total_bytes
-rembg_downloaded_bytes = core.rembg_downloaded_bytes
-rembg_error = core.rembg_error
-rembg_loading = core.rembg_loading
-rembg_model_id = core.rembg_model_id
-rembg_model_info = core.rembg_model_info
-rembg_model_info_error = core.rembg_model_info_error
-rembg_progress = core.rembg_progress
-rembg_reset_download = core.rembg_reset_download
-rembg_session = core.rembg_session
-rembg_token_configured = core.rembg_token_configured
-rembg_transform = core.rembg_transform
 sanitize_filename = core.sanitize_filename
 save_subtitle_cache = core.save_subtitle_cache
-snapshot_download = core.snapshot_download
-torch = core.torch
-tqdm_auto = core.tqdm_auto
-transforms = core.transforms
 yt_dlp = core.yt_dlp
 
-
 logger = logging.getLogger(__name__)
-
-@router.get("/api/rembg/init")
-
-async def init_rembg_model():
-
-    """初始化 RMBG 模型"""
-
-    global rembg_session, rembg_loading, rembg_progress, rembg_error, rembg_device, rembg_transform, rembg_download_total_bytes
-
-
-
-    if rembg_model_info.get("size_mb") is None and rembg_model_info_error is None:
-        asyncio.create_task(asyncio.to_thread(ensure_rembg_model_info))
-
-    if rembg_model_info.get("size_mb") is None:
-        rembg_model_info["size_mb"] = 844
-        rembg_model_info["size_bytes"] = 844 * 1024 * 1024
-        if rembg_download_total_bytes is None:
-            rembg_download_total_bytes = rembg_model_info["size_bytes"]
-
-    if rembg_session is not None:
-
-        return {"status": "ready", "progress": 100, "model": rembg_model_info, "token_configured": rembg_token_configured(), "downloaded_bytes": rembg_downloaded_bytes, "total_bytes": rembg_download_total_bytes}
-
-
-
-    if rembg_loading:
-
-        return {"status": "loading", "progress": rembg_progress, "model": rembg_model_info, "token_configured": rembg_token_configured(), "downloaded_bytes": rembg_downloaded_bytes, "total_bytes": rembg_download_total_bytes}
-
-
-
-    rembg_loading = True
-
-    rembg_progress = 0
-
-    rembg_error = None
-
-
-
-    def load_model():
-
-        global rembg_session, rembg_loading, rembg_progress, rembg_error, rembg_device, rembg_transform, rembg_downloaded_bytes, rembg_download_total_bytes
-
-        try:
-
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            rembg_device = device
-            torch.set_float32_matmul_precision("high")
-
-            token = os.getenv("HUGGINGFACE_HUB_TOKEN") or os.getenv("HF_TOKEN")
-            model_kwargs = {"trust_remote_code": True}
-            if token:
-                model_kwargs["token"] = token
-
-            ensure_rembg_model_info()
-            rembg_reset_download()
-            snapshot_path = None
-            hf_endpoint = get_hf_endpoint()
-            if hf_endpoint:
-                os.environ["HF_ENDPOINT"] = hf_endpoint
-            if snapshot_download and rembg_allow_patterns:
-                snapshot_path = snapshot_download(
-                    rembg_model_id,
-                    allow_patterns=rembg_allow_patterns,
-                    resume_download=True,
-                    token=token,
-                    endpoint=hf_endpoint,
-                    tqdm_class=RembgTqdm if tqdm_auto else None
-                )
-
-            if snapshot_path:
-                model = AutoModelForImageSegmentation.from_pretrained(
-                    snapshot_path,
-                    trust_remote_code=True,
-                    local_files_only=True
-                )
-            else:
-                model = AutoModelForImageSegmentation.from_pretrained(rembg_model_id, **model_kwargs)
-            model.to(device)
-            model.eval()
-
-            if rembg_download_total_bytes:
-                with rembg_download_lock:
-                    rembg_downloaded_bytes = rembg_download_total_bytes
-
-            rembg_transform = transforms.Compose([
-                transforms.Resize((1024, 1024)),
-                transforms.ToTensor(),
-                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-            ])
-
-            rembg_session = model
-            rembg_progress = 100
-            rembg_loading = False
-
-        except Exception as e:
-
-            rembg_error = str(e)
-            rembg_loading = False
-
-
-
-    # 后台加载
-
-    asyncio.create_task(asyncio.to_thread(load_model))
-
-
-
-    return {"status": "loading", "progress": 0, "model": rembg_model_info, "token_configured": rembg_token_configured(), "downloaded_bytes": rembg_downloaded_bytes, "total_bytes": rembg_download_total_bytes}
-
-@router.get("/api/rembg/progress")
-
-async def get_rembg_progress():
-
-    """获取 RMBG 模型加载进度"""
-
-    global rembg_session, rembg_loading, rembg_progress, rembg_error, rembg_downloaded_bytes, rembg_download_total_bytes
-
-
-
-    if rembg_model_info.get("size_mb") is None and rembg_model_info_error is None:
-        asyncio.create_task(asyncio.to_thread(ensure_rembg_model_info))
-
-    if rembg_session is not None:
-
-        return {"status": "ready", "progress": 100, "model": rembg_model_info, "token_configured": rembg_token_configured(), "downloaded_bytes": rembg_downloaded_bytes, "total_bytes": rembg_download_total_bytes}
-
-    if rembg_loading:
-
-        return {"status": "loading", "progress": rembg_progress, "model": rembg_model_info, "token_configured": rembg_token_configured(), "downloaded_bytes": rembg_downloaded_bytes, "total_bytes": rembg_download_total_bytes}
-
-    if rembg_error:
-        return {"status": "error", "progress": 0, "detail": rembg_error, "model": rembg_model_info, "token_configured": rembg_token_configured(), "downloaded_bytes": rembg_downloaded_bytes, "total_bytes": rembg_download_total_bytes}
-
-    return {"status": "not_started", "progress": 0, "model": rembg_model_info, "token_configured": rembg_token_configured(), "downloaded_bytes": rembg_downloaded_bytes, "total_bytes": rembg_download_total_bytes}
 
 @router.post("/api/video/download")
 
@@ -200,8 +40,6 @@ async def download_video(url: str = Form(...)):
     """下载 B站视频（最低清晰度）"""
 
     video_id = None
-
-
 
     # 尝试从 URL 提取视频 ID
 
@@ -225,19 +63,13 @@ async def download_video(url: str = Form(...)):
 
             break
 
-
-
     if not video_id:
 
         raise HTTPException(status_code=400, detail="无法识别视频链接")
 
-
-
     safe_id = sanitize_filename(video_id)
 
     output_path = VIDEO_DIR / f"{safe_id}.mp4"
-
-
 
     # 检查是否已下载
 
@@ -255,11 +87,7 @@ async def download_video(url: str = Form(...)):
 
         }
 
-
-
     logger = YTDLPLogger()
-
-
 
     ydl_opts = {
 
@@ -275,15 +103,11 @@ async def download_video(url: str = Form(...)):
 
     }
 
-
-
     try:
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
 
             await asyncio.to_thread(ydl.download, [url])
-
-
 
         return {
 
@@ -321,8 +145,6 @@ async def get_subtitle(
 
         raise HTTPException(status_code=400, detail="无法识别视频链接")
 
-
-
     safe_id = sanitize_filename(video_id)
 
     page = max(1, page or page_in_url or 1)
@@ -344,8 +166,6 @@ async def get_subtitle(
         }
 
     headers = build_bilibili_headers({"Referer": url})
-
-
 
     # 优先使用官方接口
 
@@ -393,15 +213,11 @@ async def get_subtitle(
 
         ydl_opts['cookiefile'] = cookie_path
 
-
-
     try:
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
 
             info = await asyncio.to_thread(ydl.extract_info, final_url, download=False)
-
-
 
             # 检查是否有字幕
 
@@ -409,11 +225,7 @@ async def get_subtitle(
 
             automatic_captions = info.get('automatic_captions', {})
 
-
-
             subtitle_data = None
-
-
 
             # 优先使用人工字幕
 
@@ -431,8 +243,6 @@ async def get_subtitle(
 
                     break
 
-
-
             # 如果没有找到，使用第一个可用字幕
 
             if not subtitle_data:
@@ -442,8 +252,6 @@ async def get_subtitle(
                 if all_subs:
 
                     subtitle_data = all_subs[0]
-
-
 
             if not subtitle_data or not isinstance(subtitle_data, dict):
 
@@ -457,8 +265,6 @@ async def get_subtitle(
 
                     await asyncio.to_thread(ydl2.download, [final_url])
 
-
-
                 # 读取下载的字幕文件
 
                 subtitle_file = SUBTITLE_DIR / f'{safe_base}.zh-Hans.json'
@@ -466,8 +272,6 @@ async def get_subtitle(
                 if not subtitle_file.exists():
 
                     subtitle_file = SUBTITLE_DIR / f'{safe_base}.zh.json'
-
-
 
                 if subtitle_file.exists():
 
@@ -499,13 +303,9 @@ async def get_subtitle(
 
                                 subtitle_data = None
 
-
-
             if not subtitle_data:
 
                 raise HTTPException(status_code=404, detail="该视频没有可用字幕")
-
-
 
             save_subtitle_cache(video_id, page, subtitle_data)
 
@@ -518,8 +318,6 @@ async def get_subtitle(
                 "subtitle": subtitle_data
 
             }
-
-
 
     except Exception as e:
 
