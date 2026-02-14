@@ -1065,6 +1065,14 @@ async def patch_sourcing_item(item_id: str, payload: SourcingItemUpdate, request
 
     client = ensure_supabase()
 
+    raw_payload: Optional[Dict[str, Any]] = None
+    try:
+        parsed_payload = await request.json()
+        if isinstance(parsed_payload, dict):
+            raw_payload = parsed_payload
+    except Exception:
+        raw_payload = None
+
     updates: Dict[str, Any] = {}
 
     if payload.title is not None:
@@ -1085,9 +1093,17 @@ async def patch_sourcing_item(item_id: str, payload: SourcingItemUpdate, request
 
         updates["taobao_link"] = payload.taobao_link or None
 
-    if payload.category_id is not None:
+    category_value = payload.category_id
+    if category_value is None and raw_payload is not None:
+        fallback_category = raw_payload.get("category_id")
+        if fallback_category is None:
+            fallback_category = raw_payload.get("categoryId")
+        if isinstance(fallback_category, str):
+            category_value = fallback_category
 
-        category_id = payload.category_id.strip()
+    if category_value is not None:
+
+        category_id = category_value.strip()
 
         if not category_id:
 
@@ -1159,13 +1175,7 @@ async def patch_sourcing_item(item_id: str, payload: SourcingItemUpdate, request
         updates["remark"] = payload.remark or None
 
     if payload.spec is not None:
-        raw_spec = None
-        try:
-            raw_payload = await request.json()
-            if isinstance(raw_payload, dict):
-                raw_spec = raw_payload.get("spec")
-        except Exception:
-            raw_spec = None
+        raw_spec = raw_payload.get("spec") if raw_payload is not None else None
 
         merged_spec = merge_spec_payload(payload.spec, raw_spec)
         updates["spec"] = normalize_spec_payload(merged_spec or {})

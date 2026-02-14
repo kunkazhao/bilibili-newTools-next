@@ -18,6 +18,14 @@ class _DummyRequest:
         return {}
 
 
+class _DummyRequestWithBody:
+    def __init__(self, body):
+        self.body = body
+
+    async def json(self):
+        return self.body
+
+
 class _FakeSupabaseClient:
     def __init__(self, categories=None):
         self.categories = categories if categories is not None else [{"id": "cat-new"}]
@@ -79,6 +87,32 @@ class SourcingItemCategoryUpdateTests(unittest.IsolatedAsyncioTestCase):
             await sourcing.patch_sourcing_item("item-1", payload, _DummyRequest())
 
         self.assertEqual(ctx.exception.status_code, 404)
+
+    async def test_patch_item_reads_category_from_raw_body_when_model_field_missing(self):
+        fake_client = _FakeSupabaseClient()
+        sourcing.ensure_supabase = lambda: fake_client
+        sourcing.sync_scheme_item_fields = lambda *args, **kwargs: None
+
+        payload = sourcing.SourcingItemUpdate()
+        request = _DummyRequestWithBody({"category_id": "cat-new"})
+        response = await sourcing.patch_sourcing_item("item-1", payload, request)
+
+        self.assertEqual(response["item"]["category_id"], "cat-new")
+        _, update_payload, _ = fake_client.update_calls[0]
+        self.assertEqual(update_payload.get("category_id"), "cat-new")
+
+    async def test_patch_item_accepts_category_id_camel_case_alias(self):
+        fake_client = _FakeSupabaseClient()
+        sourcing.ensure_supabase = lambda: fake_client
+        sourcing.sync_scheme_item_fields = lambda *args, **kwargs: None
+
+        payload = sourcing.SourcingItemUpdate()
+        request = _DummyRequestWithBody({"categoryId": "cat-new"})
+        response = await sourcing.patch_sourcing_item("item-1", payload, request)
+
+        self.assertEqual(response["item"]["category_id"], "cat-new")
+        _, update_payload, _ = fake_client.update_calls[0]
+        self.assertEqual(update_payload.get("category_id"), "cat-new")
 
 
 if __name__ == "__main__":

@@ -41,3 +41,29 @@ bilibili-newTools-next 是原 bilibili-newTools 的新前端栈迁移版，使�
 - 依赖安装：`npm i`
 - 本地启动：`npm run dev`
 
+## Vercel 部署（当前线上）
+
+### 项目拆分
+- 前端项目：`bilibili-new-tools-next-lpxm`
+  - 域名：`https://bilibili-new-tools-next-lpxm.vercel.app`
+- 后端项目：`bilibili-new-tools-next`
+  - 域名：`https://bilibili-new-tools-next.vercel.app`
+
+### 自动部署
+- 两个项目都绑定同一个 GitHub 仓库分支（当前为 `master`）。
+- 每次 `git push origin master` 后，前后端会各自自动触发部署。
+
+### 环境变量
+- 前端（Vite）：
+  - `VITE_API_BASE=https://bilibili-new-tools-next.vercel.app`
+- 后端（FastAPI）：
+  - `SUPABASE_URL`
+  - `SUPABASE_SERVICE_ROLE_KEY`
+  - `SUPABASE_ANON_KEY`
+  - `PLAYWRIGHT_ENABLED=false`（Vercel 建议关闭）
+  - `CORS_ALLOW_ORIGINS=https://bilibili-new-tools-next-lpxm.vercel.app`
+
+### 验证步骤
+- 后端健康检查：访问 `https://bilibili-new-tools-next.vercel.app/api/health`
+- 前端联通检查：打开前端页面，确认不再出现 CORS 报错
+

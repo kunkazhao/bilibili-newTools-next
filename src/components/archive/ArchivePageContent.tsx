@@ -989,9 +989,9 @@ export default function ArchivePage() {
     }
   }, [applyCountsToCategories])
 
-  const loadCategoryCounts = useCallback(async () => {
+  const loadCategoryCounts = useCallback(async (options?: { force?: boolean }) => {
     try {
-      const response = await fetchCategoryCounts()
+      const response = await fetchCategoryCounts({ force: Boolean(options?.force) })
       if (!response?.counts) return
       setCategoryCounts(response.counts)
       setCategories((prev) => applyCountsToCategories(prev, response.counts))
@@ -1831,6 +1831,8 @@ export default function ArchivePage() {
     if (editingItemId) {
       const target = baseItems.find((item) => item.id === editingItemId)
       if (!target) return
+      const didCategoryChange =
+        String(target.categoryId || "") !== String(values.categoryId || "")
       const nextSpec = {
         ...target.spec,
         [META_KEYS.blueLink]: values.blueLink,
@@ -1866,6 +1868,7 @@ export default function ArchivePage() {
       const prevItemsSnapshot = items
       const prevSchemeSnapshot = schemeFilterItems
       const prevFilteredSnapshot = filteredItems
+      const prevVisibleCount = visibleItems.length
 
       const nextItems = prevItemsSnapshot.map((item) =>
         item.id === editingItemId ? nextItem : item
@@ -1888,6 +1891,7 @@ export default function ArchivePage() {
 
       setItems(nextItems)
       setSchemeFilterItems(nextSchemeItems)
+      setVisibleItems(nextFiltered.slice(0, Math.max(CHUNK_SIZE, prevVisibleCount)))
       if (schemeFilterId) {
         schemeFilterCacheRef.current.set(String(schemeFilterId), {
           items: nextSchemeItems,
@@ -1897,6 +1901,7 @@ export default function ArchivePage() {
 
       const request = updateItem(editingItemId, {
         title: values.title,
+        category_id: values.categoryId,
         ...metrics,
         cover_url: values.image,
         link: values.blueLink,
@@ -1904,7 +1909,7 @@ export default function ArchivePage() {
         remark: values.remark,
         spec: nextSpec,
       })
-        .then((data) => {
+        .then(async (data) => {
           if (data?.item) {
             const normalized = normalizeArchiveItem(data.item as ItemResponse)
             const nextItemsFromServer = nextItems.map((item) =>
@@ -1927,6 +1932,7 @@ export default function ArchivePage() {
             }
             setItems(nextItemsFromServer)
             setSchemeFilterItems(nextSchemeFromServer)
+            setVisibleItems(serverFiltered.slice(0, Math.max(CHUNK_SIZE, prevVisibleCount)))
             if (schemeFilterId) {
               schemeFilterCacheRef.current.set(String(schemeFilterId), {
                 items: nextSchemeFromServer,
@@ -1934,10 +1940,14 @@ export default function ArchivePage() {
               })
             }
           }
+          if (didCategoryChange) {
+            await loadCategoryCounts({ force: true })
+          }
         })
         .catch((error) => {
           setItems(prevItemsSnapshot)
           setSchemeFilterItems(prevSchemeSnapshot)
+          setVisibleItems(prevFilteredSnapshot.slice(0, Math.max(CHUNK_SIZE, prevVisibleCount)))
           if (schemeFilterId) {
             schemeFilterCacheRef.current.set(String(schemeFilterId), {
               items: prevSchemeSnapshot,

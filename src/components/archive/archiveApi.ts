@@ -25,9 +25,16 @@ export async function fetchCategories(params?: { includeCounts?: boolean }) {
   )
 }
 
-export async function fetchCategoryCounts() {
+export async function fetchCategoryCounts(params?: { force?: boolean }) {
+  const query = new URLSearchParams()
+  if (params?.force) {
+    query.set("force", "true")
+  }
+  const suffix = query.toString()
+    ? `?${query.toString()}`
+    : ""
   return apiRequest<{ counts: Record<string, number> }>(
-    "/api/sourcing/categories/counts"
+    `/api/sourcing/categories/counts${suffix}`
   )
 }
 
@@ -134,6 +141,7 @@ export async function updateItem(
   itemId: string,
   payload: {
     title?: string
+    category_id?: string
     link?: string
     taobao_link?: string
     price?: number
