@@ -1,7 +1,7 @@
 ﻿// @vitest-environment jsdom
 import React from "react"
-import { describe, expect, it, vi } from "vitest"
-import { render } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import { cleanup, render, screen } from "@testing-library/react"
 import CommissionPageView from "./CommissionPageView"
 
 const capturedProps: Array<Record<string, unknown>> = []
@@ -14,10 +14,14 @@ vi.mock("@/components/commission/CommissionListCard", () => ({
 }))
 
 describe("CommissionPageView", () => {
-  it("does not forward focus toggle handler to list cards", () => {
-    const View = CommissionPageView as unknown as React.FC<Record<string, unknown>>
+  afterEach(() => {
+    cleanup()
+    capturedProps.length = 0
+  })
 
-    render(
+  const renderView = () => {
+    const View = CommissionPageView as unknown as React.FC<Record<string, unknown>>
+    return render(
       <View
         inputValue=""
         onInputChange={() => {}}
@@ -45,10 +49,14 @@ describe("CommissionPageView", () => {
         resultItems={[]}
         resultHighlight={{ label: "", value: "" }}
         selectVideoOpen={false}
+        isVideoPickLoading={false}
         videoItems={[]}
-        videoCategories={[]}
-        videoCategoryFilter=""
-        onVideoCategoryChange={() => {}}
+        videoParentCategories={[]}
+        videoChildCategories={[]}
+        videoParentCategoryFilter=""
+        videoChildCategoryFilter=""
+        onVideoParentCategoryChange={() => {}}
+        onVideoChildCategoryChange={() => {}}
         selectedVideos={[]}
         editTarget={undefined}
         filters={{
@@ -84,7 +92,19 @@ describe("CommissionPageView", () => {
         onCloseEdit={() => {}}
       />
     )
+  }
+
+  it("does not forward focus toggle handler to list cards", () => {
+    renderView()
 
     expect(capturedProps[0]?.onToggleFocus).toBeUndefined()
+  })
+
+  it("renders platform filter with shared Select trigger instead of native select", () => {
+    const { container } = renderView()
+
+    expect(container.querySelector('select[aria-label="Platform filter"]')).toBeNull()
+    const triggers = screen.getAllByRole("combobox", { name: "Platform filter" })
+    expect(triggers.length).toBeGreaterThan(0)
   })
 })

@@ -89,8 +89,14 @@ const resolveMetric = (value?: string, fallback?: string) => {
   return fallbackText || "--"
 }
 
-const formatAmount = (value: string) => {
+const formatAmount = (value: string, fractionDigits?: number) => {
   if (!value || value === "--") return "--"
+  if (typeof fractionDigits === "number") {
+    const numeric = Number(String(value).replace(/[^\d.-]/g, ""))
+    if (Number.isFinite(numeric)) {
+      return `${numeric.toFixed(fractionDigits)}${TEXT.yuan}`
+    }
+  }
   return `${value}${TEXT.yuan}`
 }
 
@@ -307,7 +313,7 @@ function ArchiveListCardComponent({
               </span>
               <div className="flex items-start gap-10 flex-1 min-w-0 overflow-visible" data-testid="archive-metrics-list">
                 {renderInlineMetric(TEXT.price, formatAmount(jdMetrics.price), "font-semibold text-slate-900")}
-                {renderInlineMetric(TEXT.commission, formatAmount(jdMetrics.commission), "font-semibold text-emerald-600")}
+                {renderInlineMetric(TEXT.commission, formatAmount(jdMetrics.commission, 1), "font-semibold text-emerald-600")}
                 {renderInlineMetric(TEXT.commissionRate, jdMetrics.commissionRate || "--", "font-semibold text-rose-500")}
                 {renderInlineMetric(TEXT.sales30, jdMetrics.sales || "--", "font-semibold text-slate-900")}
               </div>
@@ -329,7 +335,7 @@ function ArchiveListCardComponent({
               </span>
               <div className="flex items-start gap-10 flex-1 min-w-0 overflow-visible" data-testid="archive-metrics-list">
                 {renderInlineMetric(TEXT.price, formatAmount(tbMetrics.price), "font-semibold text-slate-900")}
-                {renderInlineMetric(TEXT.commission, formatAmount(tbMetrics.commission), "font-semibold text-emerald-600")}
+                {renderInlineMetric(TEXT.commission, formatAmount(tbMetrics.commission, 1), "font-semibold text-emerald-600")}
                 {renderInlineMetric(TEXT.commissionRate, tbMetrics.commissionRate || "--", "font-semibold text-rose-500")}
                 {renderInlineMetric(TEXT.sales30, tbMetrics.sales || "--", "font-semibold text-slate-900")}
               </div>

@@ -92,6 +92,8 @@ interface CategoryCacheItem {
 interface BenchmarkCategory {
   id: string
   name: string
+  parentId: string | null
+  sortOrder: number
 }
 
 interface BenchmarkVideo {
@@ -212,6 +214,39 @@ const buildArchiveCategories = (categories: CategoryCacheItem[]): ArchiveCategor
       }
       return a.name.localeCompare(b.name, "zh-CN")
     })
+}
+
+const sortBenchmarkCategories = (categories: BenchmarkCategory[]) =>
+  [...categories].sort((a, b) => {
+    if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder
+    return a.name.localeCompare(b.name, "zh-CN")
+  })
+
+const normalizeBenchmarkCategories = (value: unknown): BenchmarkCategory[] => {
+  if (!Array.isArray(value)) return []
+  const list = value
+    .map((item) => {
+      if (!item || typeof item !== "object") return null
+      const raw = item as Record<string, unknown>
+      const id = String(raw.id || "").trim()
+      const name = String(raw.name || "").trim()
+      if (!id || !name) return null
+      const parentRaw = raw.parentId ?? raw.parent_id ?? null
+      const parentId =
+        typeof parentRaw === "string" && parentRaw.trim().length > 0
+          ? parentRaw.trim()
+          : null
+      const sortRaw = raw.sortOrder ?? raw.sort_order ?? 0
+      const sortOrder = Number(sortRaw)
+      return {
+        id,
+        name,
+        parentId,
+        sortOrder: Number.isFinite(sortOrder) ? sortOrder : 0,
+      }
+    })
+    .filter((item): item is BenchmarkCategory => Boolean(item))
+  return sortBenchmarkCategories(list)
 }
 
 const getLocalItems = () => {
@@ -566,9 +601,11 @@ export default function CommissionPage() {
   const [resultItems, setResultItems] = useState<{ label: string; value: string }[]>([])
   const [resultHighlight, setResultHighlight] = useState({ label: "成功", value: "0 条" })
   const [selectVideoOpen, setSelectVideoOpen] = useState(false)
+  const [benchmarkPickLoading, setBenchmarkPickLoading] = useState(false)
   const [benchmarkVideos, setBenchmarkVideos] = useState<BenchmarkVideo[]>([])
   const [benchmarkCategories, setBenchmarkCategories] = useState<BenchmarkCategory[]>([])
-  const [benchmarkFilter, setBenchmarkFilter] = useState("all")
+  const [benchmarkParentFilter, setBenchmarkParentFilter] = useState("")
+  const [benchmarkChildFilter, setBenchmarkChildFilter] = useState("")
   const [selectedVideos, setSelectedVideos] = useState<string[]>([])
   const [editTargetId, setEditTargetId] = useState<string | null>(null)
   const [archiveOpen, setArchiveOpen] = useState(false)
@@ -800,17 +837,18 @@ export default function CommissionPage() {
       )
       const cached = getCacheData(cache)
       if (cached?.videos?.length) {
-        setBenchmarkCategories(cached.categories || [])
+        const normalizedCachedCategories = normalizeBenchmarkCategories(cached.categories)
+        setBenchmarkCategories(normalizedCachedCategories)
         setBenchmarkVideos(cached.videos || [])
         if (!force && isFresh(cache, BENCHMARK_PICK_CACHE_TTL)) {
           return cached.videos || []
         }
       }
       try {
-        const data = await apiRequest<{ categories: BenchmarkCategory[]; entries: BenchmarkVideo[] }>(
+        const data = await apiRequest<{ categories: unknown[]; entries: BenchmarkVideo[] }>(
           "/api/benchmark/state?mode=pick"
         )
-        const categoryList = Array.isArray(data.categories) ? data.categories : []
+        const categoryList = normalizeBenchmarkCategories(data.categories)
         const entryList = Array.isArray(data.entries) ? data.entries : []
         const categoryMap = new Map(categoryList.map((item) => [String(item.id), item.name]))
         const videos = entryList.map((entry) => ({
@@ -1160,15 +1198,21 @@ export default function CommissionPage() {
     XLSX.writeFile(workbook, filename)
   }
 
-  const handleOpenBenchmark = async () => {
-    const videos = await loadBenchmarkPickList()
-    if (!videos.length) {
-      showToast("还没有可用的对标视频记录", "info")
-      return
-    }
-    setBenchmarkFilter("all")
+  const handleOpenBenchmark = () => {
+    setBenchmarkParentFilter("")
+    setBenchmarkChildFilter("")
     setSelectedVideos([])
     setSelectVideoOpen(true)
+    setBenchmarkPickLoading(true)
+    void loadBenchmarkPickList()
+      .then((videos) => {
+        if (!videos.length) {
+          showToast("还没有可用的对标视频记录", "info")
+        }
+      })
+      .finally(() => {
+        setBenchmarkPickLoading(false)
+      })
   }
 
   const handleBenchmarkExtract = async () => {
@@ -1286,12 +1330,84 @@ export default function CommissionPage() {
 
   const sortedCategories = useMemo(() => categories, [categories])
 
-  const filteredBenchmarkVideos = useMemo(() => {
-    if (benchmarkFilter === "all") return benchmarkVideos
-    return benchmarkVideos.filter(
-      (item) => String(item.category_id || "") === benchmarkFilter
+  const benchmarkHasHierarchy = useMemo(
+    () => benchmarkCategories.some((category) => Boolean(category.parentId)),
+    [benchmarkCategories]
+  )
+
+  const benchmarkParentCategories = useMemo(() => {
+    if (!benchmarkCategories.length) return []
+    if (!benchmarkHasHierarchy) return benchmarkCategories
+    return sortBenchmarkCategories(
+      benchmarkCategories.filter((category) => !category.parentId)
     )
-  }, [benchmarkFilter, benchmarkVideos])
+  }, [benchmarkCategories, benchmarkHasHierarchy])
+
+  const benchmarkChildCategories = useMemo(() => {
+    if (!benchmarkParentFilter) return []
+    if (!benchmarkHasHierarchy) {
+      const selectedParent = benchmarkCategories.find(
+        (category) => category.id === benchmarkParentFilter
+      )
+      return selectedParent ? [selectedParent] : []
+    }
+    return sortBenchmarkCategories(
+      benchmarkCategories.filter(
+        (category) => String(category.parentId || "") === benchmarkParentFilter
+      )
+    )
+  }, [benchmarkCategories, benchmarkHasHierarchy, benchmarkParentFilter])
+
+  useEffect(() => {
+    if (!selectVideoOpen) return
+    if (!benchmarkParentCategories.length) {
+      if (benchmarkParentFilter) setBenchmarkParentFilter("")
+      return
+    }
+    setBenchmarkParentFilter((prev) => {
+      if (prev && benchmarkParentCategories.some((category) => category.id === prev)) {
+        return prev
+      }
+      return benchmarkParentCategories[0].id
+    })
+  }, [selectVideoOpen, benchmarkParentCategories, benchmarkParentFilter])
+
+  useEffect(() => {
+    if (!selectVideoOpen) return
+    setBenchmarkChildFilter((prev) => {
+      if (prev && benchmarkChildCategories.some((category) => category.id === prev)) {
+        return prev
+      }
+      return benchmarkChildCategories[0]?.id || ""
+    })
+  }, [selectVideoOpen, benchmarkChildCategories])
+
+  const handleBenchmarkParentChange = useCallback(
+    (parentId: string) => {
+      setBenchmarkParentFilter(parentId)
+      const children = benchmarkHasHierarchy
+        ? benchmarkCategories.filter(
+            (category) => String(category.parentId || "") === parentId
+          )
+        : benchmarkCategories.filter((category) => category.id === parentId)
+      const nextChildren = sortBenchmarkCategories(children)
+      setBenchmarkChildFilter(nextChildren[0]?.id || "")
+      setSelectedVideos([])
+    },
+    [benchmarkCategories, benchmarkHasHierarchy]
+  )
+
+  const handleBenchmarkChildChange = useCallback((childId: string) => {
+    setBenchmarkChildFilter(childId)
+    setSelectedVideos([])
+  }, [])
+
+  const filteredBenchmarkVideos = useMemo(() => {
+    if (!benchmarkChildFilter) return []
+    return benchmarkVideos.filter(
+      (item) => String(item.category_id || "") === benchmarkChildFilter
+    )
+  }, [benchmarkChildFilter, benchmarkVideos])
 
   const benchmarkVideoItems = useMemo(
     () =>
@@ -1327,10 +1443,14 @@ export default function CommissionPage() {
         resultItems={resultItems}
         resultHighlight={resultHighlight}
         selectVideoOpen={selectVideoOpen}
+        isVideoPickLoading={benchmarkPickLoading}
         videoItems={benchmarkVideoItems}
-        videoCategories={benchmarkCategories}
-        videoCategoryFilter={benchmarkFilter}
-        onVideoCategoryChange={setBenchmarkFilter}
+        videoParentCategories={benchmarkParentCategories}
+        videoChildCategories={benchmarkChildCategories}
+        videoParentCategoryFilter={benchmarkParentFilter}
+        videoChildCategoryFilter={benchmarkChildFilter}
+        onVideoParentCategoryChange={handleBenchmarkParentChange}
+        onVideoChildCategoryChange={handleBenchmarkChildChange}
         selectedVideos={selectedVideos}
         editTarget={
           editTarget

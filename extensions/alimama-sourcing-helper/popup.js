@@ -11,6 +11,13 @@ const FIELD_DEFS = [
     type: "string",
   },
   {
+    key: "coverUrl",
+    label: "封面",
+    source: "coverUrl",
+    target: "cover_url",
+    type: "string",
+  },
+  {
     key: "price",
     label: "淘宝价格",
     source: "price",
@@ -68,6 +75,7 @@ const refs = {
   statusText: document.getElementById("statusText"),
   extractFields: document.getElementById("extractFields"),
   titleInput: document.getElementById("titleInput"),
+  coverInput: document.getElementById("coverInput"),
   priceInput: document.getElementById("priceInput"),
   commissionInput: document.getElementById("commissionInput"),
   rateInput: document.getElementById("rateInput"),
@@ -103,7 +111,10 @@ const isExtractionUseful = (data) => {
   const hasNumber = [data.price, data.commission, data.commissionRate, data.sales30].some(
     (value) => value !== null && value !== undefined && Number.isFinite(Number(value))
   );
-  return hasTitle || hasNumber;
+  const hasLink = [data.coverUrl, data.promoLink, data.taobaoLink].some((value) =>
+    hasExtractValue(value)
+  );
+  return hasTitle || hasNumber || hasLink;
 };
 
 const sendRuntimeMessage = async (message) => {
@@ -186,6 +197,7 @@ const readExtractedData = () => {
   const commission = syncCommissionInput();
   return {
     title: refs.titleInput.value,
+    coverUrl: refs.coverInput.value,
     price: refs.priceInput.value,
     commission: commission === null ? "" : String(commission),
     commissionRate: refs.rateInput.value,
@@ -197,6 +209,7 @@ const readExtractedData = () => {
 
 const fillExtractedData = (data) => {
   refs.titleInput.value = data.title || "";
+  refs.coverInput.value = data.coverUrl || "";
   refs.priceInput.value = data.price === null || data.price === undefined ? "" : String(data.price);
   refs.rateInput.value =
     data.commissionRate === null || data.commissionRate === undefined
@@ -208,6 +221,17 @@ const fillExtractedData = (data) => {
   refs.promoLinkInput.value = data.promoLink || data.pageUrl || "";
   refs.taobaoLinkInput.value = data.taobaoLink || "";
   refs.extractFields.classList.remove("hidden");
+  resetPreviewAfterExtractedFieldChanged();
+};
+
+const resetPreviewAfterExtractedFieldChanged = () => {
+  if (state.previewRows.length) {
+    state.previewRows = [];
+    state.previewTargetItem = null;
+    renderPreview();
+    return;
+  }
+  updateSubmitAvailability();
 };
 
 const callApi = async (path, options = {}) => {
@@ -419,6 +443,25 @@ const buildPreviewRows = (item) => {
   });
 };
 
+const hasAnyExtractedValue = () => {
+  const extracted = readExtractedData();
+  return FIELD_DEFS.some((def) => {
+    const value = normalizeFieldValue(def, extracted[def.source]);
+    return !isEmptyValue(value);
+  });
+};
+
+const hasCreateRequiredValues = () => {
+  const extracted = readExtractedData();
+  for (const key of REQUIRED_CREATE_FIELDS) {
+    const def = FIELD_DEFS.find((item) => item.key === key);
+    if (!def) continue;
+    const value = normalizeFieldValue(def, extracted[def.source]);
+    if (isEmptyValue(value)) return false;
+  }
+  return true;
+};
+
 const createPreviewMetaLine = (title, value) => {
   const line = document.createElement("div");
   line.className = "meta-line";
@@ -442,7 +485,7 @@ const renderPreview = () => {
 
   if (!rows.length) {
     refs.previewList.classList.add("hidden");
-    refs.submitBtn.disabled = true;
+    updateSubmitAvailability();
     return;
   }
 
@@ -498,7 +541,13 @@ const renderPreview = () => {
 const updateSubmitAvailability = () => {
   const rows = state.previewRows;
   if (!rows.length) {
-    refs.submitBtn.disabled = true;
+    if (state.mode === "create") {
+      const categoryId = refs.categorySelect.value;
+      refs.submitBtn.disabled = !categoryId || !hasCreateRequiredValues() || !hasAnyExtractedValue();
+      return;
+    }
+    const selectedItem = refs.itemSelect.value;
+    refs.submitBtn.disabled = !selectedItem || !hasAnyExtractedValue();
     return;
   }
   if (state.mode === "create") {
@@ -618,10 +667,26 @@ const generatePreview = async () => {
   setStatus("预览已生成，请勾选需要写入的字段。", "success");
 };
 
+const ensurePreviewRowsForSubmit = async () => {
+  if (state.previewRows.length) return;
+  if (state.mode === "update") {
+    const item = await fetchSelectedItemDetail();
+    state.previewTargetItem = item;
+    state.previewRows = buildPreviewRows(item);
+    return;
+  }
+  if (!refs.categorySelect.value) {
+    throw new Error("请先选择新增目标分类");
+  }
+  state.previewTargetItem = null;
+  state.previewRows = buildPreviewRows(null);
+};
+
 const submitWrite = async () => {
+  await ensurePreviewRowsForSubmit();
   const checkedRows = state.previewRows.filter((row) => row.checked && row.canApply);
   if (!checkedRows.length) {
-    throw new Error("没有可写入字段，请先生成预览并勾选字段");
+    throw new Error("没有可写入字段，请检查抓取值后重试");
   }
 
   if (state.mode === "update") {
@@ -757,11 +822,21 @@ const bindEvents = () => {
 
   refs.priceInput.addEventListener("input", () => {
     syncCommissionInput();
+    resetPreviewAfterExtractedFieldChanged();
   });
 
   refs.rateInput.addEventListener("input", () => {
     syncCommissionInput();
+    resetPreviewAfterExtractedFieldChanged();
   });
+
+  [refs.titleInput, refs.coverInput, refs.salesInput, refs.promoLinkInput, refs.taobaoLinkInput].forEach(
+    (element) => {
+      element.addEventListener("input", () => {
+        resetPreviewAfterExtractedFieldChanged();
+      });
+    }
+  );
 
   refs.itemSelect.addEventListener("change", () => {
     state.previewRows = [];

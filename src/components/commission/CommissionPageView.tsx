@@ -27,10 +27,14 @@ interface CommissionPageViewProps {
   resultItems: { label: string; value: string }[]
   resultHighlight: { label: string; value: string }
   selectVideoOpen: boolean
+  isVideoPickLoading: boolean
   videoItems: VideoItem[]
-  videoCategories: { id: string; name: string }[]
-  videoCategoryFilter: string
-  onVideoCategoryChange: (value: string) => void
+  videoParentCategories: { id: string; name: string }[]
+  videoChildCategories: { id: string; name: string }[]
+  videoParentCategoryFilter: string
+  videoChildCategoryFilter: string
+  onVideoParentCategoryChange: (value: string) => void
+  onVideoChildCategoryChange: (value: string) => void
   selectedVideos: string[]
   editTarget?: { id: string; title: string; price: number; commissionRate: number }
   filters: {
@@ -80,23 +84,25 @@ const RangeInput = ({
   onMaxChange: (value: string) => void
 }) => {
   return (
-    <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
-      <span className="font-medium text-slate-600">{label}</span>
-      <Input
-        aria-label={`${label} min`}
-        value={minValue}
-        onChange={(e) => onMinChange(e.target.value)}
-        placeholder="最低"
-        className="h-7 w-[70px] border-none bg-slate-50 text-xs"
-      />
-      <span className="text-slate-300">-</span>
-      <Input
-        aria-label={`${label} max`}
-        value={maxValue}
-        onChange={(e) => onMaxChange(e.target.value)}
-        placeholder="最高"
-        className="h-7 w-[70px] border-none bg-slate-50 text-xs"
-      />
+    <div className="grid gap-3 text-sm text-slate-600 md:grid-cols-[max-content_1fr] md:items-center">
+      <span className="font-medium text-slate-700">{label}</span>
+      <div className="flex items-center gap-2">
+        <Input
+          aria-label={`${label} min`}
+          value={minValue}
+          onChange={(e) => onMinChange(e.target.value)}
+          placeholder="最低"
+          className="h-8 w-20"
+        />
+        <span className="text-xs text-slate-400">-</span>
+        <Input
+          aria-label={`${label} max`}
+          value={maxValue}
+          onChange={(e) => onMaxChange(e.target.value)}
+          placeholder="最高"
+          className="h-8 w-20"
+        />
+      </div>
     </div>
   )
 }
@@ -112,10 +118,14 @@ export default function CommissionPageView({
   resultItems,
   resultHighlight,
   selectVideoOpen,
+  isVideoPickLoading,
   videoItems,
-  videoCategories,
-  videoCategoryFilter,
-  onVideoCategoryChange,
+  videoParentCategories,
+  videoChildCategories,
+  videoParentCategoryFilter,
+  videoChildCategoryFilter,
+  onVideoParentCategoryChange,
+  onVideoChildCategoryChange,
   selectedVideos,
   editTarget,
   filters,
@@ -178,28 +188,30 @@ export default function CommissionPageView({
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
-            <span className="font-medium text-slate-600">搜索</span>
+        <div className="mt-4 flex flex-wrap items-center gap-4">
+          <div className="w-full text-sm text-slate-600 md:w-[220px]">
             <Input
-              aria-label="Search products" value={filters.keyword}
+              aria-label="Search products"
+              value={filters.keyword}
               onChange={(e) => onFilterChange("keyword", e.target.value)}
               placeholder="搜索商品名称..."
-              className="h-7 w-[220px] border-none bg-slate-50 text-xs"
             />
           </div>
-          <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
-            <span className="font-medium text-slate-600">平台</span>
-            <select
-              aria-label="Platform filter"
+          <div className="grid gap-3 text-sm text-slate-600 md:grid-cols-[max-content_1fr] md:items-center">
+            <span className="font-medium text-slate-700">平台</span>
+            <Select
               value={filters.platform}
-              onChange={(e) => onFilterChange("platform", e.target.value)}
-              className="h-7 min-w-[96px] rounded-md border border-slate-200 bg-slate-50 px-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand/30"
+              onValueChange={(value) => onFilterChange("platform", value)}
             >
-              <option value="all">全部</option>
-              <option value="taobao">淘宝</option>
-              <option value="jd">京东</option>
-            </select>
+              <SelectTrigger className="w-[120px]" aria-label="Platform filter">
+                <SelectValue placeholder="全部" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部</SelectItem>
+                <SelectItem value="taobao">淘宝</SelectItem>
+                <SelectItem value="jd">京东</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <RangeInput
             label="价格"
@@ -222,9 +234,9 @@ export default function CommissionPageView({
             onMinChange={(value) => onFilterChange("salesMin", value)}
             onMaxChange={(value) => onFilterChange("salesMax", value)}
           />
-          <div className="min-w-[160px]">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
             <Select value={filters.sort} onValueChange={(value) => onFilterChange("sort", value)}>
-              <SelectTrigger className="h-9" aria-label="Sort">
+              <SelectTrigger className="w-[160px]" aria-label="Sort">
                 <SelectValue placeholder="排序方式" />
               </SelectTrigger>
               <SelectContent>
@@ -270,10 +282,14 @@ export default function CommissionPageView({
 
       <CommissionSelectVideoModal
         isOpen={selectVideoOpen}
+        isLoading={isVideoPickLoading}
         items={videoItems}
-        categories={videoCategories}
-        activeCategory={videoCategoryFilter}
-        onCategoryChange={onVideoCategoryChange}
+        parentCategories={videoParentCategories}
+        childCategories={videoChildCategories}
+        activeParentCategory={videoParentCategoryFilter}
+        activeChildCategory={videoChildCategoryFilter}
+        onParentCategoryChange={onVideoParentCategoryChange}
+        onChildCategoryChange={onVideoChildCategoryChange}
         selected={selectedVideos}
         onToggle={onToggleVideo}
         onStart={onStartExtract}

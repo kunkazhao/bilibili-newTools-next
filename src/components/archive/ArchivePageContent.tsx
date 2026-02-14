@@ -190,6 +190,34 @@ export const resolvePriceRange = (
   return [nextMax, nextMin]
 }
 
+const toPositiveNumber = (value: unknown) => {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : null
+}
+
+export const resolvePreferredSortPrice = (item: {
+  price?: number
+  jdPrice?: number
+  tbPrice?: number
+}) => {
+  const jdPrice = toPositiveNumber(item.jdPrice)
+  if (jdPrice !== null) return jdPrice
+  const tbPrice = toPositiveNumber(item.tbPrice)
+  if (tbPrice !== null) return tbPrice
+  return toPositiveNumber(item.price)
+}
+
+const compareArchiveItemsByPreferredPrice = (a: ArchiveItem, b: ArchiveItem) => {
+  const priceA = resolvePreferredSortPrice(a)
+  const priceB = resolvePreferredSortPrice(b)
+  if (priceA === null && priceB === null) return 0
+  if (priceA === null) return 1
+  if (priceB === null) return -1
+  return priceA - priceB
+}
+
+const resolveRangePrice = (item: ArchiveItem) => resolvePreferredSortPrice(item) ?? 0
+
 export const filterSchemesByCategory = (schemes: Scheme[], categoryValue: string) => {
   if (!categoryValue) {
     return schemes
@@ -688,7 +716,7 @@ export default function ArchivePage() {
       if (sortValue === "manual") {
         return applyPinned([...baseItems])
       }
-      return applyPinned([...baseItems].sort((a, b) => a.price - b.price))
+      return applyPinned([...baseItems].sort(compareArchiveItemsByPreferredPrice))
     }
     if (sortValue === "manual" && manualOrder.length > 0) {
       const orderMap = new Map(manualOrder.map((id, index) => [id, index]))
@@ -699,7 +727,7 @@ export default function ArchivePage() {
       })
       return applyPinned(sorted)
     }
-    return applyPinned([...baseItems].sort((a, b) => a.price - b.price))
+    return applyPinned([...baseItems].sort(compareArchiveItemsByPreferredPrice))
   }, [baseItems, manualOrder, sortValue, schemeFilterId, newPinnedIds])
 
   const visibleSchemes = useMemo(
@@ -721,7 +749,9 @@ export default function ArchivePage() {
 
   const priceBounds = useMemo<[number, number]>(() => {
     if (baseItems.length === 0) return [0, 0]
-    const values = baseItems.map((item) => item.price).filter((value) => Number.isFinite(value))
+    const values = baseItems
+      .map((item) => resolvePreferredSortPrice(item))
+      .filter((value): value is number => value !== null)
     if (!values.length) return [0, 0]
     return [Math.min(...values), Math.max(...values)]
   }, [baseItems])
@@ -744,8 +774,9 @@ export default function ArchivePage() {
         searchValue.trim() === "" ||
         item.title.toLowerCase().includes(searchValue.toLowerCase())
       const matchesCategory = !activeCategoryId || item.categoryId === activeCategoryId
-      const matchesMin = item.price >= safePriceRange[0]
-      const matchesMax = item.price <= safePriceRange[1]
+      const sortPrice = resolveRangePrice(item)
+      const matchesMin = sortPrice >= safePriceRange[0]
+      const matchesMax = sortPrice <= safePriceRange[1]
 
       return matchesSearch && matchesCategory && matchesMin && matchesMax
     })
@@ -777,7 +808,7 @@ export default function ArchivePage() {
         nextOrdered =
           sortValue === "manual"
             ? [...nextBaseItems]
-            : [...nextBaseItems].sort((a, b) => a.price - b.price)
+            : [...nextBaseItems].sort(compareArchiveItemsByPreferredPrice)
       } else if (sortValue === "manual" && manualOrder.length > 0) {
         const orderMap = new Map(manualOrder.map((id, index) => [id, index]))
         nextOrdered = [...nextBaseItems].sort((a, b) => {
@@ -786,13 +817,13 @@ export default function ArchivePage() {
           return aIndex - bIndex
         })
       } else {
-        nextOrdered = [...nextBaseItems].sort((a, b) => a.price - b.price)
+        nextOrdered = [...nextBaseItems].sort(compareArchiveItemsByPreferredPrice)
       }
       nextOrdered = applyPinned(nextOrdered)
 
       const values = nextBaseItems
-        .map((item) => item.price)
-        .filter((value) => Number.isFinite(value))
+        .map((item) => resolvePreferredSortPrice(item))
+        .filter((value): value is number => value !== null)
       const nextBounds: [number, number] =
         values.length > 0 ? [Math.min(...values), Math.max(...values)] : [0, 0]
       const nextSafeRange = resolvePriceRange(nextBounds, priceRange)
@@ -801,8 +832,9 @@ export default function ArchivePage() {
       const nextFiltered = nextOrdered.filter((item) => {
         const matchesSearch = keyword === "" || item.title.toLowerCase().includes(keyword)
         const matchesCategory = !activeCategoryId || item.categoryId === activeCategoryId
-        const matchesMin = item.price >= nextSafeRange[0]
-        const matchesMax = item.price <= nextSafeRange[1]
+        const sortPrice = resolveRangePrice(item)
+        const matchesMin = sortPrice >= nextSafeRange[0]
+        const matchesMax = sortPrice <= nextSafeRange[1]
 
         return matchesSearch && matchesCategory && matchesMin && matchesMax
       })

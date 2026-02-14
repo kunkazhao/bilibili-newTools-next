@@ -21,6 +21,97 @@ const toNumber = (raw) => {
   return Number.isFinite(value) ? value : null;
 };
 
+const normalizeImageUrl = (raw) => {
+  if (!raw) return "";
+  let value = String(raw)
+    .trim()
+    .replace(/\\u002F/gi, "/")
+    .replace(/\\\//g, "/")
+    .replace(/&amp;/gi, "&");
+  if (!value) return "";
+  if (/^(data:|blob:)/i.test(value)) return "";
+  if (value.startsWith("//")) {
+    value = `${window.location.protocol}${value}`;
+  }
+  if (value.startsWith("/")) {
+    try {
+      return new URL(value, window.location.origin).href;
+    } catch {
+      return "";
+    }
+  }
+  if (/^https?:\/\//i.test(value)) return value;
+  return "";
+};
+
+const imageScore = (url, scoreBase = 0) => {
+  if (!url) return -1;
+  let score = scoreBase;
+  if (/\.(jpg|jpeg|png|webp|avif)(\?|$)/i.test(url)) score += 20;
+  if (/(cover|main|detail|item|poster)/i.test(url)) score += 20;
+  if (/(avatar|icon|logo|sprite|placeholder)/i.test(url)) score -= 40;
+  return score;
+};
+
+const findCoverUrl = () => {
+  const candidates = [];
+  const seen = new Set();
+
+  const pushCandidate = (rawUrl, scoreBase = 0) => {
+    const url = normalizeImageUrl(rawUrl);
+    if (!url || seen.has(url)) return;
+    seen.add(url);
+    candidates.push({ url, score: imageScore(url, scoreBase) });
+  };
+
+  const metaSelectors = [
+    'meta[property="og:image"]',
+    'meta[name="og:image"]',
+    'meta[name="twitter:image"]',
+    'meta[itemprop="image"]',
+  ];
+  for (const selector of metaSelectors) {
+    const tag = document.querySelector(selector);
+    pushCandidate(tag?.getAttribute("content"), 90);
+  }
+
+  const imgSelectors = [
+    'img[data-testid*="img"]',
+    'img[class*="cover"]',
+    'img[class*="main"]',
+    'img[class*="item"]',
+    "img",
+  ];
+  for (const selector of imgSelectors) {
+    const nodes = Array.from(document.querySelectorAll(selector));
+    for (const node of nodes) {
+      const src = node.currentSrc || node.src || node.getAttribute("data-src") || "";
+      const width =
+        Number(node.naturalWidth || node.width || node.getAttribute("width") || 0) || 0;
+      const height =
+        Number(node.naturalHeight || node.height || node.getAttribute("height") || 0) || 0;
+      const areaScore = Math.min(Math.floor((width * height) / 2000), 120);
+      pushCandidate(src, 20 + areaScore);
+    }
+  }
+
+  const scripts = Array.from(document.querySelectorAll("script"));
+  for (const script of scripts) {
+    const text = String(script.textContent || "");
+    if (!text) continue;
+    const pattern =
+      /"(?:mainPic|main_pic|itemPic|item_pic|picUrl|pic_url|image|imgUrl|coverUrl)"\s*:\s*"([^"]+)"/gi;
+    let match;
+    while ((match = pattern.exec(text))) {
+      pushCandidate(match[1], 40);
+    }
+  }
+
+  if (!candidates.length) return "";
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates[0].url;
+};
+
 const readTextFromDocument = (doc) => {
   if (!doc || !doc.body) return "";
   const fromInnerText = normalizeTextBlock(doc.body.innerText || "");
@@ -170,6 +261,7 @@ const extractProductData = () => {
   ]);
   const commission = null;
   const sales30 = findSales30(mergedText);
+  const coverUrl = findCoverUrl();
 
   return {
     title,
@@ -177,6 +269,7 @@ const extractProductData = () => {
     commission,
     commissionRate,
     sales30,
+    coverUrl,
     alimamaItemId: url.searchParams.get("itemId") || "",
     promoLink: href,
     pageUrl: href,

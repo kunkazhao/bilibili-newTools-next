@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest"
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { apiRequest } from "@/lib/api"
@@ -25,6 +25,16 @@ vi.mock("@/lib/bilibili", async () => {
     getPinnedComments: vi.fn(),
   }
 })
+
+const originalHasPointerCapture = (HTMLElement.prototype as any).hasPointerCapture
+const originalSetPointerCapture = (HTMLElement.prototype as any).setPointerCapture
+const originalReleasePointerCapture = (HTMLElement.prototype as any).releasePointerCapture
+const originalScrollIntoView = (HTMLElement.prototype as any).scrollIntoView
+
+;(HTMLElement.prototype as any).hasPointerCapture = () => false
+;(HTMLElement.prototype as any).setPointerCapture = () => {}
+;(HTMLElement.prototype as any).releasePointerCapture = () => {}
+;(HTMLElement.prototype as any).scrollIntoView = () => {}
 
 
 
@@ -477,8 +487,71 @@ describe("CommissionPageContent", () => {
     rafSpy.mockRestore()
   })
 
+  it("uses parent/child category filters in benchmark video modal and links them", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    const mockApi = vi.mocked(apiRequest)
+    vi.mocked(fetchCategories).mockResolvedValue({ categories: [] })
+
+    mockApi.mockImplementation((path: string) => {
+      if (path === "/api/benchmark/state?mode=pick") {
+        return Promise.resolve({
+          categories: [
+            { id: "parent-1", name: "数码", sort_order: 0, parent_id: null },
+            { id: "child-1", name: "鼠标", sort_order: 0, parent_id: "parent-1" },
+            { id: "child-2", name: "键盘", sort_order: 1, parent_id: "parent-1" },
+            { id: "parent-2", name: "户外", sort_order: 1, parent_id: null },
+            { id: "child-3", name: "帐篷", sort_order: 0, parent_id: "parent-2" },
+          ],
+          entries: [
+            { id: "video-1", title: "数码视频", category_id: "child-1", link: "https://www.bilibili.com/video/BV1" },
+            { id: "video-2", title: "户外视频", category_id: "child-3", link: "https://www.bilibili.com/video/BV2" },
+          ],
+        })
+      }
+      return Promise.resolve({})
+    })
+
+    render(<CommissionPageContent />)
+
+    await user.click(screen.getByRole("button", { name: "对标视频提取" }))
+
+    const parentTrigger = await screen.findByRole("combobox", {
+      name: "Benchmark parent category",
+    })
+    const childTrigger = screen.getByRole("combobox", {
+      name: "Benchmark child category",
+    })
+
+    await waitFor(() => {
+      expect(parentTrigger.textContent).toContain("数码")
+      expect(childTrigger.textContent).toContain("鼠标")
+    })
+
+    expect(screen.getByText("数码视频")).toBeTruthy()
+    expect(screen.queryByText("户外视频")).toBeNull()
+
+    await user.click(parentTrigger)
+    await user.click(await screen.findByRole("option", { name: "户外" }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "Benchmark child category" }).textContent
+      ).toContain("帐篷")
+    })
+
+    expect(screen.getByText("户外视频")).toBeTruthy()
+    expect(screen.queryByText("数码视频")).toBeNull()
+  })
+
+  afterAll(() => {
+    ;(HTMLElement.prototype as any).hasPointerCapture = originalHasPointerCapture
+    ;(HTMLElement.prototype as any).setPointerCapture = originalSetPointerCapture
+    ;(HTMLElement.prototype as any).releasePointerCapture = originalReleasePointerCapture
+    ;(HTMLElement.prototype as any).scrollIntoView = originalScrollIntoView
+  })
+
   it("filters list by platform selector", async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
     seedPlatformItems()
     vi.mocked(fetchCategories).mockResolvedValue({ categories: [] })
     vi.mocked(apiRequest).mockResolvedValue({} as never)
@@ -488,7 +561,8 @@ describe("CommissionPageContent", () => {
     await screen.findByText("JD 商品")
     await screen.findByText("淘宝商品")
 
-    await user.selectOptions(screen.getByLabelText("Platform filter"), "taobao")
+    await user.click(screen.getByRole("combobox", { name: "Platform filter" }))
+    await user.click(await screen.findByRole("option", { name: "淘宝" }))
 
     await waitFor(() => {
       expect(screen.queryByText("JD 商品")).toBeNull()

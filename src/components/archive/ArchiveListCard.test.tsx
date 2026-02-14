@@ -439,6 +439,45 @@ describe("ArchiveListCard", () => {
     expect(tbBadge.className).toContain("self-start")
   })
 
+  it("formats JD/TB commission with one decimal place", () => {
+    render(
+      <ArchiveListCard
+        id="1"
+        title="item"
+        price="247.55"
+        commission="8.66425"
+        commissionRate="3.50%"
+        jdPrice="247.55"
+        jdCommission="8.66425"
+        jdCommissionRate="3.50%"
+        jdSales="600"
+        tbPrice="247.55"
+        tbCommission="12.38"
+        tbCommissionRate="5.00%"
+        tbSales="210"
+        sales30="600"
+        comments="--"
+        image="https://example.com/cover.jpg"
+        shopName="shop"
+        uid="uid"
+        source="source"
+        blueLink=""
+        params={[]}
+        remark=""
+        missingTips={[]}
+        isFocused={false}
+        onToggleFocus={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onDragStart={vi.fn()}
+        onDrop={vi.fn()}
+      />
+    )
+
+    expect(screen.getByText(/8\.7/)).not.toBeNull()
+    expect(screen.getByText(/12\.4/)).not.toBeNull()
+  })
+
   it("keeps metrics on a single row", () => {
     render(
       <ArchiveListCard

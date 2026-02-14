@@ -36,9 +36,14 @@ const formatPercent = (value: number) => {
   return `${value.toFixed(2)}%`
 }
 
-const formatYuan = (value: number) => {
+const formatPriceYuan = (value: number) => {
   if (!Number.isFinite(value)) return "--"
   return `${value.toFixed(2)} 元`
+}
+
+const formatCommissionYuan = (value: number) => {
+  if (!Number.isFinite(value)) return "--"
+  return `${value.toFixed(1)} 元`
 }
 
 export default function CommissionListCard({
@@ -77,13 +82,13 @@ export default function CommissionListCard({
                 <div>
                   <div className="text-xs text-slate-400">商品价格</div>
                   <div className="mt-1 text-base font-semibold text-slate-900">
-                    {formatYuan(item.price)}
+                    {formatPriceYuan(item.price)}
                   </div>
                 </div>
                 <div>
                   <div className="text-xs text-slate-400">佣金</div>
                   <div className="mt-1 text-base font-semibold text-emerald-600">
-                    {formatYuan(item.commission)}
+                    {formatCommissionYuan(item.commission)}
                   </div>
                 </div>
                 <div>

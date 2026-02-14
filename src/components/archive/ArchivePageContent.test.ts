@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildArchiveMetricsPayload } from "./ArchivePageContent"
+import { buildArchiveMetricsPayload, resolvePreferredSortPrice } from "./ArchivePageContent"
 
 describe("buildArchiveMetricsPayload", () => {
   it("computes jd/tb metrics and commissions", () => {
@@ -25,5 +25,37 @@ describe("buildArchiveMetricsPayload", () => {
       tb_commission_rate: 20,
       tb_sales: 30,
     })
+  })
+})
+
+describe("resolvePreferredSortPrice", () => {
+  it("prefers JD price when both JD/TB exist", () => {
+    expect(
+      resolvePreferredSortPrice({
+        price: 99,
+        jdPrice: 199,
+        tbPrice: 129,
+      })
+    ).toBe(199)
+  })
+
+  it("falls back to TB price when JD is missing", () => {
+    expect(
+      resolvePreferredSortPrice({
+        price: 0,
+        jdPrice: 0,
+        tbPrice: 129,
+      })
+    ).toBe(129)
+  })
+
+  it("returns null when JD/TB/legacy prices are all missing", () => {
+    expect(
+      resolvePreferredSortPrice({
+        price: 0,
+        jdPrice: 0,
+        tbPrice: 0,
+      })
+    ).toBeNull()
   })
 })

@@ -6,6 +6,7 @@ Chrome extension to capture product data from Alimama pages and write into this 
 
 - Capture current Alimama product page fields:
   - title
+  - cover (`cover_url`)
   - price (`tb_price`)
   - commission (`tb_commission`, auto-calculated as price x commission rate / 100)
   - commission rate (`tb_commission_rate`)
@@ -17,6 +18,9 @@ Chrome extension to capture product data from Alimama pages and write into this 
 - Preview before write:
   - old value -> new value
   - checkbox per field
+- Can write directly without generating preview first:
+  - Create mode: requires category + required fields
+  - Update mode: requires selected item + at least one extracted field
 - Update rule:
   - only fills empty values
   - `0` is treated as empty and can be overwritten
@@ -36,7 +40,7 @@ Chrome extension to capture product data from Alimama pages and write into this 
 4. Choose write mode:
    - `更新已有商品`: search and select item manually.
    - `新增到分类`: load and select category.
-5. Click `生成预览`, then choose fields.
+5. Optional: click `生成预览` to check old/new values and select fields.
 6. Click `确认写入`.
 
 ## Notes

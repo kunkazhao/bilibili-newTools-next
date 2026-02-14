@@ -64,4 +64,31 @@ describe("CommissionListCard", () => {
 
     expect(onCardClick).toHaveBeenCalled()
   })
+
+  it("formats commission with one decimal place", () => {
+    render(
+      <CommissionListCard
+        item={{
+          id: "item-1",
+          index: 1,
+          title: "商品",
+          price: 247.55,
+          commissionRate: 3.5,
+          commission: 8.66425,
+          sales30: 20,
+          comments: "5",
+          image: "",
+          shopName: "",
+          source: "",
+          isFocused: false,
+          isArchived: false,
+        }}
+        onEdit={() => {}}
+        onArchive={() => {}}
+        onDelete={() => {}}
+      />
+    )
+
+    expect(screen.getByText("8.7 元")).not.toBeNull()
+  })
 })

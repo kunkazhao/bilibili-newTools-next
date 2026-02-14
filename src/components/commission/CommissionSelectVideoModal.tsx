@@ -1,10 +1,9 @@
-﻿import {
+import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogClose,
 } from "@/components/ui/dialog"
 import {
   Select,
@@ -15,7 +14,6 @@ import {
 } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
-import { X } from "lucide-react"
 
 export interface VideoItem {
   id: string
@@ -24,12 +22,21 @@ export interface VideoItem {
   tag: string
 }
 
+interface CategoryOption {
+  id: string
+  name: string
+}
+
 interface CommissionSelectVideoModalProps {
   isOpen: boolean
+  isLoading?: boolean
   items: VideoItem[]
-  categories: { id: string; name: string }[]
-  activeCategory: string
-  onCategoryChange: (value: string) => void
+  parentCategories: CategoryOption[]
+  childCategories: CategoryOption[]
+  activeParentCategory: string
+  activeChildCategory: string
+  onParentCategoryChange: (value: string) => void
+  onChildCategoryChange: (value: string) => void
   selected: string[]
   onToggle: (id: string) => void
   onStart: () => void
@@ -38,10 +45,14 @@ interface CommissionSelectVideoModalProps {
 
 export default function CommissionSelectVideoModal({
   isOpen,
+  isLoading = false,
   items,
-  categories,
-  activeCategory,
-  onCategoryChange,
+  parentCategories,
+  childCategories,
+  activeParentCategory,
+  activeChildCategory,
+  onParentCategoryChange,
+  onChildCategoryChange,
   selected,
   onToggle,
   onStart,
@@ -50,52 +61,80 @@ export default function CommissionSelectVideoModal({
   return (
     <Dialog open={isOpen} onOpenChange={(open) => (open ? null : onClose())}>
       <DialogContent className="max-w-lg">
-        <DialogHeader className="flex items-start justify-between">
+        <DialogHeader>
           <div className="space-y-2">
             <DialogTitle>选择对标视频</DialogTitle>
             <DialogDescription>Select benchmark videos.</DialogDescription>
-            <div className="w-32">
-              <Select value={activeCategory} onValueChange={onCategoryChange}>
-                <SelectTrigger aria-label="Filter category">
-                  <SelectValue placeholder="全部" />
+            <div className="grid grid-cols-2 gap-3">
+              <Select value={activeParentCategory} onValueChange={onParentCategoryChange}>
+                <SelectTrigger aria-label="Benchmark parent category">
+                  <SelectValue placeholder="暂无一级分类" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">全部</SelectItem>
-                  {categories.map((category) => (
-                    <SelectItem key={category.id} value={category.id}>
-                      {category.name}
+                  {parentCategories.length === 0 ? (
+                    <SelectItem value="__empty_parent" disabled>
+                      暂无一级分类
                     </SelectItem>
-                  ))}
+                  ) : (
+                    parentCategories.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        {category.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              <Select value={activeChildCategory} onValueChange={onChildCategoryChange}>
+                <SelectTrigger aria-label="Benchmark child category">
+                  <SelectValue placeholder="暂无二级分类" />
+                </SelectTrigger>
+                <SelectContent>
+                  {childCategories.length === 0 ? (
+                    <SelectItem value="__empty_child" disabled>
+                      暂无二级分类
+                    </SelectItem>
+                  ) : (
+                    childCategories.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        {category.name}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
           </div>
-          <DialogClose asChild>
-            <button type="button" className="text-slate-400 hover:text-slate-600">
-              <X className="h-4 w-4" />
-            </button>
-          </DialogClose>
         </DialogHeader>
 
         <div className="mt-4 max-h-[320px] space-y-3 overflow-auto pr-1">
-          {items.map((item) => (
-            <label
-              key={item.id}
-              className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm"
-            >
-              <Checkbox
-                aria-label={item.title || "Select video"}
-                checked={selected.includes(item.id)}
-                onCheckedChange={() => onToggle(item.id)}
-              />
-              <div className="space-y-1">
-                <div className="font-medium text-slate-900">{item.title}</div>
-                <div className="text-xs text-slate-500">
-                  {item.source} · {item.tag}
+          {isLoading ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-6 text-center text-sm text-slate-500">
+              正在加载对标视频...
+            </div>
+          ) : items.length === 0 ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-6 text-center text-sm text-slate-500">
+              当前分类暂无可选视频
+            </div>
+          ) : (
+            items.map((item) => (
+              <label
+                key={item.id}
+                className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm"
+              >
+                <Checkbox
+                  aria-label={item.title || "Select video"}
+                  checked={selected.includes(item.id)}
+                  onCheckedChange={() => onToggle(item.id)}
+                />
+                <div className="space-y-1">
+                  <div className="font-medium text-slate-900">{item.title}</div>
+                  <div className="text-xs text-slate-500">
+                    {item.source} · {item.tag}
+                  </div>
                 </div>
-              </div>
-            </label>
-          ))}
+              </label>
+            ))
+          )}
         </div>
 
         <div className="mt-6 flex items-center justify-center">
