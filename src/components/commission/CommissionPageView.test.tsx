@@ -53,6 +53,7 @@ describe("CommissionPageView", () => {
         editTarget={undefined}
         filters={{
           keyword: "",
+          platform: "all",
           priceMin: "",
           priceMax: "",
           rateMin: "",

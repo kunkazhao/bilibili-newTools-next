@@ -44,6 +44,8 @@ interface CommissionItem {
   spec: Record<string, string>
 }
 
+type CommissionPlatformFilter = "all" | "jd" | "taobao"
+
 const META_KEYS = {
   sales30: "_s_30",
   comments: "_comments",
@@ -548,6 +550,7 @@ export default function CommissionPage() {
   const [inputValue, setInputValue] = useState("")
   const [filters, setFilters] = useState({
     keyword: "",
+    platform: "all" as CommissionPlatformFilter,
     priceMin: "",
     priceMax: "",
     rateMin: "",
@@ -680,6 +683,7 @@ export default function CommissionPage() {
 
   const filteredItems = useMemo(() => {
     const keyword = filters.keyword.trim()
+    const platform = filters.platform
     const priceMin = Number(filters.priceMin || 0)
     const priceMax = Number(filters.priceMax || Number.MAX_SAFE_INTEGER)
     const rateMin = Number(filters.rateMin || 0)
@@ -687,13 +691,27 @@ export default function CommissionPage() {
     const salesMin = Number(filters.salesMin || 0)
     const salesMax = Number(filters.salesMax || Number.MAX_SAFE_INTEGER)
 
+    const resolvePlatform = (item: CommissionItem): CommissionPlatformFilter | "unknown" => {
+      const promoLink = String(item.spec?.[META_KEYS.promoLink] || "").trim()
+      const sourceLink = String(item.spec?.[META_KEYS.sourceLink] || "").trim()
+      const candidate = `${promoLink}\n${sourceLink}`
+      if (isTaobaoLink(candidate)) return "taobao"
+      if (isJdLink(candidate)) return "jd"
+      return "unknown"
+    }
+
     const list = items.filter((item) => {
       const matchesKeyword = !keyword || item.title.includes(keyword)
+      const itemPlatform = resolvePlatform(item)
+      const matchesPlatform =
+        platform === "all" ||
+        (platform === "taobao" && itemPlatform === "taobao") ||
+        (platform === "jd" && itemPlatform === "jd")
       const matchesPrice = item.price >= priceMin && item.price <= priceMax
       const matchesRate =
         item.commissionRate >= rateMin && item.commissionRate <= rateMax
       const matchesSales = item.sales30 >= salesMin && item.sales30 <= salesMax
-      return matchesKeyword && matchesPrice && matchesRate && matchesSales
+      return matchesKeyword && matchesPlatform && matchesPrice && matchesRate && matchesSales
     })
 
     return list.sort((a, b) => {

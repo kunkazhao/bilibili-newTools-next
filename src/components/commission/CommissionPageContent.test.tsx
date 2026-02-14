@@ -54,6 +54,44 @@ const seedCommissionItems = (
   )
 }
 
+const seedPlatformItems = () => {
+  localStorage.setItem(
+    "commission_temp_items_v1",
+    JSON.stringify([
+      {
+        id: "jd-1",
+        title: "JD 商品",
+        price: 99,
+        commissionRate: 10,
+        image: "",
+        shopName: "",
+        source: "",
+        sales30: 0,
+        comments: "",
+        isFocused: false,
+        spec: {
+          _promo_link: "https://item.jd.com/100148265520.html",
+        },
+      },
+      {
+        id: "tb-1",
+        title: "淘宝商品",
+        price: 88,
+        commissionRate: 8,
+        image: "",
+        shopName: "",
+        source: "",
+        sales30: 0,
+        comments: "",
+        isFocused: false,
+        spec: {
+          _promo_link: "https://detail.tmall.com/item.htm?id=1000225673799",
+        },
+      },
+    ])
+  )
+}
+
 const seedCategoryCache = () => {
   localStorage.setItem(
     "sourcing_category_cache_v1",
@@ -437,6 +475,25 @@ describe("CommissionPageContent", () => {
     expect(requestBody.items).toHaveLength(2)
 
     rafSpy.mockRestore()
+  })
+
+  it("filters list by platform selector", async () => {
+    const user = userEvent.setup()
+    seedPlatformItems()
+    vi.mocked(fetchCategories).mockResolvedValue({ categories: [] })
+    vi.mocked(apiRequest).mockResolvedValue({} as never)
+
+    render(<CommissionPageContent />)
+
+    await screen.findByText("JD 商品")
+    await screen.findByText("淘宝商品")
+
+    await user.selectOptions(screen.getByLabelText("Platform filter"), "taobao")
+
+    await waitFor(() => {
+      expect(screen.queryByText("JD 商品")).toBeNull()
+    })
+    expect(screen.getByText("淘宝商品")).toBeTruthy()
   })
 
 

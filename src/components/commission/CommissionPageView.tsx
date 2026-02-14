@@ -35,6 +35,7 @@ interface CommissionPageViewProps {
   editTarget?: { id: string; title: string; price: number; commissionRate: number }
   filters: {
     keyword: string
+    platform: string
     priceMin: string
     priceMax: string
     rateMin: string
@@ -186,6 +187,19 @@ export default function CommissionPageView({
               placeholder="搜索商品名称..."
               className="h-7 w-[220px] border-none bg-slate-50 text-xs"
             />
+          </div>
+          <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
+            <span className="font-medium text-slate-600">平台</span>
+            <select
+              aria-label="Platform filter"
+              value={filters.platform}
+              onChange={(e) => onFilterChange("platform", e.target.value)}
+              className="h-7 min-w-[96px] rounded-md border border-slate-200 bg-slate-50 px-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand/30"
+            >
+              <option value="all">全部</option>
+              <option value="taobao">淘宝</option>
+              <option value="jd">京东</option>
+            </select>
           </div>
           <RangeInput
             label="价格"
