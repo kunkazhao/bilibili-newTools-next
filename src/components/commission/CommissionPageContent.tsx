@@ -57,6 +57,7 @@ const META_KEYS = {
 }
 
 const TEMP_STORAGE_KEY = "commission_temp_items_v1"
+const COMMISSION_STATE_ENDPOINT = "/api/commission/state"
 const CATEGORY_CACHE_KEY = "sourcing_category_cache_v1"
 const CATEGORY_CACHE_TTL = 5 * 60 * 1000
 const BENCHMARK_PICK_CACHE_KEY = "benchmark_pick_cache_v1"
@@ -267,6 +268,28 @@ const saveLocalItems = (next: CommissionItem[]) => {
   } catch {
     // ignore
   }
+}
+
+const normalizeCommissionStateItems = (value: unknown): CommissionItem[] => {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is CommissionItem => {
+    if (!item || typeof item !== "object") return false
+    const raw = item as Partial<CommissionItem>
+    return typeof raw.id === "string" && typeof raw.title === "string"
+  })
+}
+
+const fetchCommissionStateItems = async () => {
+  const response = await apiRequest<{ items?: unknown }>(COMMISSION_STATE_ENDPOINT)
+  if (!Object.prototype.hasOwnProperty.call(response ?? {}, "items")) return null
+  return normalizeCommissionStateItems(response?.items)
+}
+
+const saveCommissionStateItems = async (items: CommissionItem[]) => {
+  await apiRequest(COMMISSION_STATE_ENDPOINT, {
+    method: "PUT",
+    body: JSON.stringify({ items }),
+  })
 }
 
 const API_BASE = import.meta.env.VITE_API_BASE?.replace(/\/$/, "") ?? ""
@@ -618,11 +641,94 @@ export default function CommissionPage() {
   const authorRequestedRef = useRef<Set<string>>(new Set())
   const processingRef = useRef(false)
   const archiveInitFrameRef = useRef<number | null>(null)
+  const itemsLoadedRef = useRef(false)
+  const lastPersistedItemsRef = useRef("")
+  const pendingPersistItemsRef = useRef<CommissionItem[] | null>(null)
+  const persistTimerRef = useRef<number | null>(null)
+  const persistErrorShownRef = useRef(false)
+
+  const flushPendingItems = useCallback(async () => {
+    const pending = pendingPersistItemsRef.current
+    if (!pending) return
+    pendingPersistItemsRef.current = null
+    const snapshot = JSON.stringify(pending)
+    if (snapshot === lastPersistedItemsRef.current) return
+    try {
+      await saveCommissionStateItems(pending)
+      lastPersistedItemsRef.current = snapshot
+      persistErrorShownRef.current = false
+    } catch (error) {
+      pendingPersistItemsRef.current = pending
+      if (!persistErrorShownRef.current) {
+        persistErrorShownRef.current = true
+        showToast(getUserErrorMessage(error, "保存佣金列表失败"), "error")
+      }
+    }
+  }, [showToast])
+
+  const persistItems = useCallback(
+    (next: CommissionItem[]) => {
+      saveLocalItems(next)
+      if (!itemsLoadedRef.current) return
+      pendingPersistItemsRef.current = next
+      if (typeof window === "undefined") {
+        void flushPendingItems()
+        return
+      }
+      if (persistTimerRef.current !== null) {
+        window.clearTimeout(persistTimerRef.current)
+      }
+      persistTimerRef.current = window.setTimeout(() => {
+        persistTimerRef.current = null
+        void flushPendingItems()
+      }, 250)
+    },
+    [flushPendingItems]
+  )
 
   useEffect(() => {
-    const localItems = getLocalItems()
-    setItems(localItems)
-  }, [])
+    let active = true
+    const loadItems = async () => {
+      try {
+        const remoteItems = await fetchCommissionStateItems()
+        if (!active) return
+        const localItems = getLocalItems()
+        if (remoteItems && remoteItems.length === 0 && localItems.length > 0) {
+          setItems(localItems)
+          itemsLoadedRef.current = true
+          lastPersistedItemsRef.current = ""
+          persistItems(localItems)
+          return
+        }
+        if (remoteItems) {
+          setItems(remoteItems)
+          itemsLoadedRef.current = true
+          lastPersistedItemsRef.current = JSON.stringify(remoteItems)
+          return
+        }
+      } catch {
+        // fallback to local cache below
+      }
+
+      const localItems = getLocalItems()
+      if (!active) return
+      setItems(localItems)
+      itemsLoadedRef.current = true
+      lastPersistedItemsRef.current = ""
+      if (localItems.length > 0) {
+        persistItems(localItems)
+      }
+    }
+
+    void loadItems()
+    return () => {
+      active = false
+      if (persistTimerRef.current !== null && typeof window !== "undefined") {
+        window.clearTimeout(persistTimerRef.current)
+        persistTimerRef.current = null
+      }
+    }
+  }, [persistItems])
 
   const loadCategories = useCallback(async () => {
     const cache = getCache<unknown>(CATEGORY_CACHE_KEY)
@@ -712,11 +818,11 @@ export default function CommissionPage() {
           const spec = { ...entry.spec, [META_KEYS.sourceAuthor]: author }
           return { ...entry, spec }
         })
-        saveLocalItems(next)
+        persistItems(next)
         return next
       })
     })
-  }, [items])
+  }, [items, persistItems])
 
   const filteredItems = useMemo(() => {
     const keyword = filters.keyword.trim()
@@ -782,10 +888,10 @@ export default function CommissionPage() {
   const updateLocalItems = useCallback((updater: (prev: CommissionItem[]) => CommissionItem[]) => {
     setItems((prev) => {
       const next = updater(prev)
-      saveLocalItems(next)
+      persistItems(next)
       return next
     })
-  }, [])
+  }, [persistItems])
 
   const getDedupeKey = useCallback((link: string, title: string) => {
     const digits = extractDigitsFromLink(link)

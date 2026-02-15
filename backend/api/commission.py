@@ -1,12 +1,13 @@
 import json
 import logging
 import re
-from typing import Any, Set
+from typing import Any, Dict, List, Set
 from urllib.parse import parse_qs, urlparse
 
 import aiohttp
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 router = APIRouter()
 
@@ -20,6 +21,15 @@ logger = logging.getLogger(__name__)
 JdImageRequest = core.JdImageRequest
 JD_SCENE_ID = core.JD_SCENE_ID
 JD_ELITE_ID = core.JD_ELITE_ID
+SupabaseError = core.SupabaseError
+
+
+def ensure_supabase():
+    return core.ensure_supabase()
+
+
+def utc_now_iso():
+    return core.utc_now_iso()
 
 
 def _core_attr(name: str):
@@ -60,6 +70,25 @@ def resolve_taobao_url(*args, **kwargs):
 
 def taobao_click_extract(*args, **kwargs):
     return _core_attr("taobao_click_extract")(*args, **kwargs)
+
+
+COMMISSION_STATE_TABLE = "commission_state"
+COMMISSION_STATE_ROW_ID = "default"
+MAX_COMMISSION_STATE_ITEMS = 2000
+
+
+class CommissionStatePayload(BaseModel):
+    items: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+def normalize_commission_state_items(value: Any) -> List[Dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    normalized: List[Dict[str, Any]] = []
+    for item in value:
+        if isinstance(item, dict):
+            normalized.append(item)
+    return normalized
 
 
 TAOBAO_TITLE_BLACKLIST = {
@@ -267,6 +296,64 @@ async def fetch_taobao_detail_fallback(source_url: str, item_id: str) -> dict:
                 return parsed
 
     return {}
+
+
+@router.get("/api/commission/state")
+async def get_commission_state():
+    client = ensure_supabase()
+    try:
+        rows = await client.select(
+            COMMISSION_STATE_TABLE,
+            params={"id": f"eq.{COMMISSION_STATE_ROW_ID}", "limit": 1},
+        )
+    except SupabaseError as exc:
+        raise HTTPException(status_code=500, detail=str(exc.message))
+
+    if rows:
+        return {"items": normalize_commission_state_items(rows[0].get("items"))}
+
+    now = utc_now_iso()
+    try:
+        inserted = await client.insert(
+            COMMISSION_STATE_TABLE,
+            {
+                "id": COMMISSION_STATE_ROW_ID,
+                "items": [],
+                "created_at": now,
+                "updated_at": now,
+            },
+        )
+    except SupabaseError as exc:
+        raise HTTPException(status_code=500, detail=str(exc.message))
+
+    first = inserted[0] if inserted else {"items": []}
+    return {"items": normalize_commission_state_items(first.get("items"))}
+
+
+@router.put("/api/commission/state")
+async def update_commission_state(payload: CommissionStatePayload):
+    items = normalize_commission_state_items(payload.items)
+    if len(items) > MAX_COMMISSION_STATE_ITEMS:
+        raise HTTPException(status_code=400, detail="商品数量超出上限，请先清理列表")
+
+    client = ensure_supabase()
+    now = utc_now_iso()
+    try:
+        await client.upsert(
+            COMMISSION_STATE_TABLE,
+            [
+                {
+                    "id": COMMISSION_STATE_ROW_ID,
+                    "items": items,
+                    "updated_at": now,
+                }
+            ],
+            on_conflict="id",
+        )
+    except SupabaseError as exc:
+        raise HTTPException(status_code=500, detail=str(exc.message))
+
+    return {"items": items}
 
 @router.post("/api/jd/product")
 
