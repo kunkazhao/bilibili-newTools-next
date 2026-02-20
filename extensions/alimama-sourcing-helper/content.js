@@ -295,4 +295,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       error: error instanceof Error ? error.message : "Failed to extract page data",
     });
   }
+
+  return true; // 保持消息通道开放
 });
