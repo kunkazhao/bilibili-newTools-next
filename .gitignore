@@ -45,3 +45,6 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 
+# Downloads and cache files
+downloads/
+*.cache.json
