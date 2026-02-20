@@ -1,6 +1,7 @@
 import { Suspense, useState } from "react"
 import AppLayout from "@/components/AppLayout"
 import Empty from "@/components/Empty"
+import PageSkeleton from "@/components/PageSkeleton"
 import { ToastProvider } from "@/components/Toast"
 import { PAGES, getPageById } from "@/config/pages"
 
@@ -15,8 +16,10 @@ export default function App() {
   return (
     <ToastProvider>
       <AppLayout activePageId={activePageId} onSelect={setActivePageId}>
-        <Suspense fallback={null}>
-          {activePage ? activePage.render() : <Placeholder title={"\u529f\u80fd\u8fc1\u79fb\u4e2d"} />}
+        <Suspense fallback={<PageSkeleton />}>
+          <div key={activePageId}>
+            {activePage ? activePage.render() : <Placeholder title={"\u529f\u80fd\u8fc1\u79fb\u4e2d"} />}
+          </div>
         </Suspense>
       </AppLayout>
     </ToastProvider>
